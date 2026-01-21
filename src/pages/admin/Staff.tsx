@@ -261,17 +261,71 @@ export default function StaffPage() {
     }
   };
 
+  const adminCount = staff.filter(s => s.user_role?.role === 'admin').length;
+  const managerCount = staff.filter(s => s.user_role?.role === 'manager').length;
+  const cashierCount = staff.filter(s => s.user_role?.role === 'cashier').length;
+  const activeCount = staff.filter(s => s.is_active).length;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Персонал</h1>
-          <p className="text-muted-foreground">Управление сотрудниками и ролями</p>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Персонал</h1>
+          <p className="text-muted-foreground mt-1">Управление сотрудниками и ролями</p>
         </div>
         <Button onClick={openCreateDialog}>
           <Plus className="h-4 w-4 mr-2" />
           Добавить сотрудника
         </Button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Всего</p>
+                <p className="text-2xl font-bold text-blue-500">{staff.length}</p>
+                <p className="text-xs text-muted-foreground">Активных: {activeCount}</p>
+              </div>
+              <Users className="h-8 w-8 text-blue-500/50" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Админы</p>
+                <p className="text-2xl font-bold">{adminCount}</p>
+              </div>
+              <Badge>admin</Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Менеджеры</p>
+                <p className="text-2xl font-bold">{managerCount}</p>
+              </div>
+              <Badge variant="secondary">manager</Badge>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Кассиры</p>
+                <p className="text-2xl font-bold">{cashierCount}</p>
+              </div>
+              <Badge variant="outline">cashier</Badge>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Search */}

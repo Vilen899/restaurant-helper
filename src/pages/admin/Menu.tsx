@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, Search, GripVertical } from 'lucide-react';
+import { Plus, Pencil, Trash2, UtensilsCrossed } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
+import { PageHeader, ActionButton } from '@/components/admin/PageHeader';
+import { FilterBar } from '@/components/admin/FilterBar';
+import { StatCard } from '@/components/admin/StatCard';
 
 type MenuItem = Tables<'menu_items'>;
 type MenuCategory = Tables<'menu_categories'>;
@@ -25,7 +28,6 @@ export default function MenuPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<MenuItem | null>(null);
 
-  // Form state
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -40,6 +42,7 @@ export default function MenuPage() {
   }, []);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
       const [{ data: items }, { data: cats }] = await Promise.all([
         supabase.from('menu_items').select('*').order('sort_order'),
@@ -147,6 +150,10 @@ export default function MenuPage() {
     return categories.find(c => c.id === categoryId)?.name || 'Без категории';
   };
 
+  const activeItems = menuItems.filter(i => i.is_active).length;
+  const totalRevenue = menuItems.reduce((sum, i) => sum + Number(i.price), 0);
+  const avgPrice = menuItems.length ? totalRevenue / menuItems.length : 0;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -157,28 +164,30 @@ export default function MenuPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">Меню</h1>
-          <p className="text-muted-foreground">Управление блюдами и категориями</p>
-        </div>
-        <Button onClick={openCreateDialog}>
-          <Plus className="h-4 w-4 mr-2" />
-          Добавить блюдо
-        </Button>
+      <PageHeader
+        title="Меню"
+        description="Управление блюдами и позициями"
+        onRefresh={fetchData}
+        loading={loading}
+        actions={
+          <ActionButton label="Добавить блюдо" icon={Plus} onClick={openCreateDialog} />
+        }
+      />
+
+      {/* Stats */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Всего позиций" value={menuItems.length} icon={UtensilsCrossed} />
+        <StatCard title="Активных" value={activeItems} icon={UtensilsCrossed} variant="success" />
+        <StatCard title="Категорий" value={categories.length} icon={UtensilsCrossed} variant="info" />
+        <StatCard title="Средняя цена" value={`₽${Math.round(avgPrice)}`} icon={UtensilsCrossed} />
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Поиск по названию..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+      <FilterBar
+        searchValue={searchTerm}
+        onSearchChange={setSearchTerm}
+        searchPlaceholder="Поиск по названию..."
+      >
         <Select value={selectedCategory} onValueChange={setSelectedCategory}>
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="Категория" />
@@ -190,8 +199,7 @@ export default function MenuPage() {
             ))}
           </SelectContent>
         </Select>
-      </div>
-
+      </FilterBar>
       {/* Menu items grid */}
       {filteredItems.length === 0 ? (
         <Card>
