@@ -1,5 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Search, Package, ArrowRightLeft, TrendingDown, AlertTriangle, Plus, Database, ClipboardCheck } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Search, Package, ArrowRightLeft, TrendingDown, AlertTriangle, Plus, Database, ClipboardCheck, CalendarIcon, X } from 'lucide-react';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -55,6 +60,11 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
+
+  // Stocktaking history filters
+  const [stocktakingLocationFilter, setStocktakingLocationFilter] = useState<string>('all');
+  const [stocktakingDateFrom, setStocktakingDateFrom] = useState<Date | undefined>(undefined);
+  const [stocktakingDateTo, setStocktakingDateTo] = useState<Date | undefined>(undefined);
 
   // Supply dialog
   const [supplyDialogOpen, setSupplyDialogOpen] = useState(false);
@@ -634,6 +644,16 @@ export default function InventoryPage() {
     return matchesSearch && matchesLocation;
   });
 
+  const filteredStocktakings = useMemo(() => {
+    return stocktakings.filter(st => {
+      const matchesLocation = stocktakingLocationFilter === 'all' || st.location_id === stocktakingLocationFilter;
+      const stDate = new Date(st.created_at);
+      const matchesDateFrom = !stocktakingDateFrom || stDate >= stocktakingDateFrom;
+      const matchesDateTo = !stocktakingDateTo || stDate <= new Date(stocktakingDateTo.getTime() + 24 * 60 * 60 * 1000 - 1);
+      return matchesLocation && matchesDateFrom && matchesDateTo;
+    });
+  }, [stocktakings, stocktakingLocationFilter, stocktakingDateFrom, stocktakingDateTo]);
+
   const lowStockItems = inventory.filter(item => 
     item.ingredient?.min_stock && Number(item.quantity) < Number(item.ingredient.min_stock)
   );
@@ -776,7 +796,100 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="stocktakings">
-          <Card>
+          <Card className="p-4 space-y-4">
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Локация</Label>
+                <Select
+                  value={stocktakingLocationFilter}
+                  onValueChange={setStocktakingLocationFilter}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Все локации" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все локации</SelectItem>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Дата от</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-40 justify-start text-left font-normal",
+                        !stocktakingDateFrom && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {stocktakingDateFrom ? format(stocktakingDateFrom, "dd.MM.yyyy") : "Выбрать"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={stocktakingDateFrom}
+                      onSelect={setStocktakingDateFrom}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                      locale={ru}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Дата до</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-40 justify-start text-left font-normal",
+                        !stocktakingDateTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {stocktakingDateTo ? format(stocktakingDateTo, "dd.MM.yyyy") : "Выбрать"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={stocktakingDateTo}
+                      onSelect={setStocktakingDateTo}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                      locale={ru}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {(stocktakingLocationFilter !== 'all' || stocktakingDateFrom || stocktakingDateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setStocktakingLocationFilter('all');
+                    setStocktakingDateFrom(undefined);
+                    setStocktakingDateTo(undefined);
+                  }}
+                  className="text-muted-foreground"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Сбросить
+                </Button>
+              )}
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -790,14 +903,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stocktakings.length === 0 ? (
+                {filteredStocktakings.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Нет проведённых инвентаризаций
+                      {stocktakings.length === 0 ? 'Нет проведённых инвентаризаций' : 'Нет инвентаризаций по выбранным фильтрам'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  stocktakings.map(st => (
+                  filteredStocktakings.map(st => (
                     <TableRow key={st.id}>
                       <TableCell>{new Date(st.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</TableCell>
                       <TableCell>{st.location?.name}</TableCell>
