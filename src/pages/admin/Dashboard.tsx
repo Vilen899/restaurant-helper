@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   BarChart3, TrendingUp, Users, Package, ShoppingCart, DollarSign, 
-  AlertTriangle, Clock, MapPin, ArrowUpRight, Plus, Truck, FileText
+  AlertTriangle, Clock, MapPin, ArrowUpRight, Plus, Truck, FileText, Warehouse
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -249,13 +249,20 @@ export default function AdminDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-5">
         <QuickActionCard
           title="Новый заказ"
           description="Открыть кассу"
           icon={Plus}
           onClick={() => navigate('/cashier')}
           variant="primary"
+        />
+        <QuickActionCard
+          title="Остатки на складе"
+          description="Все товары"
+          icon={Warehouse}
+          onClick={() => navigate('/admin/inventory')}
+          variant="success"
         />
         <QuickActionCard
           title="Добавить блюдо"
