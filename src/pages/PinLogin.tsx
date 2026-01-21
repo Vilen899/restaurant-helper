@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UtensilsCrossed, Delete, ArrowLeft, MapPin } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Delete, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import logo from '@/assets/logo.webp';
 
 export default function PinLogin() {
   const navigate = useNavigate();
@@ -15,7 +15,6 @@ export default function PinLogin() {
   const [selectedLocation, setSelectedLocation] = useState('');
 
   useEffect(() => {
-    // Fetch locations for selection
     const fetchLocations = async () => {
       const { data } = await supabase
         .from('locations')
@@ -69,7 +68,6 @@ export default function PinLogin() {
         setPin('');
       } else if (data?.success) {
         toast.success(`Добро пожаловать, ${data.user.full_name}!`);
-        // Store cashier session in sessionStorage (for this tab only)
         sessionStorage.setItem('cashier_session', JSON.stringify(data.user));
         navigate('/cashier');
       }
@@ -84,55 +82,60 @@ export default function PinLogin() {
   const numbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-sm glass">
-        <CardHeader className="text-center space-y-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-4 left-4"
-            onClick={() => navigate('/auth')}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Email вход
-          </Button>
-          
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-primary flex items-center justify-center">
-            <UtensilsCrossed className="text-primary-foreground" size={32} />
-          </div>
-          <div>
-            <CardTitle className="text-2xl">Вход кассира</CardTitle>
-            <CardDescription>Введите 4-значный PIN-код</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
+    <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] opacity-90" />
+      
+      {/* Decorative elements */}
+      <div className="absolute top-1/4 -left-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
+      <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-green-500/10 rounded-full blur-3xl" />
+
+      {/* Main card */}
+      <div className="relative z-10 w-full max-w-sm">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <img 
+            src={logo} 
+            alt="Crusty Sandwiches" 
+            className="h-20 mx-auto object-contain drop-shadow-lg"
+          />
+        </div>
+
+        {/* Glass card */}
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
           {/* Location selector */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="mb-6">
+            <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
               <MapPin className="h-4 w-4" />
-              <span>Точка</span>
+              <span>Точка продажи</span>
             </div>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-              <SelectTrigger>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white hover:bg-white/10">
                 <SelectValue placeholder="Выберите точку" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-[#1a1a2e] border-white/10">
                 {locations.map(loc => (
-                  <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                  <SelectItem 
+                    key={loc.id} 
+                    value={loc.id}
+                    className="text-white hover:bg-white/10 focus:bg-white/10"
+                  >
+                    {loc.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
 
           {/* PIN display */}
-          <div className="flex justify-center gap-3">
+          <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
                 className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${
                   pin.length > i 
-                    ? 'border-primary bg-primary/10' 
-                    : 'border-border'
+                    ? 'border-green-500 bg-green-500/20 text-green-400' 
+                    : 'border-white/20 bg-white/5'
                 }`}
               >
                 {pin[i] ? '•' : ''}
@@ -148,8 +151,8 @@ export default function PinLogin() {
                 return (
                   <Button
                     key={index}
-                    variant="outline"
-                    className="h-16 text-xl"
+                    variant="ghost"
+                    className="h-16 text-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-white"
                     onClick={handleDelete}
                     onDoubleClick={handleClear}
                     disabled={loading}
@@ -161,8 +164,8 @@ export default function PinLogin() {
               return (
                 <Button
                   key={index}
-                  variant="outline"
-                  className="h-16 text-xl font-semibold"
+                  variant="ghost"
+                  className="h-16 text-2xl font-semibold bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-all active:scale-95"
                   onClick={() => handleNumberClick(num)}
                   disabled={loading || pin.length >= 4}
                 >
@@ -173,12 +176,20 @@ export default function PinLogin() {
           </div>
 
           {loading && (
-            <p className="text-center text-muted-foreground animate-pulse">
-              Проверка...
-            </p>
+            <div className="mt-4 text-center">
+              <div className="inline-flex items-center gap-2 text-white/60">
+                <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+                <span>Проверка...</span>
+              </div>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {/* Footer */}
+        <p className="text-center text-white/30 text-xs mt-6">
+          © 2026 Crusty Sandwiches. Касса v1.0
+        </p>
+      </div>
     </div>
   );
 }
