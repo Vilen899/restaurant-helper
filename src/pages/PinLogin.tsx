@@ -94,7 +94,7 @@ export default function PinLogin() {
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
 
       {/* Main card */}
-      <div className="relative z-10 w-full max-w-sm">
+      <div className="relative z-10 w-full max-w-sm animate-scale-in">
 
         {/* Glass card */}
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
