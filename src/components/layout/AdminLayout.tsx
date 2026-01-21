@@ -70,7 +70,7 @@ const menuGroups: MenuGroup[] = [
     roles: ['admin', 'manager'],
     items: [
       { path: '/admin/reports', icon: FileText, label: 'Продажи', roles: ['admin', 'manager'] },
-      { path: '/admin/reports/inventory', icon: Warehouse, label: 'Склад', roles: ['admin', 'manager'] },
+      { path: '/admin/reports/inventory', icon: Warehouse, label: 'Остатки', roles: ['admin', 'manager'] },
     ],
   },
   {
