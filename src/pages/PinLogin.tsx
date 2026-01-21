@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Delete, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,43 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import logo from '@/assets/logo.webp';
+
+// Sound generator using Web Audio API
+const playClickSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  oscillator.frequency.value = 800;
+  oscillator.type = 'sine';
+  
+  gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+  
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.1);
+};
+
+const playDeleteSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  oscillator.frequency.value = 400;
+  oscillator.type = 'sine';
+  
+  gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+  
+  oscillator.start(audioContext.currentTime);
+  oscillator.stop(audioContext.currentTime + 0.1);
+};
 
 export default function PinLogin() {
   const navigate = useNavigate();
@@ -32,11 +69,13 @@ export default function PinLogin() {
 
   const handleNumberClick = (num: string) => {
     if (pin.length < 4) {
+      playClickSound();
       setPin(prev => prev + num);
     }
   };
 
   const handleDelete = () => {
+    playDeleteSound();
     setPin(prev => prev.slice(0, -1));
   };
 
@@ -147,7 +186,7 @@ export default function PinLogin() {
                   <Button
                     key={index}
                     variant="ghost"
-                    className="h-16 text-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-white"
+                    className="h-16 text-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-white transition-all duration-150 active:scale-90 active:bg-red-500/30"
                     onClick={handleDelete}
                     onDoubleClick={handleClear}
                     disabled={loading}
@@ -160,7 +199,7 @@ export default function PinLogin() {
                 <Button
                   key={index}
                   variant="ghost"
-                  className="h-16 text-2xl font-semibold bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-all active:scale-95"
+                  className="h-16 text-2xl font-semibold bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-all duration-150 active:scale-90 active:bg-green-500/20 active:border-green-500/50"
                   onClick={() => handleNumberClick(num)}
                   disabled={loading || pin.length >= 4}
                 >
