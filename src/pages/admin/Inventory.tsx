@@ -66,6 +66,16 @@ export default function InventoryPage() {
   const [stocktakingDateFrom, setStocktakingDateFrom] = useState<Date | undefined>(undefined);
   const [stocktakingDateTo, setStocktakingDateTo] = useState<Date | undefined>(undefined);
 
+  // Supplies filters
+  const [suppliesLocationFilter, setSuppliesLocationFilter] = useState<string>('all');
+  const [suppliesDateFrom, setSuppliesDateFrom] = useState<Date | undefined>(undefined);
+  const [suppliesDateTo, setSuppliesDateTo] = useState<Date | undefined>(undefined);
+
+  // Transfers filters
+  const [transfersLocationFilter, setTransfersLocationFilter] = useState<string>('all');
+  const [transfersDateFrom, setTransfersDateFrom] = useState<Date | undefined>(undefined);
+  const [transfersDateTo, setTransfersDateTo] = useState<Date | undefined>(undefined);
+
   // Supply dialog
   const [supplyDialogOpen, setSupplyDialogOpen] = useState(false);
   const [supplyForm, setSupplyForm] = useState({
@@ -654,6 +664,28 @@ export default function InventoryPage() {
     });
   }, [stocktakings, stocktakingLocationFilter, stocktakingDateFrom, stocktakingDateTo]);
 
+  const filteredSupplies = useMemo(() => {
+    return supplies.filter(sup => {
+      const matchesLocation = suppliesLocationFilter === 'all' || sup.location_id === suppliesLocationFilter;
+      const supDate = new Date(sup.created_at);
+      const matchesDateFrom = !suppliesDateFrom || supDate >= suppliesDateFrom;
+      const matchesDateTo = !suppliesDateTo || supDate <= new Date(suppliesDateTo.getTime() + 24 * 60 * 60 * 1000 - 1);
+      return matchesLocation && matchesDateFrom && matchesDateTo;
+    });
+  }, [supplies, suppliesLocationFilter, suppliesDateFrom, suppliesDateTo]);
+
+  const filteredTransfers = useMemo(() => {
+    return transfers.filter(trans => {
+      const matchesLocation = transfersLocationFilter === 'all' || 
+        trans.from_location_id === transfersLocationFilter || 
+        trans.to_location_id === transfersLocationFilter;
+      const transDate = new Date(trans.created_at);
+      const matchesDateFrom = !transfersDateFrom || transDate >= transfersDateFrom;
+      const matchesDateTo = !transfersDateTo || transDate <= new Date(transfersDateTo.getTime() + 24 * 60 * 60 * 1000 - 1);
+      return matchesLocation && matchesDateFrom && matchesDateTo;
+    });
+  }, [transfers, transfersLocationFilter, transfersDateFrom, transfersDateTo]);
+
   const lowStockItems = inventory.filter(item => 
     item.ingredient?.min_stock && Number(item.quantity) < Number(item.ingredient.min_stock)
   );
@@ -940,7 +972,100 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="supplies">
-          <Card>
+          <Card className="p-4 space-y-4">
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Локация</Label>
+                <Select
+                  value={suppliesLocationFilter}
+                  onValueChange={setSuppliesLocationFilter}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Все локации" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все локации</SelectItem>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Дата от</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-40 justify-start text-left font-normal",
+                        !suppliesDateFrom && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {suppliesDateFrom ? format(suppliesDateFrom, "dd.MM.yyyy") : "Выбрать"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={suppliesDateFrom}
+                      onSelect={setSuppliesDateFrom}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                      locale={ru}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Дата до</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-40 justify-start text-left font-normal",
+                        !suppliesDateTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {suppliesDateTo ? format(suppliesDateTo, "dd.MM.yyyy") : "Выбрать"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={suppliesDateTo}
+                      onSelect={setSuppliesDateTo}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                      locale={ru}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {(suppliesLocationFilter !== 'all' || suppliesDateFrom || suppliesDateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSuppliesLocationFilter('all');
+                    setSuppliesDateFrom(undefined);
+                    setSuppliesDateTo(undefined);
+                  }}
+                  className="text-muted-foreground"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Сбросить
+                </Button>
+              )}
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -953,14 +1078,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supplies.length === 0 ? (
+                {filteredSupplies.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                      Нет поставок
+                      {supplies.length === 0 ? 'Нет поставок' : 'Нет поставок по выбранным фильтрам'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  supplies.map(sup => (
+                  filteredSupplies.map(sup => (
                     <TableRow key={sup.id}>
                       <TableCell>{new Date(sup.created_at).toLocaleDateString('ru-RU')}</TableCell>
                       <TableCell>{sup.location?.name}</TableCell>
@@ -983,7 +1108,100 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="transfers">
-          <Card>
+          <Card className="p-4 space-y-4">
+            {/* Filters */}
+            <div className="flex flex-wrap gap-3 items-end">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Локация</Label>
+                <Select
+                  value={transfersLocationFilter}
+                  onValueChange={setTransfersLocationFilter}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Все локации" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все локации</SelectItem>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Дата от</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-40 justify-start text-left font-normal",
+                        !transfersDateFrom && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {transfersDateFrom ? format(transfersDateFrom, "dd.MM.yyyy") : "Выбрать"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={transfersDateFrom}
+                      onSelect={setTransfersDateFrom}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                      locale={ru}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Дата до</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-40 justify-start text-left font-normal",
+                        !transfersDateTo && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {transfersDateTo ? format(transfersDateTo, "dd.MM.yyyy") : "Выбрать"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={transfersDateTo}
+                      onSelect={setTransfersDateTo}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                      locale={ru}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {(transfersLocationFilter !== 'all' || transfersDateFrom || transfersDateTo) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setTransfersLocationFilter('all');
+                    setTransfersDateFrom(undefined);
+                    setTransfersDateTo(undefined);
+                  }}
+                  className="text-muted-foreground"
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Сбросить
+                </Button>
+              )}
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow>
@@ -994,14 +1212,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {transfers.length === 0 ? (
+                {filteredTransfers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                      Нет перемещений
+                      {transfers.length === 0 ? 'Нет перемещений' : 'Нет перемещений по выбранным фильтрам'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  transfers.map(trans => (
+                  filteredTransfers.map(trans => (
                     <TableRow key={trans.id}>
                       <TableCell>{new Date(trans.created_at).toLocaleDateString('ru-RU')}</TableCell>
                       <TableCell>{trans.from_location?.name}</TableCell>
