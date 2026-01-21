@@ -53,6 +53,15 @@ export default function CashierPage() {
     }
 
     const parsed = JSON.parse(sessionData) as CashierSession;
+    
+    // Only cashiers can access this page
+    if (parsed.role !== 'cashier') {
+      toast.error('Доступ только для кассиров');
+      sessionStorage.removeItem('cashier_session');
+      navigate('/');
+      return;
+    }
+    
     setSession(parsed);
     fetchMenuData();
   }, [navigate]);
