@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import PinLogin from "./pages/PinLogin";
+import CashierPage from "./pages/Cashier";
 
 // Admin pages
 import AdminLayout from "./components/layout/AdminLayout";
@@ -18,9 +19,11 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import MenuPage from "./pages/admin/Menu";
 import RecipesPage from "./pages/admin/Recipes";
 import IngredientsPage from "./pages/admin/Ingredients";
+import InventoryPage from "./pages/admin/Inventory";
 import LocationsPage from "./pages/admin/Locations";
 import StaffPage from "./pages/admin/Staff";
 import CategoriesPage from "./pages/admin/Categories";
+import ReportsPage from "./pages/admin/Reports";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +38,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/pin" element={<PinLogin />} />
+            <Route path="/cashier" element={<CashierPage />} />
             
             {/* Admin routes */}
             <Route path="/admin" element={
@@ -47,8 +51,10 @@ const App = () => (
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="recipes" element={<RecipesPage />} />
               <Route path="ingredients" element={<IngredientsPage />} />
+              <Route path="inventory" element={<InventoryPage />} />
               <Route path="locations" element={<LocationsPage />} />
               <Route path="staff" element={<StaffPage />} />
+              <Route path="reports" element={<ReportsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
