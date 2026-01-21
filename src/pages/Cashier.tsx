@@ -157,6 +157,33 @@ export default function CashierPage() {
     setCart([]);
   };
 
+  // Helper function to deduct ingredient from inventory
+  const deductIngredient = async (locationId: string, ingredientId: string, quantity: number, orderId: string) => {
+    const { data: currentInv } = await supabase
+      .from('inventory')
+      .select('id, quantity')
+      .eq('location_id', locationId)
+      .eq('ingredient_id', ingredientId)
+      .maybeSingle();
+
+    if (currentInv) {
+      await supabase
+        .from('inventory')
+        .update({ quantity: Math.max(0, Number(currentInv.quantity) - quantity) })
+        .eq('id', currentInv.id);
+    }
+
+    await supabase
+      .from('inventory_movements')
+      .insert({
+        location_id: locationId,
+        ingredient_id: ingredientId,
+        movement_type: 'sale',
+        quantity: -quantity,
+        reference_id: orderId,
+      });
+  };
+
   const subtotal = cart.reduce((sum, ci) => sum + Number(ci.menuItem.price) * ci.quantity, 0);
   const total = subtotal;
   const totalItems = cart.reduce((sum, ci) => sum + ci.quantity, 0);
@@ -208,41 +235,47 @@ export default function CashierPage() {
 
       if (itemsError) throw itemsError;
 
-      // Deduct ingredients from inventory
+      // Deduct ingredients from inventory (including semi-finished products)
       for (const cartItem of cart) {
         const { data: recipe } = await supabase
           .from('menu_item_ingredients')
-          .select('ingredient_id, quantity')
+          .select('ingredient_id, semi_finished_id, quantity')
           .eq('menu_item_id', cartItem.menuItem.id);
 
         if (recipe && recipe.length > 0) {
-          for (const ing of recipe) {
-            if (ing.ingredient_id) {
-              const deductQty = Number(ing.quantity) * cartItem.quantity;
+          for (const recipeItem of recipe) {
+            // Direct ingredient
+            if (recipeItem.ingredient_id) {
+              const deductQty = Number(recipeItem.quantity) * cartItem.quantity;
+              await deductIngredient(session.location_id, recipeItem.ingredient_id, deductQty, order.id);
+            }
+            
+            // Semi-finished product - need to expand to ingredients
+            if (recipeItem.semi_finished_id) {
+              const { data: semiFinished } = await supabase
+                .from('semi_finished')
+                .select('output_quantity')
+                .eq('id', recipeItem.semi_finished_id)
+                .single();
               
-              const { data: currentInv } = await supabase
-                .from('inventory')
-                .select('id, quantity')
-                .eq('location_id', session.location_id)
-                .eq('ingredient_id', ing.ingredient_id)
-                .maybeSingle();
-
-              if (currentInv) {
-                await supabase
-                  .from('inventory')
-                  .update({ quantity: Math.max(0, Number(currentInv.quantity) - deductQty) })
-                  .eq('id', currentInv.id);
+              if (semiFinished) {
+                const { data: semiIngredients } = await supabase
+                  .from('semi_finished_ingredients')
+                  .select('ingredient_id, quantity')
+                  .eq('semi_finished_id', recipeItem.semi_finished_id);
+                
+                if (semiIngredients) {
+                  // Calculate ratio: how much of the semi-finished is used
+                  const ratio = Number(recipeItem.quantity) / Number(semiFinished.output_quantity);
+                  
+                  for (const semiIng of semiIngredients) {
+                    if (semiIng.ingredient_id) {
+                      const deductQty = Number(semiIng.quantity) * ratio * cartItem.quantity;
+                      await deductIngredient(session.location_id, semiIng.ingredient_id, deductQty, order.id);
+                    }
+                  }
+                }
               }
-
-              await supabase
-                .from('inventory_movements')
-                .insert({
-                  location_id: session.location_id,
-                  ingredient_id: ing.ingredient_id,
-                  movement_type: 'sale',
-                  quantity: -deductQty,
-                  reference_id: order.id,
-                });
             }
           }
         }

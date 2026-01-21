@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Search,
   X,
+  Soup,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -50,6 +51,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/admin/menu', icon: UtensilsCrossed, label: 'Меню', roles: ['admin', 'manager'] },
       { path: '/admin/categories', icon: FolderOpen, label: 'Категории', roles: ['admin', 'manager'] },
       { path: '/admin/recipes', icon: ChefHat, label: 'Рецепты', roles: ['admin', 'manager'] },
+      { path: '/admin/semi-finished', icon: Soup, label: 'Заготовки', roles: ['admin', 'manager'] },
       { path: '/admin/ingredients', icon: Package, label: 'Ингредиенты', roles: ['admin', 'manager'] },
       { path: '/admin/inventory', icon: Warehouse, label: 'Склад', roles: ['admin', 'manager'] },
     ],
