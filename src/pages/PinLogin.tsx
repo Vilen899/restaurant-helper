@@ -44,6 +44,44 @@ const playDeleteSound = () => {
   oscillator.stop(audioContext.currentTime + 0.1);
 };
 
+const playSuccessSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const gainNode = audioContext.createGain();
+  gainNode.connect(audioContext.destination);
+  gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+
+  // Play ascending notes
+  const frequencies = [523, 659, 784]; // C5, E5, G5
+  frequencies.forEach((freq, i) => {
+    const osc = audioContext.createOscillator();
+    osc.connect(gainNode);
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    osc.start(audioContext.currentTime + i * 0.1);
+    osc.stop(audioContext.currentTime + i * 0.1 + 0.15);
+  });
+};
+
+const playErrorSound = () => {
+  const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const gainNode = audioContext.createGain();
+  gainNode.connect(audioContext.destination);
+  gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+  // Play descending dissonant notes
+  const frequencies = [400, 350];
+  frequencies.forEach((freq, i) => {
+    const osc = audioContext.createOscillator();
+    osc.connect(gainNode);
+    osc.frequency.value = freq;
+    osc.type = 'square';
+    osc.start(audioContext.currentTime + i * 0.15);
+    osc.stop(audioContext.currentTime + i * 0.15 + 0.15);
+  });
+};
+
 export default function PinLogin() {
   const navigate = useNavigate();
   const [pin, setPin] = useState('');
@@ -103,14 +141,17 @@ export default function PinLogin() {
       });
 
       if (error || data?.error) {
+        playErrorSound();
         toast.error('Неверный PIN-код');
         setPin('');
       } else if (data?.success) {
+        playSuccessSound();
         toast.success(`Добро пожаловать, ${data.user.full_name}!`);
         sessionStorage.setItem('cashier_session', JSON.stringify(data.user));
         navigate('/cashier');
       }
     } catch {
+      playErrorSound();
       toast.error('Ошибка подключения');
       setPin('');
     }
