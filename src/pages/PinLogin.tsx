@@ -82,24 +82,17 @@ export default function PinLogin() {
   const numbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
 
   return (
-    <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background gradient */}
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] opacity-90" />
-      
-      {/* Decorative elements */}
-      <div className="absolute top-1/4 -left-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 -right-20 w-80 h-80 bg-green-500/10 rounded-full blur-3xl" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Full background logo */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+        style={{ backgroundImage: `url(${logo})` }}
+      />
+      {/* Dark overlay for readability */}
+      <div className="absolute inset-0 bg-black/70" />
 
       {/* Main card */}
       <div className="relative z-10 w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <img 
-            src={logo} 
-            alt="Crusty Sandwiches" 
-            className="h-20 mx-auto object-contain drop-shadow-lg"
-          />
-        </div>
 
         {/* Glass card */}
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
