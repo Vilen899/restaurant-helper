@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Minus, Trash2, CreditCard, Banknote, 
   UtensilsCrossed, ShoppingCart, Check, LogOut,
-  Coffee, Pizza, Salad, Sandwich, Droplet, IceCream, Package
+  Coffee, Pizza, Salad, Sandwich, Droplet, IceCream, Package, Printer
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,17 @@ export default function CashierPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [lastOrder, setLastOrder] = useState<{
+    order_number: number;
+    items: CartItem[];
+    subtotal: number;
+    total: number;
+    payment_method: string;
+    cash_received?: number;
+    change?: number;
+    date: Date;
+  } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [cashReceived, setCashReceived] = useState('');
   const [processing, setProcessing] = useState(false);
@@ -237,8 +248,21 @@ export default function CashierPage() {
         }
       }
 
+      // Save order for receipt
+      setLastOrder({
+        order_number: order.order_number,
+        items: [...cart],
+        subtotal,
+        total,
+        payment_method: paymentMethod,
+        cash_received: paymentMethod === 'cash' ? parseFloat(cashReceived) : undefined,
+        change: paymentMethod === 'cash' ? Math.max(0, parseFloat(cashReceived) - total) : undefined,
+        date: new Date(),
+      });
+
       toast.success(`Заказ #${order.order_number} оплачен!`);
       setPaymentDialogOpen(false);
+      setReceiptDialogOpen(true); // Show receipt dialog
       clearCart();
       setCashReceived('');
     } catch (error) {
@@ -252,6 +276,110 @@ export default function CashierPage() {
   const handleLogout = () => {
     sessionStorage.removeItem('cashier_session');
     navigate('/pin');
+  };
+
+  const printReceipt = () => {
+    if (!lastOrder) return;
+
+    const receiptContent = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Чек #${lastOrder.order_number}</title>
+  <style>
+    @page { margin: 0; size: 80mm auto; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Courier New', monospace; 
+      font-size: 12px; 
+      padding: 10px;
+      width: 80mm;
+    }
+    .header { text-align: center; margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+    .header h1 { font-size: 18px; margin-bottom: 5px; }
+    .header p { font-size: 10px; color: #666; }
+    .info { margin: 10px 0; font-size: 11px; }
+    .items { margin: 10px 0; border-bottom: 1px dashed #000; padding-bottom: 10px; }
+    .item { display: flex; justify-content: space-between; margin: 5px 0; }
+    .item-name { flex: 1; }
+    .item-qty { width: 30px; text-align: center; }
+    .item-price { width: 60px; text-align: right; }
+    .totals { margin: 10px 0; }
+    .total-row { display: flex; justify-content: space-between; margin: 3px 0; }
+    .total-row.grand { font-size: 16px; font-weight: bold; margin-top: 10px; }
+    .payment { margin: 10px 0; padding: 10px 0; border-top: 1px dashed #000; }
+    .footer { text-align: center; margin-top: 15px; font-size: 10px; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>CRUSTY</h1>
+    <p>Спасибо за заказ!</p>
+  </div>
+  
+  <div class="info">
+    <div>Чек: #${lastOrder.order_number}</div>
+    <div>Дата: ${lastOrder.date.toLocaleDateString('ru-RU')} ${lastOrder.date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</div>
+    <div>Кассир: ${session?.full_name || ''}</div>
+  </div>
+  
+  <div class="items">
+    ${lastOrder.items.map(item => `
+      <div class="item">
+        <span class="item-name">${item.menuItem.name}</span>
+        <span class="item-qty">x${item.quantity}</span>
+        <span class="item-price">${(Number(item.menuItem.price) * item.quantity).toLocaleString()} ֏</span>
+      </div>
+    `).join('')}
+  </div>
+  
+  <div class="totals">
+    <div class="total-row">
+      <span>Подытог:</span>
+      <span>${lastOrder.subtotal.toLocaleString()} ֏</span>
+    </div>
+    <div class="total-row grand">
+      <span>ИТОГО:</span>
+      <span>${lastOrder.total.toLocaleString()} ֏</span>
+    </div>
+  </div>
+  
+  <div class="payment">
+    <div class="total-row">
+      <span>Оплата:</span>
+      <span>${lastOrder.payment_method === 'cash' ? 'Наличные' : 'Карта'}</span>
+    </div>
+    ${lastOrder.payment_method === 'cash' ? `
+      <div class="total-row">
+        <span>Получено:</span>
+        <span>${lastOrder.cash_received?.toLocaleString()} ֏</span>
+      </div>
+      <div class="total-row">
+        <span>Сдача:</span>
+        <span>${lastOrder.change?.toLocaleString()} ֏</span>
+      </div>
+    ` : ''}
+  </div>
+  
+  <div class="footer">
+    <p>Приятного аппетита!</p>
+    <p>Ждём вас снова</p>
+  </div>
+</body>
+</html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=350,height=600');
+    if (printWindow) {
+      printWindow.document.write(receiptContent);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    }
   };
 
   // Filter items by selected category
@@ -574,6 +702,65 @@ export default function CashierPage() {
             >
               {processing ? 'Обработка...' : 'Подтвердить'}
               <Check className="h-4 w-4" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt Dialog */}
+      <Dialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-xl flex items-center gap-2">
+              <Check className="h-6 w-6 text-green-500" />
+              Заказ оплачен!
+            </DialogTitle>
+          </DialogHeader>
+
+          {lastOrder && (
+            <div className="space-y-4">
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <p className="text-sm text-muted-foreground">Номер заказа</p>
+                <p className="text-4xl font-bold text-primary">#{lastOrder.order_number}</p>
+              </div>
+
+              <div className="border rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Позиций:</span>
+                  <span>{lastOrder.items.reduce((s, i) => s + i.quantity, 0)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Оплата:</span>
+                  <span>{lastOrder.payment_method === 'cash' ? 'Наличные' : 'Карта'}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg pt-2 border-t">
+                  <span>Итого:</span>
+                  <span className="text-primary">{lastOrder.total.toLocaleString()} ֏</span>
+                </div>
+                {lastOrder.payment_method === 'cash' && lastOrder.change !== undefined && (
+                  <div className="flex justify-between text-green-600 font-medium">
+                    <span>Сдача:</span>
+                    <span>{lastOrder.change.toLocaleString()} ֏</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button 
+              variant="outline" 
+              onClick={printReceipt}
+              className="flex-1 gap-2"
+            >
+              <Printer className="h-4 w-4" />
+              Печать чека
+            </Button>
+            <Button 
+              onClick={() => setReceiptDialogOpen(false)}
+              className="flex-1"
+            >
+              Новый заказ
             </Button>
           </DialogFooter>
         </DialogContent>
