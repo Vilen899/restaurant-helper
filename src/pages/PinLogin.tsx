@@ -84,9 +84,11 @@ export default function PinLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       {/* Full background logo */}
-      <div 
-        className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${logo})` }}
+      <img 
+        src={logo} 
+        alt=""
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{ imageRendering: 'crisp-edges' }}
       />
       {/* Dark overlay for readability */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
