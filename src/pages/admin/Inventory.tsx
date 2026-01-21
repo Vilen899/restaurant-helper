@@ -19,6 +19,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 import { TablePagination } from '@/components/admin/TablePagination';
+import { SortableTableHead } from '@/components/admin/SortableTableHead';
+import { useTableSort } from '@/hooks/useTableSort';
 
 type Inventory = Tables<'inventory'>;
 type Ingredient = Tables<'ingredients'>;
@@ -699,26 +701,51 @@ export default function InventoryPage() {
     });
   }, [transfers, transfersLocationFilter, transfersDateFrom, transfersDateTo]);
 
+  // Sorting
+  const {
+    sortedData: sortedInventory,
+    sortConfig: inventorySortConfig,
+    handleSort: handleInventorySort,
+  } = useTableSort(filteredInventory);
+
+  const {
+    sortedData: sortedStocktakings,
+    sortConfig: stocktakingsSortConfig,
+    handleSort: handleStocktakingsSort,
+  } = useTableSort(filteredStocktakings);
+
+  const {
+    sortedData: sortedSupplies,
+    sortConfig: suppliesSortConfig,
+    handleSort: handleSuppliesSort,
+  } = useTableSort(filteredSupplies);
+
+  const {
+    sortedData: sortedTransfers,
+    sortConfig: transfersSortConfig,
+    handleSort: handleTransfersSort,
+  } = useTableSort(filteredTransfers);
+
   // Paginated data
   const paginatedInventory = useMemo(() => {
     const start = (inventoryPage - 1) * inventoryPageSize;
-    return filteredInventory.slice(start, start + inventoryPageSize);
-  }, [filteredInventory, inventoryPage, inventoryPageSize]);
+    return sortedInventory.slice(start, start + inventoryPageSize);
+  }, [sortedInventory, inventoryPage, inventoryPageSize]);
 
   const paginatedStocktakings = useMemo(() => {
     const start = (stocktakingsPage - 1) * stocktakingsPageSize;
-    return filteredStocktakings.slice(start, start + stocktakingsPageSize);
-  }, [filteredStocktakings, stocktakingsPage, stocktakingsPageSize]);
+    return sortedStocktakings.slice(start, start + stocktakingsPageSize);
+  }, [sortedStocktakings, stocktakingsPage, stocktakingsPageSize]);
 
   const paginatedSupplies = useMemo(() => {
     const start = (suppliesPage - 1) * suppliesPageSize;
-    return filteredSupplies.slice(start, start + suppliesPageSize);
-  }, [filteredSupplies, suppliesPage, suppliesPageSize]);
+    return sortedSupplies.slice(start, start + suppliesPageSize);
+  }, [sortedSupplies, suppliesPage, suppliesPageSize]);
 
   const paginatedTransfers = useMemo(() => {
     const start = (transfersPage - 1) * transfersPageSize;
-    return filteredTransfers.slice(start, start + transfersPageSize);
-  }, [filteredTransfers, transfersPage, transfersPageSize]);
+    return sortedTransfers.slice(start, start + transfersPageSize);
+  }, [sortedTransfers, transfersPage, transfersPageSize]);
 
   // Reset page when filters change
   useEffect(() => { setInventoryPage(1); }, [searchTerm, selectedLocation]);
@@ -824,10 +851,40 @@ export default function InventoryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ингредиент</TableHead>
-                  <TableHead>Точка</TableHead>
-                  <TableHead className="text-right">Остаток</TableHead>
-                  <TableHead className="text-right">Мин. остаток</TableHead>
+                  <SortableTableHead
+                    sortKey="ingredient.name"
+                    currentSortKey={inventorySortConfig.key as string}
+                    currentDirection={inventorySortConfig.direction}
+                    onSort={handleInventorySort}
+                  >
+                    Ингредиент
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="location.name"
+                    currentSortKey={inventorySortConfig.key as string}
+                    currentDirection={inventorySortConfig.direction}
+                    onSort={handleInventorySort}
+                  >
+                    Точка
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="quantity"
+                    currentSortKey={inventorySortConfig.key as string}
+                    currentDirection={inventorySortConfig.direction}
+                    onSort={handleInventorySort}
+                    className="text-right"
+                  >
+                    Остаток
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="ingredient.min_stock"
+                    currentSortKey={inventorySortConfig.key as string}
+                    currentDirection={inventorySortConfig.direction}
+                    onSort={handleInventorySort}
+                    className="text-right"
+                  >
+                    Мин. остаток
+                  </SortableTableHead>
                   <TableHead>Статус</TableHead>
                 </TableRow>
               </TableHeader>
@@ -975,12 +1032,58 @@ export default function InventoryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Локация</TableHead>
-                  <TableHead className="text-right">Всего позиций</TableHead>
-                  <TableHead className="text-right">Расхождений</TableHead>
-                  <TableHead className="text-right">Излишки</TableHead>
-                  <TableHead className="text-right">Недостача</TableHead>
+                  <SortableTableHead
+                    sortKey="created_at"
+                    currentSortKey={stocktakingsSortConfig.key as string}
+                    currentDirection={stocktakingsSortConfig.direction}
+                    onSort={handleStocktakingsSort}
+                  >
+                    Дата
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="location.name"
+                    currentSortKey={stocktakingsSortConfig.key as string}
+                    currentDirection={stocktakingsSortConfig.direction}
+                    onSort={handleStocktakingsSort}
+                  >
+                    Локация
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="total_items"
+                    currentSortKey={stocktakingsSortConfig.key as string}
+                    currentDirection={stocktakingsSortConfig.direction}
+                    onSort={handleStocktakingsSort}
+                    className="text-right"
+                  >
+                    Всего позиций
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="items_with_difference"
+                    currentSortKey={stocktakingsSortConfig.key as string}
+                    currentDirection={stocktakingsSortConfig.direction}
+                    onSort={handleStocktakingsSort}
+                    className="text-right"
+                  >
+                    Расхождений
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="surplus_count"
+                    currentSortKey={stocktakingsSortConfig.key as string}
+                    currentDirection={stocktakingsSortConfig.direction}
+                    onSort={handleStocktakingsSort}
+                    className="text-right"
+                  >
+                    Излишки
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="shortage_count"
+                    currentSortKey={stocktakingsSortConfig.key as string}
+                    currentDirection={stocktakingsSortConfig.direction}
+                    onSort={handleStocktakingsSort}
+                    className="text-right"
+                  >
+                    Недостача
+                  </SortableTableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -1129,11 +1232,47 @@ export default function InventoryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Точка</TableHead>
-                  <TableHead>Поставщик</TableHead>
-                  <TableHead>Накладная</TableHead>
-                  <TableHead className="text-right">Сумма</TableHead>
+                  <SortableTableHead
+                    sortKey="created_at"
+                    currentSortKey={suppliesSortConfig.key as string}
+                    currentDirection={suppliesSortConfig.direction}
+                    onSort={handleSuppliesSort}
+                  >
+                    Дата
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="location.name"
+                    currentSortKey={suppliesSortConfig.key as string}
+                    currentDirection={suppliesSortConfig.direction}
+                    onSort={handleSuppliesSort}
+                  >
+                    Точка
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="supplier_name"
+                    currentSortKey={suppliesSortConfig.key as string}
+                    currentDirection={suppliesSortConfig.direction}
+                    onSort={handleSuppliesSort}
+                  >
+                    Поставщик
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="invoice_number"
+                    currentSortKey={suppliesSortConfig.key as string}
+                    currentDirection={suppliesSortConfig.direction}
+                    onSort={handleSuppliesSort}
+                  >
+                    Накладная
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="total_amount"
+                    currentSortKey={suppliesSortConfig.key as string}
+                    currentDirection={suppliesSortConfig.direction}
+                    onSort={handleSuppliesSort}
+                    className="text-right"
+                  >
+                    Сумма
+                  </SortableTableHead>
                   <TableHead>Статус</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1275,9 +1414,30 @@ export default function InventoryPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Дата</TableHead>
-                  <TableHead>Откуда</TableHead>
-                  <TableHead>Куда</TableHead>
+                  <SortableTableHead
+                    sortKey="created_at"
+                    currentSortKey={transfersSortConfig.key as string}
+                    currentDirection={transfersSortConfig.direction}
+                    onSort={handleTransfersSort}
+                  >
+                    Дата
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="from_location.name"
+                    currentSortKey={transfersSortConfig.key as string}
+                    currentDirection={transfersSortConfig.direction}
+                    onSort={handleTransfersSort}
+                  >
+                    Откуда
+                  </SortableTableHead>
+                  <SortableTableHead
+                    sortKey="to_location.name"
+                    currentSortKey={transfersSortConfig.key as string}
+                    currentDirection={transfersSortConfig.direction}
+                    onSort={handleTransfersSort}
+                  >
+                    Куда
+                  </SortableTableHead>
                   <TableHead>Статус</TableHead>
                 </TableRow>
               </TableHeader>
