@@ -89,7 +89,7 @@ export default function PinLogin() {
         style={{ backgroundImage: `url(${logo})` }}
       />
       {/* Dark overlay for readability */}
-      <div className="absolute inset-0 bg-black/70" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
 
       {/* Main card */}
       <div className="relative z-10 w-full max-w-sm">
