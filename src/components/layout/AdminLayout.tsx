@@ -10,10 +10,10 @@ import {
   Settings,
   LogOut,
   Menu,
-  X,
   MapPin,
   BarChart3,
   Package,
+  FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 const menuItems = [
   { path: '/admin', icon: LayoutDashboard, label: 'Обзор', roles: ['admin', 'manager'] },
   { path: '/admin/menu', icon: UtensilsCrossed, label: 'Меню', roles: ['admin', 'manager'] },
+  { path: '/admin/categories', icon: FolderOpen, label: 'Категории', roles: ['admin', 'manager'] },
   { path: '/admin/recipes', icon: ChefHat, label: 'Рецепты', roles: ['admin', 'manager'] },
   { path: '/admin/ingredients', icon: Package, label: 'Ингредиенты', roles: ['admin', 'manager'] },
   { path: '/admin/inventory', icon: Warehouse, label: 'Склад', roles: ['admin', 'manager'] },
