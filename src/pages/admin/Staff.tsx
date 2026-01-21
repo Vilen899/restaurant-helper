@@ -30,6 +30,20 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Create dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    phone: '',
+    location_id: '',
+    hourly_rate: '',
+    role: 'cashier' as 'admin' | 'manager' | 'cashier',
+    pin: '',
+  });
+
   // Edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editMember, setEditMember] = useState<StaffMember | null>(null);
@@ -192,6 +206,61 @@ export default function StaffPage() {
     );
   }
 
+  const openCreateDialog = () => {
+    setCreateForm({
+      full_name: '',
+      email: '',
+      password: '',
+      phone: '',
+      location_id: locations[0]?.id || '',
+      hourly_rate: '',
+      role: 'cashier',
+      pin: '',
+    });
+    setCreateDialogOpen(true);
+  };
+
+  const handleCreateStaff = async () => {
+    if (!createForm.full_name || !createForm.email || !createForm.password) {
+      toast.error('Заполните обязательные поля');
+      return;
+    }
+
+    if (createForm.pin && !/^\d{4}$/.test(createForm.pin)) {
+      toast.error('PIN должен состоять из 4 цифр');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-staff', {
+        body: {
+          full_name: createForm.full_name,
+          email: createForm.email,
+          password: createForm.password,
+          role: createForm.role,
+          location_id: createForm.location_id || null,
+          phone: createForm.phone || null,
+          hourly_rate: createForm.hourly_rate ? parseFloat(createForm.hourly_rate) : 0,
+          pin: createForm.pin || null,
+        },
+      });
+
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message);
+      }
+
+      toast.success('Сотрудник создан');
+      setCreateDialogOpen(false);
+      fetchData();
+    } catch (error: any) {
+      console.error('Error:', error);
+      toast.error(error.message || 'Ошибка создания сотрудника');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between gap-4">
@@ -199,6 +268,10 @@ export default function StaffPage() {
           <h1 className="text-3xl font-bold">Персонал</h1>
           <p className="text-muted-foreground">Управление сотрудниками и ролями</p>
         </div>
+        <Button onClick={openCreateDialog}>
+          <Plus className="h-4 w-4 mr-2" />
+          Добавить сотрудника
+        </Button>
       </div>
 
       {/* Search */}
@@ -414,6 +487,124 @@ export default function StaffPage() {
               Отмена
             </Button>
             <Button onClick={handleSetPin}>Установить</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Новый сотрудник</DialogTitle>
+            <DialogDescription>Создайте аккаунт для нового сотрудника</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Имя *</Label>
+              <Input
+                value={createForm.full_name}
+                onChange={(e) => setCreateForm({ ...createForm, full_name: e.target.value })}
+                placeholder="Иван Иванов"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Email *</Label>
+                <Input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  placeholder="ivan@resto.ru"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Пароль *</Label>
+                <Input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                  placeholder="••••••"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Роль *</Label>
+                <Select
+                  value={createForm.role}
+                  onValueChange={(v: any) => setCreateForm({ ...createForm, role: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Администратор</SelectItem>
+                    <SelectItem value="manager">Менеджер</SelectItem>
+                    <SelectItem value="cashier">Кассир</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Точка</Label>
+                <Select
+                  value={createForm.location_id}
+                  onValueChange={(v) => setCreateForm({ ...createForm, location_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Телефон</Label>
+                <Input
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                  placeholder="+7..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Ставка (₽/час)</Label>
+                <Input
+                  type="number"
+                  value={createForm.hourly_rate}
+                  onChange={(e) => setCreateForm({ ...createForm, hourly_rate: e.target.value })}
+                  placeholder="200"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>PIN-код (для кассира)</Label>
+              <Input
+                maxLength={4}
+                value={createForm.pin}
+                onChange={(e) => setCreateForm({ ...createForm, pin: e.target.value.replace(/\D/g, '') })}
+                placeholder="4 цифры"
+                className="text-center tracking-widest"
+              />
+              <p className="text-xs text-muted-foreground">Необязательно. Можно установить позже.</p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button onClick={handleCreateStaff} disabled={creating}>
+              {creating ? 'Создание...' : 'Создать'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
