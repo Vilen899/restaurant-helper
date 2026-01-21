@@ -4,71 +4,141 @@ import {
   UtensilsCrossed,
   LayoutDashboard,
   ChefHat,
-  ClipboardList,
   Warehouse,
   Users,
-  Settings,
   LogOut,
   Menu,
   MapPin,
   BarChart3,
   Package,
   FolderOpen,
+  Truck,
+  FileText,
+  Settings,
+  ChevronDown,
+  Search,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import logo from '@/assets/logo.webp';
 
-const menuItems = [
-  { path: '/admin', icon: LayoutDashboard, label: 'Обзор', roles: ['admin', 'manager'] },
-  { path: '/admin/menu', icon: UtensilsCrossed, label: 'Меню', roles: ['admin', 'manager'] },
-  { path: '/admin/categories', icon: FolderOpen, label: 'Категории', roles: ['admin', 'manager'] },
-  { path: '/admin/recipes', icon: ChefHat, label: 'Рецепты', roles: ['admin', 'manager'] },
-  { path: '/admin/ingredients', icon: Package, label: 'Ингредиенты', roles: ['admin', 'manager'] },
-  { path: '/admin/inventory', icon: Warehouse, label: 'Склад', roles: ['admin', 'manager'] },
-  { path: '/admin/orders', icon: ClipboardList, label: 'Заказы', roles: ['admin', 'manager'] },
-  { path: '/admin/staff', icon: Users, label: 'Персонал', roles: ['admin'] },
-  { path: '/admin/locations', icon: MapPin, label: 'Точки', roles: ['admin'] },
-  { path: '/admin/reports', icon: BarChart3, label: 'Отчёты', roles: ['admin', 'manager'] },
-  { path: '/admin/settings', icon: Settings, label: 'Настройки', roles: ['admin'] },
+interface MenuGroup {
+  label: string;
+  icon: React.ElementType;
+  items: MenuItem[];
+  roles: string[];
+}
+
+interface MenuItem {
+  path: string;
+  icon: React.ElementType;
+  label: string;
+  roles: string[];
+}
+
+const menuGroups: MenuGroup[] = [
+  {
+    label: 'Товары и склады',
+    icon: Package,
+    roles: ['admin', 'manager'],
+    items: [
+      { path: '/admin/menu', icon: UtensilsCrossed, label: 'Меню', roles: ['admin', 'manager'] },
+      { path: '/admin/categories', icon: FolderOpen, label: 'Категории', roles: ['admin', 'manager'] },
+      { path: '/admin/recipes', icon: ChefHat, label: 'Рецепты', roles: ['admin', 'manager'] },
+      { path: '/admin/ingredients', icon: Package, label: 'Ингредиенты', roles: ['admin', 'manager'] },
+      { path: '/admin/inventory', icon: Warehouse, label: 'Склад', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    label: 'Контрагенты',
+    icon: Truck,
+    roles: ['admin', 'manager'],
+    items: [
+      { path: '/admin/suppliers', icon: Truck, label: 'Поставщики', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    label: 'Отчёты',
+    icon: BarChart3,
+    roles: ['admin', 'manager'],
+    items: [
+      { path: '/admin/reports', icon: FileText, label: 'Продажи', roles: ['admin', 'manager'] },
+      { path: '/admin/reports/inventory', icon: Warehouse, label: 'Склад', roles: ['admin', 'manager'] },
+    ],
+  },
+  {
+    label: 'Сотрудники',
+    icon: Users,
+    roles: ['admin'],
+    items: [
+      { path: '/admin/staff', icon: Users, label: 'Персонал', roles: ['admin'] },
+      { path: '/admin/locations', icon: MapPin, label: 'Точки', roles: ['admin'] },
+    ],
+  },
 ];
 
 export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [openGroups, setOpenGroups] = useState<string[]>(['Товары и склады']);
   const { user, signOut, isAdmin, isManager } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/auth');
+    navigate('/admin/login');
   };
 
-  const filteredMenu = menuItems.filter(item => {
-    if (isAdmin) return true;
-    if (isManager) return item.roles.includes('manager');
-    return false;
-  });
+  const toggleGroup = (label: string) => {
+    setOpenGroups(prev =>
+      prev.includes(label)
+        ? prev.filter(g => g !== label)
+        : [...prev, label]
+    );
+  };
 
-  const NavItem = ({ item }: { item: typeof menuItems[0] }) => {
+  const filteredGroups = menuGroups
+    .filter(group => {
+      if (isAdmin) return true;
+      if (isManager) return group.roles.includes('manager');
+      return false;
+    })
+    .map(group => ({
+      ...group,
+      items: group.items.filter(item => {
+        if (isAdmin) return true;
+        if (isManager) return item.roles.includes('manager');
+        return false;
+      }).filter(item =>
+        !searchQuery || item.label.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    }))
+    .filter(group => group.items.length > 0);
+
+  const NavItem = ({ item }: { item: MenuItem }) => {
     const isActive = location.pathname === item.path;
     return (
       <Button
         variant={isActive ? 'secondary' : 'ghost'}
+        size="sm"
         className={cn(
-          'w-full justify-start gap-3',
-          !sidebarOpen && 'justify-center px-2'
+          'w-full justify-start gap-3 h-9',
+          isActive && 'bg-primary/10 text-primary border-l-2 border-primary rounded-l-none'
         )}
         onClick={() => {
           navigate(item.path);
           setMobileMenuOpen(false);
         }}
       >
-        <item.icon className="h-5 w-5 shrink-0" />
-        {sidebarOpen && <span>{item.label}</span>}
+        <item.icon className="h-4 w-4 shrink-0" />
+        <span className="text-sm">{item.label}</span>
       </Button>
     );
   };
@@ -92,79 +162,167 @@ export default function AdminLayout() {
         )}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center justify-between px-4 border-b">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shrink-0">
-              <UtensilsCrossed className="text-primary-foreground h-5 w-5" />
-            </div>
+        <div className="h-14 flex items-center justify-between px-3 border-b bg-[#1a1a2e]">
+          <div className="flex items-center gap-2">
+            <img src={logo} alt="Logo" className="h-8 w-8 object-contain rounded" />
             {sidebarOpen && (
-              <span className="font-bold text-lg">RestoManager</span>
+              <span className="font-bold text-white text-sm">Crusty Admin</span>
             )}
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="hidden lg:flex"
+            className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10 lg:flex hidden"
             onClick={() => setSidebarOpen(!sidebarOpen)}
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-white/70 hover:text-white hover:bg-white/10 lg:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            <X className="h-4 w-4" />
           </Button>
         </div>
 
+        {/* Search */}
+        {sidebarOpen && (
+          <div className="p-3 border-b">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Поиск по меню..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 h-9 text-sm"
+              />
+            </div>
+          </div>
+        )}
+
         {/* Navigation */}
-        <ScrollArea className="flex-1 py-4">
-          <nav className="px-2 space-y-1">
-            {filteredMenu.map(item => (
-              <NavItem key={item.path} item={item} />
+        <ScrollArea className="flex-1">
+          <nav className="p-2 space-y-1">
+            {/* Dashboard - always visible */}
+            <Button
+              variant={location.pathname === '/admin' ? 'secondary' : 'ghost'}
+              size="sm"
+              className={cn(
+                'w-full justify-start gap-3 h-9 mb-2',
+                location.pathname === '/admin' && 'bg-primary/10 text-primary'
+              )}
+              onClick={() => navigate('/admin')}
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              {sidebarOpen && <span className="text-sm">Обзор</span>}
+            </Button>
+
+            {/* Menu groups */}
+            {filteredGroups.map((group) => (
+              <Collapsible
+                key={group.label}
+                open={openGroups.includes(group.label)}
+                onOpenChange={() => toggleGroup(group.label)}
+              >
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'w-full justify-between h-9 text-muted-foreground hover:text-foreground',
+                      !sidebarOpen && 'justify-center px-2'
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <group.icon className="h-4 w-4 shrink-0" />
+                      {sidebarOpen && <span className="text-sm font-medium">{group.label}</span>}
+                    </div>
+                    {sidebarOpen && (
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 transition-transform',
+                          openGroups.includes(group.label) && 'rotate-180'
+                        )}
+                      />
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="ml-4 pl-3 border-l border-border/50 space-y-1 py-1">
+                    {group.items.map((item) => (
+                      <NavItem key={item.path} item={item} />
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             ))}
+
+            {/* Settings - only for admin */}
+            {isAdmin && sidebarOpen && (
+              <Button
+                variant={location.pathname === '/admin/settings' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="w-full justify-start gap-3 h-9 mt-4"
+                onClick={() => navigate('/admin/settings')}
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="text-sm">Настройки</span>
+              </Button>
+            )}
           </nav>
         </ScrollArea>
 
         {/* User section */}
-        <div className="p-4 border-t">
+        <div className="p-3 border-t bg-muted/30">
           <div className={cn('flex items-center gap-3', !sidebarOpen && 'justify-center')}>
-            <div className="w-9 h-9 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-              <span className="text-sm font-medium">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+              <span className="text-xs font-medium">
                 {user?.full_name?.charAt(0) || 'U'}
               </span>
             </div>
             {sidebarOpen && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user?.full_name}</p>
-                <p className="text-xs text-muted-foreground capitalize">{user?.role}</p>
+                <p className="text-sm font-medium truncate">{user?.full_name || 'Пользователь'}</p>
+                <p className="text-xs text-muted-foreground capitalize">{user?.role || 'admin'}</p>
               </div>
             )}
+            {sidebarOpen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-          <Separator className="my-3" />
-          <Button
-            variant="ghost"
-            className={cn('w-full justify-start gap-3 text-destructive', !sidebarOpen && 'justify-center px-2')}
-            onClick={handleSignOut}
-          >
-            <LogOut className="h-5 w-5 shrink-0" />
-            {sidebarOpen && <span>Выйти</span>}
-          </Button>
         </div>
       </aside>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-screen">
         {/* Mobile header */}
-        <header className="h-16 flex items-center justify-between px-4 border-b lg:hidden">
-          <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(true)}>
+        <header className="h-14 flex items-center justify-between px-4 border-b lg:hidden bg-[#1a1a2e]">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="text-white"
+            onClick={() => setMobileMenuOpen(true)}
+          >
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center">
-              <UtensilsCrossed className="text-primary-foreground h-4 w-4" />
-            </div>
-            <span className="font-bold">RestoManager</span>
+            <img src={logo} alt="Logo" className="h-7 w-7 object-contain rounded" />
+            <span className="font-bold text-white text-sm">Crusty Admin</span>
           </div>
           <div className="w-10" />
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <Outlet />
         </main>
       </div>
