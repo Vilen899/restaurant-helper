@@ -613,6 +613,101 @@ export type Database = {
           },
         ]
       }
+      stocktaking_items: {
+        Row: {
+          actual_quantity: number
+          created_at: string
+          difference: number
+          id: string
+          ingredient_id: string
+          stocktaking_id: string
+          system_quantity: number
+        }
+        Insert: {
+          actual_quantity: number
+          created_at?: string
+          difference: number
+          id?: string
+          ingredient_id: string
+          stocktaking_id: string
+          system_quantity: number
+        }
+        Update: {
+          actual_quantity?: number
+          created_at?: string
+          difference?: number
+          id?: string
+          ingredient_id?: string
+          stocktaking_id?: string
+          system_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stocktaking_items_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stocktaking_items_stocktaking_id_fkey"
+            columns: ["stocktaking_id"]
+            isOneToOne: false
+            referencedRelation: "stocktakings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stocktakings: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          items_with_difference: number
+          location_id: string
+          notes: string | null
+          shortage_count: number
+          status: string
+          surplus_count: number
+          total_items: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          items_with_difference?: number
+          location_id: string
+          notes?: string | null
+          shortage_count?: number
+          status?: string
+          surplus_count?: number
+          total_items?: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          items_with_difference?: number
+          location_id?: string
+          notes?: string | null
+          shortage_count?: number
+          status?: string
+          surplus_count?: number
+          total_items?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stocktakings_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       supplies: {
         Row: {
           created_at: string

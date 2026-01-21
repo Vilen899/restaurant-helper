@@ -20,6 +20,8 @@ type Location = Tables<'locations'>;
 type Unit = Tables<'units'>;
 type Supply = Tables<'supplies'>;
 type Transfer = Tables<'transfers'>;
+type Stocktaking = Tables<'stocktakings'>;
+type StocktakingItem = Tables<'stocktaking_items'>;
 
 interface InventoryItem extends Inventory {
   ingredient?: Ingredient & { unit?: Unit };
@@ -35,12 +37,21 @@ interface TransferWithLocations extends Transfer {
   to_location?: Location;
 }
 
+interface StocktakingWithLocation extends Stocktaking {
+  location?: Location;
+}
+
+interface StocktakingItemWithIngredient extends StocktakingItem {
+  ingredient?: Ingredient & { unit?: Unit };
+}
+
 export default function InventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [ingredients, setIngredients] = useState<(Ingredient & { unit?: Unit })[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [supplies, setSupplies] = useState<SupplyWithLocation[]>([]);
   const [transfers, setTransfers] = useState<TransferWithLocations[]>([]);
+  const [stocktakings, setStocktakings] = useState<StocktakingWithLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
@@ -96,12 +107,14 @@ export default function InventoryPage() {
         { data: locs },
         { data: sups },
         { data: trans },
+        { data: stocks },
       ] = await Promise.all([
         supabase.from('inventory').select('*, ingredient:ingredients(*, unit:units(*)), location:locations(*)'),
         supabase.from('ingredients').select('*, unit:units(*)').eq('is_active', true).order('name'),
         supabase.from('locations').select('*').eq('is_active', true).order('name'),
         supabase.from('supplies').select('*, location:locations(*)').order('created_at', { ascending: false }).limit(50),
         supabase.from('transfers').select('*, from_location:locations!transfers_from_location_id_fkey(*), to_location:locations!transfers_to_location_id_fkey(*)').order('created_at', { ascending: false }).limit(50),
+        supabase.from('stocktakings').select('*, location:locations(*)').order('created_at', { ascending: false }).limit(50),
       ]);
 
       setInventory((inv as InventoryItem[]) || []);
@@ -109,6 +122,7 @@ export default function InventoryPage() {
       setLocations(locs || []);
       setSupplies((sups as SupplyWithLocation[]) || []);
       setTransfers((trans as TransferWithLocations[]) || []);
+      setStocktakings((stocks as StocktakingWithLocation[]) || []);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Ошибка загрузки данных');
@@ -512,6 +526,36 @@ export default function InventoryPage() {
     }
 
     try {
+      // Create stocktaking record first
+      const { data: stocktakingRecord, error: stocktakingError } = await supabase
+        .from('stocktakings')
+        .insert({
+          location_id: stocktakingForm.location_id,
+          total_items: stocktakingForm.items.length,
+          items_with_difference: itemsWithDifference.length,
+          surplus_count: itemsWithDifference.filter(i => parseFloat(i.actual_qty) - i.system_qty > 0).length,
+          shortage_count: itemsWithDifference.filter(i => i.system_qty - parseFloat(i.actual_qty) > 0).length,
+          completed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (stocktakingError) throw stocktakingError;
+
+      // Save stocktaking items (only those with differences)
+      const stocktakingItems = itemsWithDifference.map(item => ({
+        stocktaking_id: stocktakingRecord.id,
+        ingredient_id: item.ingredient_id,
+        system_quantity: item.system_qty,
+        actual_quantity: parseFloat(item.actual_qty) || 0,
+        difference: (parseFloat(item.actual_qty) || 0) - item.system_qty,
+      }));
+
+      if (stocktakingItems.length > 0) {
+        await supabase.from('stocktaking_items').insert(stocktakingItems);
+      }
+
+      // Update inventory and log movements
       for (const item of itemsWithDifference) {
         const actualQty = parseFloat(item.actual_qty) || 0;
         const difference = actualQty - item.system_qty;
@@ -545,6 +589,7 @@ export default function InventoryPage() {
           ingredient_id: item.ingredient_id,
           movement_type: 'adjustment',
           quantity: difference,
+          reference_id: stocktakingRecord.id,
           notes: `Инвентаризация: было ${item.system_qty.toFixed(2)}, стало ${actualQty.toFixed(2)}`,
         });
       }
@@ -556,6 +601,24 @@ export default function InventoryPage() {
       console.error('Error:', error);
       toast.error('Ошибка при проведении инвентаризации');
     }
+  };
+
+  // View stocktaking details
+  const [stocktakingDetailsOpen, setStocktakingDetailsOpen] = useState(false);
+  const [selectedStocktaking, setSelectedStocktaking] = useState<StocktakingWithLocation | null>(null);
+  const [stocktakingItems, setStocktakingItems] = useState<StocktakingItemWithIngredient[]>([]);
+
+  const viewStocktakingDetails = async (stocktaking: StocktakingWithLocation) => {
+    setSelectedStocktaking(stocktaking);
+    setStocktakingDetailsOpen(true);
+
+    const { data } = await supabase
+      .from('stocktaking_items')
+      .select('*, ingredient:ingredients(*, unit:units(*))')
+      .eq('stocktaking_id', stocktaking.id)
+      .order('difference', { ascending: true });
+
+    setStocktakingItems((data as StocktakingItemWithIngredient[]) || []);
   };
 
   const stocktakingStats = {
@@ -634,6 +697,7 @@ export default function InventoryPage() {
       <Tabs defaultValue="inventory" className="space-y-4">
         <TabsList>
           <TabsTrigger value="inventory">Остатки</TabsTrigger>
+          <TabsTrigger value="stocktakings">Инвентаризации</TabsTrigger>
           <TabsTrigger value="supplies">Поставки</TabsTrigger>
           <TabsTrigger value="transfers">Перемещения</TabsTrigger>
         </TabsList>
@@ -705,6 +769,57 @@ export default function InventoryPage() {
                       </TableRow>
                     );
                   })
+                )}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="stocktakings">
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Дата</TableHead>
+                  <TableHead>Локация</TableHead>
+                  <TableHead className="text-right">Всего позиций</TableHead>
+                  <TableHead className="text-right">Расхождений</TableHead>
+                  <TableHead className="text-right">Излишки</TableHead>
+                  <TableHead className="text-right">Недостача</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {stocktakings.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      Нет проведённых инвентаризаций
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  stocktakings.map(st => (
+                    <TableRow key={st.id}>
+                      <TableCell>{new Date(st.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</TableCell>
+                      <TableCell>{st.location?.name}</TableCell>
+                      <TableCell className="text-right">{st.total_items}</TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant={st.items_with_difference > 0 ? 'secondary' : 'outline'}>
+                          {st.items_with_difference}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-green-600">+{st.surplus_count}</TableCell>
+                      <TableCell className="text-right text-destructive">-{st.shortage_count}</TableCell>
+                      <TableCell>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => viewStocktakingDetails(st)}
+                        >
+                          Детали
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 )}
               </TableBody>
             </Table>
@@ -1193,6 +1308,102 @@ export default function InventoryPage() {
             <Button variant="outline" onClick={() => setStocktakingDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleStocktaking} disabled={stocktakingStats.withDifference === 0}>
               Провести инвентаризацию ({stocktakingStats.withDifference} поз.)
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stocktaking Details Dialog */}
+      <Dialog open={stocktakingDetailsOpen} onOpenChange={setStocktakingDetailsOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5" />
+              Инвентаризация от {selectedStocktaking && new Date(selectedStocktaking.created_at).toLocaleDateString('ru-RU')}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedStocktaking?.location?.name} — {selectedStocktaking?.items_with_difference} расхождений
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Всего</CardDescription>
+                  <CardTitle className="text-xl">{selectedStocktaking?.total_items}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Расхождений</CardDescription>
+                  <CardTitle className="text-xl text-amber-600">{selectedStocktaking?.items_with_difference}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Излишки</CardDescription>
+                  <CardTitle className="text-xl text-green-600">{selectedStocktaking?.surplus_count}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Недостача</CardDescription>
+                  <CardTitle className="text-xl text-destructive">{selectedStocktaking?.shortage_count}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            {/* Items table */}
+            {stocktakingItems.length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">Нет расхождений</p>
+            ) : (
+              <div className="border rounded-lg max-h-80 overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Ингредиент</TableHead>
+                      <TableHead className="text-right">По системе</TableHead>
+                      <TableHead className="text-right">Факт</TableHead>
+                      <TableHead className="text-right">Разница</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stocktakingItems.map(item => {
+                      const diff = Number(item.difference);
+                      return (
+                        <TableRow 
+                          key={item.id}
+                          className={diff > 0 ? 'bg-green-500/5' : 'bg-destructive/5'}
+                        >
+                          <TableCell className="font-medium">
+                            {item.ingredient?.name}
+                            <span className="text-muted-foreground ml-1">
+                              ({item.ingredient?.unit?.abbreviation})
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right text-muted-foreground">
+                            {Number(item.system_quantity).toFixed(2)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {Number(item.actual_quantity).toFixed(2)}
+                          </TableCell>
+                          <TableCell className={`text-right font-medium ${diff > 0 ? 'text-green-600' : 'text-destructive'}`}>
+                            {diff > 0 ? '+' : ''}{diff.toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStocktakingDetailsOpen(false)}>
+              Закрыть
             </Button>
           </DialogFooter>
         </DialogContent>
