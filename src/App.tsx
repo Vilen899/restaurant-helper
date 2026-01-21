@@ -18,6 +18,7 @@ import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import MenuPage from "./pages/admin/Menu";
 import RecipesPage from "./pages/admin/Recipes";
+import SemiFinishedPage from "./pages/admin/SemiFinished";
 import IngredientsPage from "./pages/admin/Ingredients";
 import InventoryPage from "./pages/admin/Inventory";
 import LocationsPage from "./pages/admin/Locations";
@@ -53,6 +54,7 @@ const App = () => (
               <Route path="menu" element={<MenuPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="recipes" element={<RecipesPage />} />
+              <Route path="semi-finished" element={<SemiFinishedPage />} />
               <Route path="ingredients" element={<IngredientsPage />} />
               <Route path="inventory" element={<InventoryPage />} />
               <Route path="locations" element={<LocationsPage />} />
