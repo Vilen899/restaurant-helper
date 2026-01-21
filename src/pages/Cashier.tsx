@@ -417,10 +417,23 @@ export default function CashierPage() {
               <p className="text-xs text-muted-foreground">Кассир • Смена открыта</p>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2">
-            <LogOut className="h-4 w-4" />
-            Выход
-          </Button>
+          <div className="flex items-center gap-2">
+            {lastOrder && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setReceiptDialogOpen(true)}
+                className="gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                Чек #{lastOrder.order_number}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2">
+              <LogOut className="h-4 w-4" />
+              Выход
+            </Button>
+          </div>
         </header>
 
         {/* Categories or Menu items */}
