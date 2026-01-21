@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Package, ArrowRightLeft, TrendingDown, AlertTriangle, Plus, Database } from 'lucide-react';
+import { Search, Package, ArrowRightLeft, TrendingDown, AlertTriangle, Plus, Database, ClipboardCheck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -68,6 +68,20 @@ export default function InventoryPage() {
     location_id: '',
     default_quantity: '100',
     items: [] as Array<{ ingredient_id: string; name: string; quantity: string; selected: boolean }>,
+  });
+
+  // Stocktaking (инвентаризация) dialog
+  const [stocktakingDialogOpen, setStocktakingDialogOpen] = useState(false);
+  const [stocktakingForm, setStocktakingForm] = useState({
+    location_id: '',
+    items: [] as Array<{
+      ingredient_id: string;
+      name: string;
+      unit_abbr: string;
+      system_qty: number;
+      actual_qty: string;
+      difference: number;
+    }>,
   });
 
   useEffect(() => {
@@ -439,6 +453,118 @@ export default function InventoryPage() {
     }
   };
 
+  // Stocktaking functions
+  const openStocktakingDialog = () => {
+    const locationId = locations[0]?.id || '';
+    loadStocktakingItems(locationId);
+    setStocktakingDialogOpen(true);
+  };
+
+  const loadStocktakingItems = (locationId: string) => {
+    const locationInventory = inventory.filter(inv => inv.location_id === locationId);
+    
+    const items = ingredients.map(ing => {
+      const invItem = locationInventory.find(inv => inv.ingredient_id === ing.id);
+      const systemQty = invItem ? Number(invItem.quantity) : 0;
+      return {
+        ingredient_id: ing.id,
+        name: ing.name,
+        unit_abbr: ing.unit?.abbreviation || '',
+        system_qty: systemQty,
+        actual_qty: systemQty.toFixed(2),
+        difference: 0,
+      };
+    });
+
+    setStocktakingForm({
+      location_id: locationId,
+      items,
+    });
+  };
+
+  const updateStocktakingItem = (ingredientId: string, actualQty: string) => {
+    setStocktakingForm(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.ingredient_id === ingredientId) {
+          const actual = parseFloat(actualQty) || 0;
+          return {
+            ...item,
+            actual_qty: actualQty,
+            difference: actual - item.system_qty,
+          };
+        }
+        return item;
+      }),
+    }));
+  };
+
+  const handleStocktaking = async () => {
+    const itemsWithDifference = stocktakingForm.items.filter(item => {
+      const actual = parseFloat(item.actual_qty) || 0;
+      return Math.abs(actual - item.system_qty) > 0.001;
+    });
+
+    if (itemsWithDifference.length === 0) {
+      toast.info('Нет расхождений для применения');
+      setStocktakingDialogOpen(false);
+      return;
+    }
+
+    try {
+      for (const item of itemsWithDifference) {
+        const actualQty = parseFloat(item.actual_qty) || 0;
+        const difference = actualQty - item.system_qty;
+
+        // Find or create inventory record
+        const { data: existing } = await supabase
+          .from('inventory')
+          .select('id, quantity')
+          .eq('location_id', stocktakingForm.location_id)
+          .eq('ingredient_id', item.ingredient_id)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase
+            .from('inventory')
+            .update({ quantity: actualQty })
+            .eq('id', existing.id);
+        } else if (actualQty > 0) {
+          await supabase
+            .from('inventory')
+            .insert({
+              location_id: stocktakingForm.location_id,
+              ingredient_id: item.ingredient_id,
+              quantity: actualQty,
+            });
+        }
+
+        // Log movement
+        await supabase.from('inventory_movements').insert({
+          location_id: stocktakingForm.location_id,
+          ingredient_id: item.ingredient_id,
+          movement_type: 'adjustment',
+          quantity: difference,
+          notes: `Инвентаризация: было ${item.system_qty.toFixed(2)}, стало ${actualQty.toFixed(2)}`,
+        });
+      }
+
+      toast.success(`Инвентаризация завершена. Скорректировано ${itemsWithDifference.length} позиций`);
+      setStocktakingDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Ошибка при проведении инвентаризации');
+    }
+  };
+
+  const stocktakingStats = {
+    total: stocktakingForm.items.length,
+    withDifference: stocktakingForm.items.filter(i => Math.abs(parseFloat(i.actual_qty) - i.system_qty) > 0.001).length,
+    surplus: stocktakingForm.items.filter(i => parseFloat(i.actual_qty) - i.system_qty > 0.001).length,
+    shortage: stocktakingForm.items.filter(i => i.system_qty - parseFloat(i.actual_qty) > 0.001).length,
+  };
+
   const filteredInventory = inventory.filter(item => {
     const matchesSearch = item.ingredient?.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesLocation = selectedLocation === 'all' || item.location_id === selectedLocation;
@@ -465,6 +591,10 @@ export default function InventoryPage() {
           <p className="text-muted-foreground">Остатки, поставки и перемещения</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={openStocktakingDialog}>
+            <ClipboardCheck className="h-4 w-4 mr-2" />
+            Инвентаризация
+          </Button>
           <Button variant="outline" onClick={openBulkStockDialog}>
             <Database className="h-4 w-4 mr-2" />
             Заполнить склад
@@ -947,6 +1077,123 @@ export default function InventoryPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setBulkStockDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleBulkStock}>Добавить на склад</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Stocktaking Dialog */}
+      <Dialog open={stocktakingDialogOpen} onOpenChange={setStocktakingDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5" />
+              Инвентаризация
+            </DialogTitle>
+            <DialogDescription>
+              Введите фактические остатки. Расхождения будут скорректированы автоматически.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Локация *</Label>
+              <Select
+                value={stocktakingForm.location_id}
+                onValueChange={(v) => loadStocktakingItems(v)}
+              >
+                <SelectTrigger className="w-64">
+                  <SelectValue placeholder="Выберите локацию" />
+                </SelectTrigger>
+                <SelectContent>
+                  {locations.map(loc => (
+                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Всего позиций</CardDescription>
+                  <CardTitle className="text-xl">{stocktakingStats.total}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>С расхождением</CardDescription>
+                  <CardTitle className="text-xl text-amber-600">{stocktakingStats.withDifference}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Излишки</CardDescription>
+                  <CardTitle className="text-xl text-green-600">{stocktakingStats.surplus}</CardTitle>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Недостача</CardDescription>
+                  <CardTitle className="text-xl text-destructive">{stocktakingStats.shortage}</CardTitle>
+                </CardHeader>
+              </Card>
+            </div>
+
+            {/* Items table */}
+            <div className="border rounded-lg max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Ингредиент</TableHead>
+                    <TableHead className="text-right">По системе</TableHead>
+                    <TableHead className="text-right w-32">Факт</TableHead>
+                    <TableHead className="text-right">Разница</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stocktakingForm.items.map(item => {
+                    const diff = parseFloat(item.actual_qty) - item.system_qty;
+                    const hasDiff = Math.abs(diff) > 0.001;
+                    return (
+                      <TableRow 
+                        key={item.ingredient_id}
+                        className={hasDiff ? (diff > 0 ? 'bg-green-500/5' : 'bg-destructive/5') : ''}
+                      >
+                        <TableCell className="font-medium">
+                          {item.name}
+                          <span className="text-muted-foreground ml-1">({item.unit_abbr})</span>
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {item.system_qty.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            step="0.01"
+                            value={item.actual_qty}
+                            onChange={(e) => updateStocktakingItem(item.ingredient_id, e.target.value)}
+                            className="w-24 text-right ml-auto"
+                          />
+                        </TableCell>
+                        <TableCell className={`text-right font-medium ${
+                          hasDiff ? (diff > 0 ? 'text-green-600' : 'text-destructive') : ''
+                        }`}>
+                          {hasDiff ? (diff > 0 ? '+' : '') + diff.toFixed(2) : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStocktakingDialogOpen(false)}>Отмена</Button>
+            <Button onClick={handleStocktaking} disabled={stocktakingStats.withDifference === 0}>
+              Провести инвентаризацию ({stocktakingStats.withDifference} поз.)
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
