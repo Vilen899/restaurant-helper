@@ -6,9 +6,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Same hash function as in hash-pin
-async function hashPin(pin: string, salt: string): Promise<string> {
+// Hash function compatible with bulk-create-staff
+async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder()
+  const salt = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')?.slice(0, 16) || 'default_salt_key'
   const data = encoder.encode(pin + salt)
   const hashBuffer = await crypto.subtle.digest('SHA-256', data)
   const hashArray = Array.from(new Uint8Array(hashBuffer))
@@ -36,11 +37,13 @@ serve(async (req) => {
       )
     }
 
-    // Find users with PIN at this location
+    // Find all active users with a PIN set
+    // Users with location_id = null can work at any location
+    // Users with specific location_id can only work at that location
     const { data: profiles, error: fetchError } = await supabaseClient
       .from('profiles')
       .select('id, full_name, pin_hash, location_id')
-      .eq('location_id', location_id)
+      .eq('is_active', true)
       .not('pin_hash', 'is', null)
 
     if (fetchError) {
@@ -50,14 +53,20 @@ serve(async (req) => {
       )
     }
 
+    // Filter to users who can work at this location
+    const eligibleProfiles = (profiles || []).filter(p => 
+      p.location_id === null || p.location_id === location_id
+    )
+
+    // Hash the input PIN
+    const inputHash = await hashPin(pin)
+
     // Try to match PIN
-    for (const profile of profiles || []) {
+    for (const profile of eligibleProfiles) {
       if (!profile.pin_hash) continue
       
-      const [salt, storedHash] = profile.pin_hash.split(':')
-      const inputHash = await hashPin(pin, salt)
-      
-      if (inputHash === storedHash) {
+      // Check if it matches our hash format (simple hash)
+      if (inputHash === profile.pin_hash) {
         // Get user role
         const { data: roleData } = await supabaseClient
           .from('user_roles')
@@ -65,8 +74,6 @@ serve(async (req) => {
           .eq('user_id', profile.id)
           .single()
 
-        // Generate a custom token for this user session
-        // In production, you might want to use Supabase's signInWithPassword or a custom JWT
         return new Response(
           JSON.stringify({ 
             success: true, 
@@ -74,7 +81,7 @@ serve(async (req) => {
               id: profile.id,
               full_name: profile.full_name,
               role: roleData?.role || 'cashier',
-              location_id: profile.location_id
+              location_id: location_id // Use selected location for session
             }
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
