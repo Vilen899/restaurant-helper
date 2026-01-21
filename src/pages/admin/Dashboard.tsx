@@ -2,13 +2,16 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   BarChart3, TrendingUp, Users, Package, ShoppingCart, DollarSign, 
-  AlertTriangle, Clock, MapPin, ArrowUpRight, ArrowDownRight 
+  AlertTriangle, Clock, MapPin, ArrowUpRight, Plus, Truck, FileText
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { PageHeader } from '@/components/admin/PageHeader';
+import { StatCard } from '@/components/admin/StatCard';
+import { QuickActionCard } from '@/components/admin/QuickActions';
 
 interface Stats {
   totalOrders: number;
@@ -65,11 +68,11 @@ export default function AdminDashboard() {
   }, []);
 
   const fetchAllData = async () => {
+    setLoading(true);
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Fetch all stats in parallel
       const [
         ordersResult,
         todayOrdersResult,
@@ -99,7 +102,6 @@ export default function AdminDashboard() {
       const todayRevenue = todayOrdersResult.data?.reduce((sum, o) => sum + Number(o.total), 0) || 0;
       const todayOrders = todayOrdersResult.data?.length || 0;
 
-      // Process low stock items
       const lowStock: LowStockItem[] = [];
       inventoryResult.data?.forEach((inv: any) => {
         if (inv.ingredients && inv.quantity < (inv.ingredients.min_stock || 0)) {
@@ -113,7 +115,6 @@ export default function AdminDashboard() {
         }
       });
 
-      // Process recent orders
       const recent = recentOrdersResult.data?.map((o: any) => ({
         id: o.id,
         order_number: o.order_number,
@@ -123,7 +124,6 @@ export default function AdminDashboard() {
         location_name: o.locations?.name,
       })) || [];
 
-      // Generate hourly data for chart (mock for now, based on today's orders)
       const hourlyStats: Record<string, { orders: number; revenue: number }> = {};
       for (let i = 8; i <= 22; i++) {
         hourlyStats[`${i}:00`] = { orders: 0, revenue: 0 };
@@ -141,7 +141,6 @@ export default function AdminDashboard() {
         ...data,
       }));
 
-      // Fetch category sales data
       const { data: categoryOrders } = await supabase
         .from('order_items')
         .select(`
@@ -208,92 +207,82 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Обзор</h1>
-          <p className="text-muted-foreground">
-            Сводка по {stats.locations} {stats.locations === 1 ? 'точке' : 'точкам'}
-          </p>
-        </div>
-        <Button variant="outline" onClick={fetchAllData}>
-          Обновить
-        </Button>
-      </div>
+      <PageHeader
+        title="Обзор"
+        description={`Сводка по ${stats.locations} ${stats.locations === 1 ? 'точке' : 'точкам'}`}
+        onRefresh={fetchAllData}
+        loading={loading}
+      />
 
       {/* Main Stats Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Выручка сегодня
-            </CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">{formatCurrency(stats.todayRevenue)}</div>
-            <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <ArrowUpRight className="h-3 w-3 text-green-500" />
-              Всего: {formatCurrency(stats.totalRevenue)}
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Выручка сегодня"
+          value={formatCurrency(stats.todayRevenue)}
+          subtitle={`Всего: ${formatCurrency(stats.totalRevenue)}`}
+          icon={DollarSign}
+          variant="success"
+          onClick={() => navigate('/admin/reports')}
+        />
+        <StatCard
+          title="Заказов сегодня"
+          value={stats.todayOrders}
+          subtitle={`Всего: ${stats.totalOrders}`}
+          icon={ShoppingCart}
+          variant="info"
+        />
+        <StatCard
+          title="Средний чек"
+          value={formatCurrency(Math.round(stats.avgOrderValue))}
+          subtitle="За сегодня"
+          icon={TrendingUp}
+          variant="default"
+        />
+        <StatCard
+          title="Мало на складе"
+          value={stats.lowStockItems}
+          subtitle={stats.lowStockItems > 0 ? 'Требуется заказ' : 'Всё в норме'}
+          icon={AlertTriangle}
+          variant={stats.lowStockItems > 0 ? 'danger' : 'default'}
+          onClick={() => navigate('/admin/inventory')}
+        />
+      </div>
 
-        <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Заказов сегодня
-            </CardTitle>
-            <ShoppingCart className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-500">{stats.todayOrders}</div>
-            <p className="text-xs text-muted-foreground">
-              Всего: {stats.totalOrders} заказов
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Средний чек
-            </CardTitle>
-            <TrendingUp className="h-4 w-4 text-purple-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-purple-500">{formatCurrency(Math.round(stats.avgOrderValue))}</div>
-            <p className="text-xs text-muted-foreground">
-              За сегодня
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className={`bg-gradient-to-br ${stats.lowStockItems > 0 ? 'from-red-500/10 to-red-600/5 border-red-500/20' : 'from-gray-500/10 to-gray-600/5 border-gray-500/20'}`}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Мало на складе
-            </CardTitle>
-            <AlertTriangle className={`h-4 w-4 ${stats.lowStockItems > 0 ? 'text-red-500' : 'text-muted-foreground'}`} />
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${stats.lowStockItems > 0 ? 'text-red-500' : ''}`}>
-              {stats.lowStockItems}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {stats.lowStockItems > 0 ? 'Требуется заказ' : 'Всё в норме'}
-            </p>
-          </CardContent>
-        </Card>
+      {/* Quick Actions */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <QuickActionCard
+          title="Новый заказ"
+          description="Открыть кассу"
+          icon={Plus}
+          onClick={() => navigate('/cashier')}
+          variant="primary"
+        />
+        <QuickActionCard
+          title="Добавить блюдо"
+          description="В меню"
+          icon={Package}
+          onClick={() => navigate('/admin/menu')}
+        />
+        <QuickActionCard
+          title="Оформить поставку"
+          description="На склад"
+          icon={Truck}
+          onClick={() => navigate('/admin/inventory')}
+        />
+        <QuickActionCard
+          title="Отчёт по продажам"
+          description="За период"
+          icon={FileText}
+          onClick={() => navigate('/admin/reports')}
+        />
       </div>
 
       {/* Charts Row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Hourly Sales Chart */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <BarChart3 className="h-5 w-5 text-primary" />
               Продажи по часам
             </CardTitle>
             <CardDescription>Сегодняшняя активность</CardDescription>
@@ -302,11 +291,16 @@ export default function AdminDashboard() {
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={hourlyData}>
-                  <XAxis dataKey="hour" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `₽${v}`} />
+                  <XAxis dataKey="hour" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `₽${v}`} />
                   <Tooltip 
                     formatter={(value: number) => [formatCurrency(value), 'Выручка']}
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' }}
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))' }}
                   />
                   <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -315,11 +309,10 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Category Sales Pie */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Package className="h-5 w-5 text-primary" />
               Продажи по категориям
             </CardTitle>
             <CardDescription>Топ-5 категорий</CardDescription>
@@ -333,12 +326,10 @@ export default function AdminDashboard() {
                       data={categoryData}
                       cx="50%"
                       cy="50%"
-                      innerRadius={60}
-                      outerRadius={90}
+                      innerRadius={50}
+                      outerRadius={80}
                       paddingAngle={2}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                      labelLine={false}
                     >
                       {categoryData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
@@ -348,7 +339,20 @@ export default function AdminDashboard() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-muted-foreground text-center w-full">Нет данных о продажах</p>
+                <p className="text-muted-foreground text-center w-full">Нет данных</p>
+              )}
+              {categoryData.length > 0 && (
+                <div className="space-y-2 ml-4">
+                  {categoryData.map((cat, i) => (
+                    <div key={cat.name} className="flex items-center gap-2 text-sm">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} 
+                      />
+                      <span className="truncate max-w-24">{cat.name}</span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </CardContent>
@@ -357,31 +361,33 @@ export default function AdminDashboard() {
 
       {/* Bottom Row */}
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Recent Orders */}
         <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Clock className="h-5 w-5 text-primary" />
                 Последние заказы
               </CardTitle>
-              <CardDescription>5 последних заказов</CardDescription>
+              <CardDescription>5 последних</CardDescription>
             </div>
             <Button variant="ghost" size="sm" onClick={() => navigate('/admin/reports')}>
-              Все заказы
+              Все →
             </Button>
           </CardHeader>
           <CardContent>
             {recentOrders.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {recentOrders.map((order) => (
-                  <div key={order.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                  <div 
+                    key={order.id} 
+                    className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/70 transition-colors"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="font-bold text-primary">#{order.order_number}</span>
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <span className="font-bold text-primary text-sm">#{order.order_number}</span>
                       </div>
                       <div>
-                        <p className="font-medium">{formatCurrency(order.total)}</p>
+                        <p className="font-semibold">{formatCurrency(order.total)}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
                           {order.location_name || 'Точка'}
@@ -401,92 +407,75 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Low Stock Alert */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className={`h-5 w-5 ${lowStockItems.length > 0 ? 'text-red-500' : ''}`} />
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <AlertTriangle className={`h-5 w-5 ${lowStockItems.length > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
               Низкие остатки
             </CardTitle>
             <CardDescription>Требуется пополнение</CardDescription>
           </CardHeader>
           <CardContent>
             {lowStockItems.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {lowStockItems.map((item) => (
-                  <div key={item.id + item.location_name} className="flex items-center justify-between p-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div 
+                    key={item.id + item.location_name} 
+                    className="flex items-center justify-between p-2 rounded-lg bg-destructive/10 border border-destructive/20"
+                  >
                     <div>
                       <p className="font-medium text-sm">{item.name}</p>
                       <p className="text-xs text-muted-foreground">{item.location_name}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-red-500">{item.quantity}</p>
+                      <p className="font-bold text-destructive">{item.quantity}</p>
                       <p className="text-xs text-muted-foreground">мин: {item.min_stock}</p>
                     </div>
                   </div>
                 ))}
-                <Button variant="outline" className="w-full" onClick={() => navigate('/admin/inventory')}>
+                <Button variant="outline" className="w-full mt-2" size="sm" onClick={() => navigate('/admin/inventory')}>
                   Перейти на склад
                 </Button>
               </div>
             ) : (
-              <div className="text-center py-8">
+              <div className="text-center py-6">
                 <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center mx-auto mb-2">
                   <Package className="h-6 w-6 text-green-500" />
                 </div>
-                <p className="text-muted-foreground">Все остатки в норме</p>
+                <p className="text-green-500 font-medium">Всё в норме</p>
+                <p className="text-xs text-muted-foreground">Низких остатков нет</p>
               </div>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Quick Stats Footer */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <Users className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{stats.activeStaff}</p>
-                <p className="text-xs text-muted-foreground">Сотрудников</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <Package className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{stats.menuItems}</p>
-                <p className="text-xs text-muted-foreground">Позиций в меню</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <MapPin className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{stats.locations}</p>
-                <p className="text-xs text-muted-foreground">Точек продаж</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-muted/30">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <TrendingUp className="h-8 w-8 text-muted-foreground" />
-              <div>
-                <p className="text-2xl font-bold">{stats.totalOrders}</p>
-                <p className="text-xs text-muted-foreground">Всего заказов</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Secondary Stats */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+        <StatCard
+          title="Позиций в меню"
+          value={stats.menuItems}
+          icon={Package}
+          onClick={() => navigate('/admin/menu')}
+        />
+        <StatCard
+          title="Сотрудников"
+          value={stats.activeStaff}
+          icon={Users}
+          onClick={() => navigate('/admin/staff')}
+        />
+        <StatCard
+          title="Точек"
+          value={stats.locations}
+          icon={MapPin}
+          onClick={() => navigate('/admin/locations')}
+        />
+        <StatCard
+          title="Поставщиков"
+          value="—"
+          subtitle="Скоро"
+          icon={Truck}
+        />
       </div>
     </div>
   );
