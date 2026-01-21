@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Search, Package, ArrowRightLeft, TrendingDown, AlertTriangle, Plus } from 'lucide-react';
+import { Search, Package, ArrowRightLeft, TrendingDown, AlertTriangle, Plus, Database } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -59,6 +60,14 @@ export default function InventoryPage() {
     from_location_id: '',
     to_location_id: '',
     items: [] as Array<{ ingredient_id: string; quantity: string }>,
+  });
+
+  // Bulk stock dialog
+  const [bulkStockDialogOpen, setBulkStockDialogOpen] = useState(false);
+  const [bulkStockForm, setBulkStockForm] = useState({
+    location_id: '',
+    default_quantity: '100',
+    items: [] as Array<{ ingredient_id: string; name: string; quantity: string; selected: boolean }>,
   });
 
   useEffect(() => {
@@ -326,6 +335,110 @@ export default function InventoryPage() {
     }
   };
 
+  // Bulk stock functions
+  const openBulkStockDialog = () => {
+    setBulkStockForm({
+      location_id: locations[0]?.id || '',
+      default_quantity: '100',
+      items: ingredients.map(ing => ({
+        ingredient_id: ing.id,
+        name: ing.name,
+        quantity: '100',
+        selected: true,
+      })),
+    });
+    setBulkStockDialogOpen(true);
+  };
+
+  const toggleBulkItem = (ingredientId: string) => {
+    setBulkStockForm(prev => ({
+      ...prev,
+      items: prev.items.map(item =>
+        item.ingredient_id === ingredientId ? { ...item, selected: !item.selected } : item
+      ),
+    }));
+  };
+
+  const updateBulkItemQuantity = (ingredientId: string, quantity: string) => {
+    setBulkStockForm(prev => ({
+      ...prev,
+      items: prev.items.map(item =>
+        item.ingredient_id === ingredientId ? { ...item, quantity } : item
+      ),
+    }));
+  };
+
+  const setAllBulkQuantity = (quantity: string) => {
+    setBulkStockForm(prev => ({
+      ...prev,
+      default_quantity: quantity,
+      items: prev.items.map(item => ({ ...item, quantity })),
+    }));
+  };
+
+  const selectAllBulkItems = (selected: boolean) => {
+    setBulkStockForm(prev => ({
+      ...prev,
+      items: prev.items.map(item => ({ ...item, selected })),
+    }));
+  };
+
+  const handleBulkStock = async () => {
+    const selectedItems = bulkStockForm.items.filter(i => i.selected && parseFloat(i.quantity) > 0);
+    if (!bulkStockForm.location_id || selectedItems.length === 0) {
+      toast.error('Выберите локацию и хотя бы один ингредиент');
+      return;
+    }
+
+    try {
+      for (const item of selectedItems) {
+        const qty = parseFloat(item.quantity);
+        const ingredient = ingredients.find(ing => ing.id === item.ingredient_id);
+        const costPerUnit = ingredient?.cost_per_unit || 0;
+
+        // Check existing inventory
+        const { data: existing } = await supabase
+          .from('inventory')
+          .select('id, quantity')
+          .eq('location_id', bulkStockForm.location_id)
+          .eq('ingredient_id', item.ingredient_id)
+          .maybeSingle();
+
+        if (existing) {
+          await supabase
+            .from('inventory')
+            .update({ quantity: Number(existing.quantity) + qty })
+            .eq('id', existing.id);
+        } else {
+          await supabase
+            .from('inventory')
+            .insert({
+              location_id: bulkStockForm.location_id,
+              ingredient_id: item.ingredient_id,
+              quantity: qty,
+            });
+        }
+
+        // Log movement
+        await supabase.from('inventory_movements').insert({
+          location_id: bulkStockForm.location_id,
+          ingredient_id: item.ingredient_id,
+          movement_type: 'adjustment',
+          quantity: qty,
+          cost_per_unit: costPerUnit,
+          notes: 'Начальное заполнение склада',
+        });
+      }
+
+      toast.success(`Добавлено ${selectedItems.length} позиций на склад`);
+      setBulkStockDialogOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Ошибка заполнения склада');
+    }
+  };
+
   const filteredInventory = inventory.filter(item => {
     const matchesSearch = item.ingredient?.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesLocation = selectedLocation === 'all' || item.location_id === selectedLocation;
@@ -351,7 +464,11 @@ export default function InventoryPage() {
           <h1 className="text-3xl font-bold">Склад</h1>
           <p className="text-muted-foreground">Остатки, поставки и перемещения</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" onClick={openBulkStockDialog}>
+            <Database className="h-4 w-4 mr-2" />
+            Заполнить склад
+          </Button>
           <Button variant="outline" onClick={openTransferDialog}>
             <ArrowRightLeft className="h-4 w-4 mr-2" />
             Перемещение
@@ -721,6 +838,115 @@ export default function InventoryPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Отмена</Button>
             <Button onClick={handleCreateTransfer}>Оформить перемещение</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Stock Dialog */}
+      <Dialog open={bulkStockDialogOpen} onOpenChange={setBulkStockDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Быстрое заполнение склада</DialogTitle>
+            <DialogDescription>Добавьте начальные остатки для всех ингредиентов сразу</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Локация *</Label>
+                <Select
+                  value={bulkStockForm.location_id}
+                  onValueChange={(v) => setBulkStockForm({ ...bulkStockForm, location_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {locations.map(loc => (
+                      <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Количество для всех</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    value={bulkStockForm.default_quantity}
+                    onChange={(e) => setAllBulkQuantity(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => selectAllBulkItems(true)}
+                  >
+                    Все
+                  </Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => selectAllBulkItems(false)}
+                  >
+                    Ничего
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="border rounded-lg max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12"></TableHead>
+                    <TableHead>Ингредиент</TableHead>
+                    <TableHead className="w-32">Количество</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {bulkStockForm.items.map(item => {
+                    const ingredient = ingredients.find(i => i.id === item.ingredient_id);
+                    return (
+                      <TableRow key={item.ingredient_id}>
+                        <TableCell>
+                          <Checkbox
+                            checked={item.selected}
+                            onCheckedChange={() => toggleBulkItem(item.ingredient_id)}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {item.name}
+                          <span className="text-muted-foreground ml-1">
+                            ({ingredient?.unit?.abbreviation || ''})
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            onChange={(e) => updateBulkItemQuantity(item.ingredient_id, e.target.value)}
+                            className="w-24"
+                            disabled={!item.selected}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              Выбрано: {bulkStockForm.items.filter(i => i.selected).length} из {bulkStockForm.items.length} ингредиентов
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkStockDialogOpen(false)}>Отмена</Button>
+            <Button onClick={handleBulkStock}>Добавить на склад</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
