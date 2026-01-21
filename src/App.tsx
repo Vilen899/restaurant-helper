@@ -35,10 +35,13 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/auth" element={<Auth />} />
+            {/* Cashier routes */}
+            <Route path="/" element={<PinLogin />} />
             <Route path="/pin" element={<PinLogin />} />
             <Route path="/cashier" element={<CashierPage />} />
+            
+            {/* Admin auth */}
+            <Route path="/admin/login" element={<Auth />} />
             
             {/* Admin routes */}
             <Route path="/admin" element={
