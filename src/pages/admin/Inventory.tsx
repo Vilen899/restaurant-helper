@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
+import { TablePagination } from '@/components/admin/TablePagination';
 
 type Inventory = Tables<'inventory'>;
 type Ingredient = Tables<'ingredients'>;
@@ -75,6 +76,16 @@ export default function InventoryPage() {
   const [transfersLocationFilter, setTransfersLocationFilter] = useState<string>('all');
   const [transfersDateFrom, setTransfersDateFrom] = useState<Date | undefined>(undefined);
   const [transfersDateTo, setTransfersDateTo] = useState<Date | undefined>(undefined);
+
+  // Pagination state
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [inventoryPageSize, setInventoryPageSize] = useState(25);
+  const [stocktakingsPage, setStocktakingsPage] = useState(1);
+  const [stocktakingsPageSize, setStocktakingsPageSize] = useState(10);
+  const [suppliesPage, setSuppliesPage] = useState(1);
+  const [suppliesPageSize, setSuppliesPageSize] = useState(10);
+  const [transfersPage, setTransfersPage] = useState(1);
+  const [transfersPageSize, setTransfersPageSize] = useState(10);
 
   // Supply dialog
   const [supplyDialogOpen, setSupplyDialogOpen] = useState(false);
@@ -648,11 +659,13 @@ export default function InventoryPage() {
     shortage: stocktakingForm.items.filter(i => i.system_qty - parseFloat(i.actual_qty) > 0.001).length,
   };
 
-  const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.ingredient?.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesLocation = selectedLocation === 'all' || item.location_id === selectedLocation;
-    return matchesSearch && matchesLocation;
-  });
+  const filteredInventory = useMemo(() => {
+    return inventory.filter(item => {
+      const matchesSearch = item.ingredient?.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesLocation = selectedLocation === 'all' || item.location_id === selectedLocation;
+      return matchesSearch && matchesLocation;
+    });
+  }, [inventory, searchTerm, selectedLocation]);
 
   const filteredStocktakings = useMemo(() => {
     return stocktakings.filter(st => {
@@ -685,6 +698,33 @@ export default function InventoryPage() {
       return matchesLocation && matchesDateFrom && matchesDateTo;
     });
   }, [transfers, transfersLocationFilter, transfersDateFrom, transfersDateTo]);
+
+  // Paginated data
+  const paginatedInventory = useMemo(() => {
+    const start = (inventoryPage - 1) * inventoryPageSize;
+    return filteredInventory.slice(start, start + inventoryPageSize);
+  }, [filteredInventory, inventoryPage, inventoryPageSize]);
+
+  const paginatedStocktakings = useMemo(() => {
+    const start = (stocktakingsPage - 1) * stocktakingsPageSize;
+    return filteredStocktakings.slice(start, start + stocktakingsPageSize);
+  }, [filteredStocktakings, stocktakingsPage, stocktakingsPageSize]);
+
+  const paginatedSupplies = useMemo(() => {
+    const start = (suppliesPage - 1) * suppliesPageSize;
+    return filteredSupplies.slice(start, start + suppliesPageSize);
+  }, [filteredSupplies, suppliesPage, suppliesPageSize]);
+
+  const paginatedTransfers = useMemo(() => {
+    const start = (transfersPage - 1) * transfersPageSize;
+    return filteredTransfers.slice(start, start + transfersPageSize);
+  }, [filteredTransfers, transfersPage, transfersPageSize]);
+
+  // Reset page when filters change
+  useEffect(() => { setInventoryPage(1); }, [searchTerm, selectedLocation]);
+  useEffect(() => { setStocktakingsPage(1); }, [stocktakingLocationFilter, stocktakingDateFrom, stocktakingDateTo]);
+  useEffect(() => { setSuppliesPage(1); }, [suppliesLocationFilter, suppliesDateFrom, suppliesDateTo]);
+  useEffect(() => { setTransfersPage(1); }, [transfersLocationFilter, transfersDateFrom, transfersDateTo]);
 
   const lowStockItems = inventory.filter(item => 
     item.ingredient?.min_stock && Number(item.quantity) < Number(item.ingredient.min_stock)
@@ -792,14 +832,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredInventory.length === 0 ? (
+                {paginatedInventory.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                       Нет данных об остатках
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredInventory.map(item => {
+                  paginatedInventory.map(item => {
                     const isLow = item.ingredient?.min_stock && Number(item.quantity) < Number(item.ingredient.min_stock);
                     return (
                       <TableRow key={item.id}>
@@ -824,6 +864,16 @@ export default function InventoryPage() {
                 )}
               </TableBody>
             </Table>
+            {filteredInventory.length > 0 && (
+              <TablePagination
+                currentPage={inventoryPage}
+                totalPages={Math.ceil(filteredInventory.length / inventoryPageSize)}
+                pageSize={inventoryPageSize}
+                totalItems={filteredInventory.length}
+                onPageChange={setInventoryPage}
+                onPageSizeChange={(size) => { setInventoryPageSize(size); setInventoryPage(1); }}
+              />
+            )}
           </Card>
         </TabsContent>
 
@@ -935,14 +985,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredStocktakings.length === 0 ? (
+                {paginatedStocktakings.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       {stocktakings.length === 0 ? 'Нет проведённых инвентаризаций' : 'Нет инвентаризаций по выбранным фильтрам'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredStocktakings.map(st => (
+                  paginatedStocktakings.map(st => (
                     <TableRow key={st.id}>
                       <TableCell>{new Date(st.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</TableCell>
                       <TableCell>{st.location?.name}</TableCell>
@@ -968,6 +1018,16 @@ export default function InventoryPage() {
                 )}
               </TableBody>
             </Table>
+            {filteredStocktakings.length > 0 && (
+              <TablePagination
+                currentPage={stocktakingsPage}
+                totalPages={Math.ceil(filteredStocktakings.length / stocktakingsPageSize)}
+                pageSize={stocktakingsPageSize}
+                totalItems={filteredStocktakings.length}
+                onPageChange={setStocktakingsPage}
+                onPageSizeChange={(size) => { setStocktakingsPageSize(size); setStocktakingsPage(1); }}
+              />
+            )}
           </Card>
         </TabsContent>
 
@@ -1078,14 +1138,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSupplies.length === 0 ? (
+                {paginatedSupplies.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                       {supplies.length === 0 ? 'Нет поставок' : 'Нет поставок по выбранным фильтрам'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredSupplies.map(sup => (
+                  paginatedSupplies.map(sup => (
                     <TableRow key={sup.id}>
                       <TableCell>{new Date(sup.created_at).toLocaleDateString('ru-RU')}</TableCell>
                       <TableCell>{sup.location?.name}</TableCell>
@@ -1104,6 +1164,16 @@ export default function InventoryPage() {
                 )}
               </TableBody>
             </Table>
+            {filteredSupplies.length > 0 && (
+              <TablePagination
+                currentPage={suppliesPage}
+                totalPages={Math.ceil(filteredSupplies.length / suppliesPageSize)}
+                pageSize={suppliesPageSize}
+                totalItems={filteredSupplies.length}
+                onPageChange={setSuppliesPage}
+                onPageSizeChange={(size) => { setSuppliesPageSize(size); setSuppliesPage(1); }}
+              />
+            )}
           </Card>
         </TabsContent>
 
@@ -1212,14 +1282,14 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredTransfers.length === 0 ? (
+                {paginatedTransfers.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                       {transfers.length === 0 ? 'Нет перемещений' : 'Нет перемещений по выбранным фильтрам'}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTransfers.map(trans => (
+                  paginatedTransfers.map(trans => (
                     <TableRow key={trans.id}>
                       <TableCell>{new Date(trans.created_at).toLocaleDateString('ru-RU')}</TableCell>
                       <TableCell>{trans.from_location?.name}</TableCell>
@@ -1234,6 +1304,16 @@ export default function InventoryPage() {
                 )}
               </TableBody>
             </Table>
+            {filteredTransfers.length > 0 && (
+              <TablePagination
+                currentPage={transfersPage}
+                totalPages={Math.ceil(filteredTransfers.length / transfersPageSize)}
+                pageSize={transfersPageSize}
+                totalItems={filteredTransfers.length}
+                onPageChange={setTransfersPage}
+                onPageSizeChange={(size) => { setTransfersPageSize(size); setTransfersPage(1); }}
+              />
+            )}
           </Card>
         </TabsContent>
       </Tabs>
