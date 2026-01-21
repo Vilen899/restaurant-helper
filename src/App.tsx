@@ -25,7 +25,7 @@ import LocationsPage from "./pages/admin/Locations";
 import StaffPage from "./pages/admin/Staff";
 import CategoriesPage from "./pages/admin/Categories";
 import ReportsPage from "./pages/admin/Reports";
-
+import InventoryReportPage from "./pages/admin/InventoryReport";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -60,6 +60,7 @@ const App = () => (
               <Route path="locations" element={<LocationsPage />} />
               <Route path="staff" element={<StaffPage />} />
               <Route path="reports" element={<ReportsPage />} />
+              <Route path="reports/inventory" element={<InventoryReportPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />
