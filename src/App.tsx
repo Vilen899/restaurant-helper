@@ -26,6 +26,7 @@ import StaffPage from "./pages/admin/Staff";
 import CategoriesPage from "./pages/admin/Categories";
 import ReportsPage from "./pages/admin/Reports";
 import InventoryReportPage from "./pages/admin/InventoryReport";
+import PaymentMethodsPage from "./pages/admin/PaymentMethods";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -61,6 +62,7 @@ const App = () => (
               <Route path="staff" element={<StaffPage />} />
               <Route path="reports" element={<ReportsPage />} />
               <Route path="reports/inventory" element={<InventoryReportPage />} />
+              <Route path="payment-methods" element={<PaymentMethodsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

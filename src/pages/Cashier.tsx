@@ -3,21 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Minus, Trash2, CreditCard, Banknote, 
   UtensilsCrossed, ShoppingCart, Check, LogOut,
-  Coffee, Pizza, Salad, Sandwich, Droplet, IceCream, Package, Printer
+  Coffee, Pizza, Salad, Sandwich, Droplet, IceCream, Package, Printer,
+  Wallet, Smartphone, QrCode, Clock
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
+import { NumericKeypad } from '@/components/cashier/NumericKeypad';
+import { CloseShiftDialog } from '@/components/cashier/CloseShiftDialog';
 
 type MenuItem = Tables<'menu_items'>;
 type MenuCategory = Tables<'menu_categories'>;
+type PaymentMethod = Tables<'payment_methods'>;
 
 interface CartItem {
   menuItem: MenuItem;
@@ -51,22 +53,25 @@ export default function CashierPage() {
   const [session, setSession] = useState<CashierSession | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [closeShiftDialogOpen, setCloseShiftDialogOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState<{
     order_number: number;
     items: CartItem[];
     subtotal: number;
     total: number;
     payment_method: string;
+    payment_method_name?: string;
     cash_received?: number;
     change?: number;
     date: Date;
   } | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [cashReceived, setCashReceived] = useState('');
   const [processing, setProcessing] = useState(false);
 
@@ -93,13 +98,15 @@ export default function CashierPage() {
 
   const fetchMenuData = async () => {
     try {
-      const [{ data: items }, { data: cats }] = await Promise.all([
+      const [{ data: items }, { data: cats }, { data: payments }] = await Promise.all([
         supabase.from('menu_items').select('*').eq('is_active', true).order('sort_order'),
         supabase.from('menu_categories').select('*').eq('is_active', true).order('sort_order'),
+        supabase.from('payment_methods').select('*').eq('is_active', true).order('sort_order'),
       ]);
 
       setMenuItems(items || []);
       setCategories(cats || []);
+      setPaymentMethods(payments || []);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Ошибка загрузки меню');
@@ -187,7 +194,8 @@ export default function CashierPage() {
   const subtotal = cart.reduce((sum, ci) => sum + Number(ci.menuItem.price) * ci.quantity, 0);
   const total = subtotal;
   const totalItems = cart.reduce((sum, ci) => sum + ci.quantity, 0);
-  const change = paymentMethod === 'cash' && cashReceived 
+  const isCashPayment = selectedPaymentMethod?.code === 'cash';
+  const change = isCashPayment && cashReceived 
     ? Math.max(0, parseFloat(cashReceived) - total)
     : 0;
 
@@ -197,7 +205,12 @@ export default function CashierPage() {
       return;
     }
 
-    if (paymentMethod === 'cash' && (!cashReceived || parseFloat(cashReceived) < total)) {
+    if (!selectedPaymentMethod) {
+      toast.error('Выберите способ оплаты');
+      return;
+    }
+
+    if (isCashPayment && (!cashReceived || parseFloat(cashReceived) < total)) {
       toast.error('Недостаточно средств');
       return;
     }
@@ -212,7 +225,7 @@ export default function CashierPage() {
           subtotal: subtotal,
           total: total,
           discount: 0,
-          payment_method: paymentMethod,
+          payment_method: selectedPaymentMethod.code,
           status: 'completed',
           completed_at: new Date().toISOString(),
         })
@@ -287,17 +300,19 @@ export default function CashierPage() {
         items: [...cart],
         subtotal,
         total,
-        payment_method: paymentMethod,
-        cash_received: paymentMethod === 'cash' ? parseFloat(cashReceived) : undefined,
-        change: paymentMethod === 'cash' ? Math.max(0, parseFloat(cashReceived) - total) : undefined,
+        payment_method: selectedPaymentMethod.code,
+        payment_method_name: selectedPaymentMethod.name,
+        cash_received: isCashPayment ? parseFloat(cashReceived) : undefined,
+        change: isCashPayment ? Math.max(0, parseFloat(cashReceived) - total) : undefined,
         date: new Date(),
       });
 
       toast.success(`Заказ #${order.order_number} оплачен!`);
       setPaymentDialogOpen(false);
-      setReceiptDialogOpen(true); // Show receipt dialog
+      setReceiptDialogOpen(true);
       clearCart();
       setCashReceived('');
+      setSelectedPaymentMethod(null);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Ошибка оформления заказа');
@@ -381,9 +396,9 @@ export default function CashierPage() {
   <div class="payment">
     <div class="total-row">
       <span>Оплата:</span>
-      <span>${lastOrder.payment_method === 'cash' ? 'Наличные' : 'Карта'}</span>
+      <span>${lastOrder.payment_method_name || (lastOrder.payment_method === 'cash' ? 'Наличные' : 'Карта')}</span>
     </div>
-    ${lastOrder.payment_method === 'cash' ? `
+    ${lastOrder.cash_received ? `
       <div class="total-row">
         <span>Получено:</span>
         <span>${lastOrder.cash_received?.toLocaleString()} ֏</span>
@@ -462,9 +477,14 @@ export default function CashierPage() {
                 Чек #{lastOrder.order_number}
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={handleLogout} className="gap-2">
-              <LogOut className="h-4 w-4" />
-              Выход
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setCloseShiftDialogOpen(true)}
+              className="gap-2 text-destructive hover:text-destructive"
+            >
+              <Clock className="h-4 w-4" />
+              Закрыть смену
             </Button>
           </div>
         </header>
@@ -643,37 +663,25 @@ export default function CashierPage() {
               <span className="text-primary">{total.toLocaleString()} ֏</span>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Button 
-              variant="outline"
-              className="h-14 text-lg gap-2" 
-              disabled={cart.length === 0}
-              onClick={() => {
-                setPaymentMethod('cash');
-                setPaymentDialogOpen(true);
-              }}
-            >
-              <Banknote className="h-5 w-5" />
-              Наличные
-            </Button>
-            <Button 
-              className="h-14 text-lg gap-2" 
-              disabled={cart.length === 0}
-              onClick={() => {
-                setPaymentMethod('card');
-                setPaymentDialogOpen(true);
-              }}
-            >
-              <CreditCard className="h-5 w-5" />
-              Карта
-            </Button>
-          </div>
+          <Button 
+            className="h-14 text-lg" 
+            disabled={cart.length === 0}
+            onClick={() => setPaymentDialogOpen(true)}
+          >
+            Оплатить • {total.toLocaleString()} ֏
+          </Button>
         </div>
       </div>
 
       {/* Payment Dialog */}
-      <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open={paymentDialogOpen} onOpenChange={(open) => {
+        setPaymentDialogOpen(open);
+        if (!open) {
+          setSelectedPaymentMethod(null);
+          setCashReceived('');
+        }
+      }}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl">Оплата заказа</DialogTitle>
             <DialogDescription className="text-lg">
@@ -681,74 +689,109 @@ export default function CashierPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as any)}>
-            <TabsList className="grid w-full grid-cols-2 h-12">
-              <TabsTrigger value="cash" className="gap-2 text-base">
-                <Banknote className="h-5 w-5" />
-                Наличные
-              </TabsTrigger>
-              <TabsTrigger value="card" className="gap-2 text-base">
-                <CreditCard className="h-5 w-5" />
-                Карта
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="cash" className="space-y-4 mt-4">
-              <div>
-                <label className="text-sm font-medium">Получено от клиента</label>
-                <Input
-                  type="number"
-                  value={cashReceived}
-                  onChange={(e) => setCashReceived(e.target.value)}
-                  placeholder="0"
-                  className="text-3xl h-16 text-center mt-2 font-bold"
-                  autoFocus
-                />
+          {!selectedPaymentMethod ? (
+            // Step 1: Select payment method
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-muted-foreground">Выберите способ оплаты</p>
+              <div className="grid grid-cols-2 gap-3">
+                {paymentMethods.map((method) => {
+                  const IconMap: Record<string, typeof Banknote> = {
+                    Banknote,
+                    CreditCard,
+                    Wallet,
+                    Smartphone,
+                    QrCode,
+                  };
+                  const Icon = IconMap[method.icon || 'Banknote'] || Banknote;
+                  
+                  return (
+                    <Button
+                      key={method.id}
+                      variant="outline"
+                      className="h-20 flex-col gap-2"
+                      onClick={() => setSelectedPaymentMethod(method)}
+                    >
+                      <Icon className="h-6 w-6" />
+                      <span className="font-medium">{method.name}</span>
+                    </Button>
+                  );
+                })}
               </div>
+            </div>
+          ) : isCashPayment ? (
+            // Step 2a: Cash payment - enter amount with keypad
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPaymentMethod(null)}>
+                  ← Назад
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Banknote className="h-5 w-5 text-primary" />
+                  <span className="font-medium">{selectedPaymentMethod.name}</span>
+                </div>
+              </div>
+
+              <div className="text-center p-4 bg-muted/50 rounded-xl">
+                <p className="text-sm text-muted-foreground mb-1">Получено</p>
+                <p className="text-4xl font-bold">
+                  {cashReceived ? `${Number(cashReceived).toLocaleString()} ֏` : '0 ֏'}
+                </p>
+              </div>
+
               {parseFloat(cashReceived) >= total && (
-                <div className="p-6 bg-green-500/10 rounded-xl text-center border border-green-500/30">
+                <div className="p-4 bg-green-500/10 rounded-xl text-center border border-green-500/30">
                   <p className="text-sm text-muted-foreground">Сдача</p>
-                  <p className="text-4xl font-bold text-green-600">{change.toLocaleString()} ֏</p>
+                  <p className="text-3xl font-bold text-green-600">{change.toLocaleString()} ֏</p>
                 </div>
               )}
-              {/* Quick amounts */}
-              <div className="grid grid-cols-4 gap-2">
-                {[1000, 2000, 5000, 10000].map(amount => (
-                  <Button 
-                    key={amount} 
-                    variant="outline"
-                    className="h-12 font-bold"
-                    onClick={() => setCashReceived(amount.toString())}
-                  >
-                    {amount.toLocaleString()}
-                  </Button>
-                ))}
-              </div>
-            </TabsContent>
 
-            <TabsContent value="card" className="mt-4">
+              <NumericKeypad
+                value={cashReceived}
+                onChange={setCashReceived}
+                quickAmounts={[1000, 2000, 5000, 10000]}
+              />
+            </div>
+          ) : (
+            // Step 2b: Other payment methods
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedPaymentMethod(null)}>
+                  ← Назад
+                </Button>
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5 text-primary" />
+                  <span className="font-medium">{selectedPaymentMethod.name}</span>
+                </div>
+              </div>
+
               <div className="p-10 text-center">
                 <div className="w-20 h-20 rounded-2xl bg-primary/10 mx-auto mb-4 flex items-center justify-center">
                   <CreditCard className="h-10 w-10 text-primary" />
                 </div>
-                <p className="text-xl font-medium">Приложите карту к терминалу</p>
+                <p className="text-xl font-medium">
+                  {selectedPaymentMethod.code === 'card' 
+                    ? 'Приложите карту к терминалу' 
+                    : `Оплата: ${selectedPaymentMethod.name}`}
+                </p>
                 <p className="text-muted-foreground mt-2">Сумма: {total.toLocaleString()} ֏</p>
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          )}
 
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setPaymentDialogOpen(false)} className="flex-1">
               Отмена
             </Button>
-            <Button 
-              onClick={handlePayment} 
-              disabled={processing || (paymentMethod === 'cash' && (!cashReceived || parseFloat(cashReceived) < total))}
-              className="flex-1 gap-2"
-            >
-              {processing ? 'Обработка...' : 'Подтвердить'}
-              <Check className="h-4 w-4" />
-            </Button>
+            {selectedPaymentMethod && (
+              <Button 
+                onClick={handlePayment} 
+                disabled={processing || (isCashPayment && (!cashReceived || parseFloat(cashReceived) < total))}
+                className="flex-1 gap-2"
+              >
+                {processing ? 'Обработка...' : 'Подтвердить'}
+                <Check className="h-4 w-4" />
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -777,13 +820,13 @@ export default function CashierPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Оплата:</span>
-                  <span>{lastOrder.payment_method === 'cash' ? 'Наличные' : 'Карта'}</span>
+                  <span>{lastOrder.payment_method_name || (lastOrder.payment_method === 'cash' ? 'Наличные' : 'Карта')}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t">
                   <span>Итого:</span>
                   <span className="text-primary">{lastOrder.total.toLocaleString()} ֏</span>
                 </div>
-                {lastOrder.payment_method === 'cash' && lastOrder.change !== undefined && (
+                {lastOrder.cash_received && lastOrder.change !== undefined && (
                   <div className="flex justify-between text-green-600 font-medium">
                     <span>Сдача:</span>
                     <span>{lastOrder.change.toLocaleString()} ֏</span>
@@ -811,6 +854,18 @@ export default function CashierPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Close Shift Dialog */}
+      {session && (
+        <CloseShiftDialog
+          open={closeShiftDialogOpen}
+          onOpenChange={setCloseShiftDialogOpen}
+          locationId={session.location_id}
+          userId={session.id}
+          userName={session.full_name}
+          onConfirm={handleLogout}
+        />
+      )}
     </div>
   );
 }

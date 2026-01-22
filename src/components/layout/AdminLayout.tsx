@@ -19,6 +19,7 @@ import {
   Search,
   X,
   Soup,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -74,12 +75,13 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    label: 'Сотрудники',
-    icon: Users,
+    label: 'Настройки',
+    icon: Settings,
     roles: ['admin'],
     items: [
       { path: '/admin/staff', icon: Users, label: 'Персонал', roles: ['admin'] },
       { path: '/admin/locations', icon: MapPin, label: 'Точки', roles: ['admin'] },
+      { path: '/admin/payment-methods', icon: CreditCard, label: 'Способы оплаты', roles: ['admin'] },
     ],
   },
 ];
@@ -261,18 +263,6 @@ export default function AdminLayout() {
               </Collapsible>
             ))}
 
-            {/* Settings - only for admin */}
-            {isAdmin && sidebarOpen && (
-              <Button
-                variant={location.pathname === '/admin/settings' ? 'secondary' : 'ghost'}
-                size="sm"
-                className="w-full justify-start gap-3 h-9 mt-4"
-                onClick={() => navigate('/admin/settings')}
-              >
-                <Settings className="h-4 w-4 shrink-0" />
-                <span className="text-sm">Настройки</span>
-              </Button>
-            )}
           </nav>
         </ScrollArea>
 
