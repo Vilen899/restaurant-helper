@@ -118,11 +118,37 @@ export default function CashierPage() {
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
   
-  // Auto-lock timer (5 minutes by default)
-  const AUTO_LOCK_MINUTES = 5;
+  // Auto-lock settings from admin
+  const [autoLockSettings, setAutoLockSettings] = useState({
+    autoLockEnabled: true,
+    autoLockMinutes: 5,
+  });
+  
+  // Load auto-lock settings
+  useEffect(() => {
+    const saved = localStorage.getItem('cashier_settings');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setAutoLockSettings(prev => ({ ...prev, ...parsed }));
+      } catch (e) {
+        console.error('Error loading cashier settings:', e);
+      }
+    }
+    
+    // Listen for settings updates
+    const channel = new BroadcastChannel('cashier_settings');
+    channel.onmessage = (event) => {
+      if (event.data.type === 'settings_update') {
+        setAutoLockSettings(prev => ({ ...prev, ...event.data.data }));
+      }
+    };
+    return () => channel.close();
+  }, []);
+  
   useAutoLock({
-    timeoutMinutes: AUTO_LOCK_MINUTES,
-    enabled: !!session && !isLocked,
+    timeoutMinutes: autoLockSettings.autoLockMinutes,
+    enabled: autoLockSettings.autoLockEnabled && !!session && !isLocked,
     onLock: () => setIsLocked(true),
   });
   
@@ -142,7 +168,8 @@ export default function CashierPage() {
       channel.postMessage({
         type: 'cart_update',
         data: {
-          items: items.map(ci => ({
+          items: items.map((ci, idx) => ({
+            id: ci.menuItem.id,
             name: ci.menuItem.name,
             quantity: ci.quantity,
             price: Number(ci.menuItem.price),

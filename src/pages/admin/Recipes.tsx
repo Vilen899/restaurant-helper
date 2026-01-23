@@ -82,7 +82,7 @@ export default function RecipesPage() {
       });
 
       setMenuItems(items || []);
-      setIngredients(ings || []);
+      setIngredients((ings || []) as (Ingredient & { unit?: Unit })[]);
       setUnits(unitsData || []);
       setSemiFinished(semiWithCost);
     } catch (error) {
