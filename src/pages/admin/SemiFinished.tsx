@@ -46,7 +46,13 @@ export default function SemiFinishedPage() {
     is_active: true,
   });
 
-  // Recipe dialog
+  // Recipe in dialog
+  const [dialogRecipeIngredients, setDialogRecipeIngredients] = useState<SemiFinishedIngredientWithDetails[]>([]);
+  const [dialogNewIngredient, setDialogNewIngredient] = useState({ ingredient_id: '', quantity: '' });
+  const [dialogNewSemiFinished, setDialogNewSemiFinished] = useState({ semi_finished_id: '', quantity: '' });
+  const [dialogRecipeTab, setDialogRecipeTab] = useState<'ingredients' | 'semifinished'>('ingredients');
+
+  // Separate Recipe dialog (for viewing from table)
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
   const [selectedSemiFinished, setSelectedSemiFinished] = useState<SemiFinishedWithUnit | null>(null);
   const [recipeIngredients, setRecipeIngredients] = useState<SemiFinishedIngredientWithDetails[]>([]);
@@ -85,10 +91,14 @@ export default function SemiFinishedPage() {
       output_quantity: '1',
       is_active: true,
     });
+    setDialogRecipeIngredients([]);
+    setDialogNewIngredient({ ingredient_id: '', quantity: '' });
+    setDialogNewSemiFinished({ semi_finished_id: '', quantity: '' });
+    setDialogRecipeTab('ingredients');
     setDialogOpen(true);
   };
 
-  const openEditDialog = (item: SemiFinished) => {
+  const openEditDialog = async (item: SemiFinished) => {
     setEditingId(item.id);
     setFormData({
       name: item.name,
@@ -96,6 +106,21 @@ export default function SemiFinishedPage() {
       output_quantity: String(item.output_quantity),
       is_active: item.is_active,
     });
+    
+    // Load existing recipe
+    const { data } = await supabase
+      .from('semi_finished_ingredients')
+      .select(`
+        *,
+        ingredient:ingredients(*, unit:units(*)),
+        semi_finished_component:semi_finished!semi_finished_ingredients_semi_finished_component_id_fkey(*, unit:units(*))
+      `)
+      .eq('semi_finished_id', item.id);
+    
+    setDialogRecipeIngredients((data as unknown as SemiFinishedIngredientWithDetails[]) || []);
+    setDialogNewIngredient({ ingredient_id: '', quantity: '' });
+    setDialogNewSemiFinished({ semi_finished_id: '', quantity: '' });
+    setDialogRecipeTab('ingredients');
     setDialogOpen(true);
   };
 
@@ -113,19 +138,158 @@ export default function SemiFinishedPage() {
         is_active: formData.is_active,
       };
 
+      let semiFinishedId = editingId;
+
       if (editingId) {
         await supabase.from('semi_finished').update(data).eq('id', editingId);
-        toast.success('Заготовка обновлена');
       } else {
-        await supabase.from('semi_finished').insert(data);
-        toast.success('Заготовка создана');
+        const { data: newSf, error } = await supabase.from('semi_finished').insert(data).select().single();
+        if (error) throw error;
+        semiFinishedId = newSf.id;
       }
 
+      // Save recipe ingredients (for new items, we need to save after getting ID)
+      if (semiFinishedId && dialogRecipeIngredients.length > 0 && !editingId) {
+        // Insert all pending ingredients for new semi-finished
+        for (const ri of dialogRecipeIngredients) {
+          await supabase.from('semi_finished_ingredients').insert({
+            semi_finished_id: semiFinishedId,
+            ingredient_id: ri.ingredient_id || null,
+            semi_finished_component_id: ri.semi_finished_component_id || null,
+            quantity: ri.quantity,
+          });
+        }
+      }
+
+      toast.success(editingId ? 'Заготовка обновлена' : 'Заготовка создана');
       setDialogOpen(false);
       fetchData();
     } catch (error) {
       console.error('Error:', error);
       toast.error('Ошибка сохранения');
+    }
+  };
+
+  // Add ingredient in dialog (for edit mode - save immediately, for create - add to local state)
+  const addDialogIngredient = async () => {
+    if (!dialogNewIngredient.ingredient_id || !dialogNewIngredient.quantity) {
+      toast.error('Выберите ингредиент и укажите количество');
+      return;
+    }
+
+    if (editingId) {
+      // Save immediately for existing semi-finished
+      try {
+        await supabase.from('semi_finished_ingredients').insert({
+          semi_finished_id: editingId,
+          ingredient_id: dialogNewIngredient.ingredient_id,
+          quantity: parseFloat(dialogNewIngredient.quantity),
+        });
+        
+        // Reload recipe
+        const { data } = await supabase
+          .from('semi_finished_ingredients')
+          .select(`
+            *,
+            ingredient:ingredients(*, unit:units(*)),
+            semi_finished_component:semi_finished!semi_finished_ingredients_semi_finished_component_id_fkey(*, unit:units(*))
+          `)
+          .eq('semi_finished_id', editingId);
+        
+        setDialogRecipeIngredients((data as unknown as SemiFinishedIngredientWithDetails[]) || []);
+        toast.success('Ингредиент добавлен');
+      } catch (error) {
+        console.error('Error:', error);
+        toast.error('Ошибка добавления');
+      }
+    } else {
+      // Add to local state for new semi-finished
+      const ing = ingredients.find(i => i.id === dialogNewIngredient.ingredient_id);
+      const newItem: SemiFinishedIngredientWithDetails = {
+        id: `temp-${Date.now()}`,
+        semi_finished_id: '',
+        ingredient_id: dialogNewIngredient.ingredient_id,
+        semi_finished_component_id: null,
+        quantity: parseFloat(dialogNewIngredient.quantity),
+        created_at: new Date().toISOString(),
+        ingredient: ing,
+      };
+      setDialogRecipeIngredients(prev => [...prev, newItem]);
+    }
+    
+    setDialogNewIngredient({ ingredient_id: '', quantity: '' });
+  };
+
+  // Add semi-finished component in dialog
+  const addDialogSemiFinished = async () => {
+    if (!dialogNewSemiFinished.semi_finished_id || !dialogNewSemiFinished.quantity) {
+      toast.error('Выберите заготовку и укажите количество');
+      return;
+    }
+
+    if (editingId && dialogNewSemiFinished.semi_finished_id === editingId) {
+      toast.error('Нельзя добавить заготовку саму в себя');
+      return;
+    }
+
+    if (editingId) {
+      // Save immediately for existing semi-finished
+      try {
+        await supabase.from('semi_finished_ingredients').insert({
+          semi_finished_id: editingId,
+          semi_finished_component_id: dialogNewSemiFinished.semi_finished_id,
+          quantity: parseFloat(dialogNewSemiFinished.quantity),
+        });
+        
+        // Reload recipe
+        const { data } = await supabase
+          .from('semi_finished_ingredients')
+          .select(`
+            *,
+            ingredient:ingredients(*, unit:units(*)),
+            semi_finished_component:semi_finished!semi_finished_ingredients_semi_finished_component_id_fkey(*, unit:units(*))
+          `)
+          .eq('semi_finished_id', editingId);
+        
+        setDialogRecipeIngredients((data as unknown as SemiFinishedIngredientWithDetails[]) || []);
+        toast.success('Заготовка добавлена');
+      } catch (error) {
+        console.error('Error:', error);
+        toast.error('Ошибка добавления');
+      }
+    } else {
+      // Add to local state for new semi-finished
+      const sf = semiFinished.find(s => s.id === dialogNewSemiFinished.semi_finished_id);
+      const newItem: SemiFinishedIngredientWithDetails = {
+        id: `temp-${Date.now()}`,
+        semi_finished_id: '',
+        ingredient_id: null,
+        semi_finished_component_id: dialogNewSemiFinished.semi_finished_id,
+        quantity: parseFloat(dialogNewSemiFinished.quantity),
+        created_at: new Date().toISOString(),
+        semi_finished_component: sf,
+      };
+      setDialogRecipeIngredients(prev => [...prev, newItem]);
+    }
+    
+    setDialogNewSemiFinished({ semi_finished_id: '', quantity: '' });
+  };
+
+  // Remove ingredient from dialog
+  const removeDialogIngredient = async (id: string) => {
+    if (id.startsWith('temp-')) {
+      // Remove from local state
+      setDialogRecipeIngredients(prev => prev.filter(ri => ri.id !== id));
+    } else {
+      // Delete from DB
+      try {
+        await supabase.from('semi_finished_ingredients').delete().eq('id', id);
+        setDialogRecipeIngredients(prev => prev.filter(ri => ri.id !== id));
+        toast.success('Удалено');
+      } catch (error) {
+        console.error('Error:', error);
+        toast.error('Ошибка удаления');
+      }
     }
   };
 
@@ -357,13 +521,14 @@ export default function SemiFinishedPage() {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? 'Редактировать заготовку' : 'Новая заготовка'}</DialogTitle>
-            <DialogDescription>Укажите название и выход готового продукта</DialogDescription>
+            <DialogDescription>Укажите название, выход и состав</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Basic info */}
             <div className="space-y-2">
               <Label>Название *</Label>
               <Input
@@ -407,6 +572,144 @@ export default function SemiFinishedPage() {
                 onCheckedChange={(v) => setFormData({ ...formData, is_active: v })}
               />
               <Label>Активна</Label>
+            </div>
+
+            {/* Recipe section */}
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3 flex items-center gap-2">
+                <ChefHat className="h-4 w-4" />
+                Рецепт (состав)
+              </h4>
+
+              {/* Current ingredients in dialog */}
+              {dialogRecipeIngredients.length > 0 && (
+                <div className="mb-4 border rounded-lg overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Компонент</TableHead>
+                        <TableHead className="text-right">Количество</TableHead>
+                        <TableHead className="w-10"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {dialogRecipeIngredients.map(ri => (
+                        <TableRow key={ri.id}>
+                          <TableCell>{getItemName(ri)}</TableCell>
+                          <TableCell className="text-right">
+                            {Number(ri.quantity)} {getItemUnit(ri)}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeDialogIngredient(ri.id)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Add component tabs */}
+              <Tabs value={dialogRecipeTab} onValueChange={(v) => setDialogRecipeTab(v as 'ingredients' | 'semifinished')}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="ingredients">Ингредиенты</TabsTrigger>
+                  <TabsTrigger value="semifinished">Заготовки</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="ingredients" className="mt-3">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <Label className="text-xs">Ингредиент</Label>
+                      <Select
+                        value={dialogNewIngredient.ingredient_id}
+                        onValueChange={(v) => setDialogNewIngredient({ ...dialogNewIngredient, ingredient_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ingredients
+                            .filter(i => !dialogRecipeIngredients.some(ri => ri.ingredient_id === i.id))
+                            .map(i => (
+                              <SelectItem key={i.id} value={i.id}>
+                                {i.name} ({i.unit?.abbreviation})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <CreateIngredientDialog
+                      units={units}
+                      onCreated={(newIng) => {
+                        fetchData();
+                        setDialogNewIngredient({ ...dialogNewIngredient, ingredient_id: newIng.id });
+                      }}
+                    />
+                    <div className="w-24">
+                      <Label className="text-xs">Кол-во</Label>
+                      <Input
+                        type="number"
+                        value={dialogNewIngredient.quantity}
+                        onChange={(e) => setDialogNewIngredient({ ...dialogNewIngredient, quantity: e.target.value })}
+                        placeholder="0"
+                      />
+                    </div>
+                    <Button size="icon" onClick={addDialogIngredient}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="semifinished" className="mt-3">
+                  <div className="flex gap-2 items-end">
+                    <div className="flex-1">
+                      <Label className="text-xs">Заготовка</Label>
+                      <Select
+                        value={dialogNewSemiFinished.semi_finished_id}
+                        onValueChange={(v) => setDialogNewSemiFinished({ ...dialogNewSemiFinished, semi_finished_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {semiFinished
+                            .filter(sf => 
+                              sf.id !== editingId && 
+                              sf.is_active &&
+                              !dialogRecipeIngredients.some(ri => ri.semi_finished_component_id === sf.id)
+                            )
+                            .map(sf => (
+                              <SelectItem key={sf.id} value={sf.id}>
+                                {sf.name} ({sf.unit?.abbreviation})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="w-24">
+                      <Label className="text-xs">Кол-во</Label>
+                      <Input
+                        type="number"
+                        value={dialogNewSemiFinished.quantity}
+                        onChange={(e) => setDialogNewSemiFinished({ ...dialogNewSemiFinished, quantity: e.target.value })}
+                        placeholder="0"
+                      />
+                    </div>
+                    <Button size="icon" onClick={addDialogSemiFinished}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Количество в единицах измерения выбранной заготовки.
+                  </p>
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
 
