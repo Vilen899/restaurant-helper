@@ -1,52 +1,113 @@
 import React, { useState } from "react";
 
-// UI
-import { Button } from "@/components/ui/button";
+// --------------------
+// ВСТРОЕННЫЙ DIALOG
+// --------------------
+type CloseShiftDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  locationId: string;
+  userId: string;
+  userName: string;
+  onConfirm: () => void;
+};
 
-// Диалоги кассира
-import { CloseShiftDialog } from "@/components/cashier/CloseShiftDialog";
+const CloseShiftDialog: React.FC<CloseShiftDialogProps> = ({ open, onOpenChange, userName, onConfirm }) => {
+  if (!open) return null;
 
-// ----------------------------
-// Типы (пример)
-// ----------------------------
-interface Session {
-  id: string;
-  full_name: string;
-  location_id: string;
-}
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.5)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 9999,
+      }}
+    >
+      <div
+        style={{
+          background: "#fff",
+          padding: 24,
+          borderRadius: 12,
+          minWidth: 300,
+        }}
+      >
+        <h2 style={{ fontSize: 18, fontWeight: 600 }}>Закрыть смену</h2>
 
-// ----------------------------
-// Страница кассира
-// ----------------------------
+        <p style={{ marginTop: 12 }}>
+          Кассир: <b>{userName}</b>
+        </p>
+
+        <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
+          <button
+            onClick={() => onOpenChange(false)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #ccc",
+            }}
+          >
+            Отмена
+          </button>
+
+          <button
+            onClick={() => {
+              onConfirm();
+              onOpenChange(false);
+            }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 8,
+              background: "#e11d48",
+              color: "#fff",
+              border: "none",
+            }}
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --------------------
+// CASHIER PAGE
+// --------------------
 const CashierPage: React.FC = () => {
-  // состояние сессии (пример)
-  const [session] = useState<Session>({
+  const [closeShiftDialogOpen, setCloseShiftDialogOpen] = useState(false);
+
+  const session = {
     id: "1",
     full_name: "Cashier User",
     location_id: "LOC-001",
-  });
+  };
 
-  // состояние диалога закрытия смены
-  const [closeShiftDialogOpen, setCloseShiftDialogOpen] = useState(false);
-
-  // обработчик выхода / закрытия смены
-  const handleLogout = async () => {
+  const handleLogout = () => {
     console.log("Смена закрыта");
-    // тут твоя логика:
-    // - API закрытия смены
-    // - очистка стора
-    // - редирект
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Касса — {session.full_name}</h1>
+    <div style={{ padding: 24 }}>
+      <h1>Касса</h1>
 
-      <Button variant="destructive" onClick={() => setCloseShiftDialogOpen(true)}>
+      <button
+        onClick={() => setCloseShiftDialogOpen(true)}
+        style={{
+          marginTop: 20,
+          padding: "10px 16px",
+          borderRadius: 10,
+          background: "#e11d48",
+          color: "#fff",
+          border: "none",
+        }}
+      >
         Закрыть смену
-      </Button>
+      </button>
 
-      {/* Диалог закрытия смены */}
       <CloseShiftDialog
         open={closeShiftDialogOpen}
         onOpenChange={setCloseShiftDialogOpen}
