@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
 
 interface LockScreenProps {
   onUnlock: () => void;
@@ -16,17 +15,15 @@ export function LockScreen({ onUnlock, userName, userId, locationId }: LockScree
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState('');
 
-  const handleUnlock = async () => {
-    if (pin.length !== 4) {
-      return;
-    }
+  const verifyPin = async (pinCode: string) => {
+    if (pinCode.length !== 4) return;
 
     setVerifying(true);
     setError('');
     
     try {
       const { data, error: apiError } = await supabase.functions.invoke('verify-pin', {
-        body: { pin, location_id: locationId },
+        body: { pin: pinCode, location_id: locationId },
       });
 
       if (apiError || data?.error) {
@@ -53,18 +50,20 @@ export function LockScreen({ onUnlock, userName, userId, locationId }: LockScree
   };
 
   const handleKeyPress = (digit: string) => {
-    if (pin.length < 4) {
-      setError('');
-      const newPin = pin + digit;
-      setPin(newPin);
-      if (newPin.length === 4) {
-        setTimeout(() => handleUnlock(), 100);
+    setError('');
+    setPin((prev) => {
+      if (prev.length >= 4) return prev;
+      const next = prev + digit;
+      if (next.length === 4) {
+        // запускаем проверку именно для введённого PIN
+        void verifyPin(next);
       }
-    }
+      return next;
+    });
   };
 
   const handleBackspace = () => {
-    setPin(pin.slice(0, -1));
+    setPin((prev) => prev.slice(0, -1));
     setError('');
   };
 
@@ -118,6 +117,14 @@ export function LockScreen({ onUnlock, userName, userId, locationId }: LockScree
           </Button>
         ))}
       </div>
+
+      <Button
+        className="mt-4 w-64"
+        onClick={() => void verifyPin(pin)}
+        disabled={verifying || pin.length !== 4}
+      >
+        Разблокировать
+      </Button>
 
       {verifying && (
         <p className="text-muted-foreground mt-4">Проверка...</p>
