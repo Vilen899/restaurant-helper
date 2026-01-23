@@ -44,6 +44,7 @@ import { useMenuCache } from "@/hooks/useMenuCache";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
 import { playCartAddSound } from "@/lib/sounds";
+import { deductIngredient, deductSemiFinishedIngredients } from "@/hooks/useInventoryDeduction";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -449,30 +450,25 @@ export default function CashierPage() {
         if (!recipe) continue;
 
         for (const recipeItem of recipe) {
+          // Direct ingredient
           if (recipeItem.ingredient_id) {
-            const { data: currentInv } = await supabase
-              .from("inventory")
-              .select("id, quantity")
-              .eq("location_id", session.location_id)
-              .eq("ingredient_id", recipeItem.ingredient_id)
-              .maybeSingle();
+            await deductIngredient(
+              session.location_id,
+              recipeItem.ingredient_id,
+              Number(recipeItem.quantity) * ci.quantity,
+              order.id
+            );
+          }
 
-            if (currentInv) {
-              const usedQty = Number(recipeItem.quantity) * ci.quantity;
-              // Allow negative inventory (sales into minus)
-              await supabase
-                .from("inventory")
-                .update({ quantity: Number(currentInv.quantity) - usedQty })
-                .eq("id", currentInv.id);
-
-              await supabase.from("inventory_movements").insert({
-                location_id: session.location_id,
-                ingredient_id: recipeItem.ingredient_id,
-                movement_type: "sale",
-                quantity: -usedQty,
-                reference_id: order.id,
-              });
-            }
+          // Semi-finished product - unpack and deduct proportionally
+          if (recipeItem.semi_finished_id) {
+            await deductSemiFinishedIngredients(
+              session.location_id,
+              recipeItem.semi_finished_id,
+              Number(recipeItem.quantity),
+              ci.quantity,
+              order.id
+            );
           }
         }
       }

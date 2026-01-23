@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
+import { returnIngredient, returnSemiFinishedIngredients } from "@/hooks/useInventoryDeduction";
 
 interface Order {
   id: string;
@@ -186,77 +187,27 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
           if (!recipe) continue;
 
           for (const recipeItem of recipe) {
+            // Direct ingredient
             if (recipeItem.ingredient_id) {
-              const { data: currentInv } = await supabase
-                .from("inventory")
-                .select("id, quantity")
-                .eq("location_id", locationId)
-                .eq("ingredient_id", recipeItem.ingredient_id)
-                .maybeSingle();
-
-              if (currentInv) {
-                const returnQty = Number(recipeItem.quantity) * item.quantity;
-                await supabase
-                  .from("inventory")
-                  .update({ quantity: Number(currentInv.quantity) + returnQty })
-                  .eq("id", currentInv.id);
-
-                await supabase.from("inventory_movements").insert({
-                  location_id: locationId,
-                  ingredient_id: recipeItem.ingredient_id,
-                  movement_type: "adjustment",
-                  quantity: returnQty,
-                  notes: `Возврат заказа #${selectedOrder.order_number}`,
-                  reference_id: selectedOrder.id,
-                });
-              }
+              await returnIngredient(
+                locationId,
+                recipeItem.ingredient_id,
+                Number(recipeItem.quantity) * item.quantity,
+                selectedOrder.id,
+                selectedOrder.order_number
+              );
             }
 
+            // Semi-finished product - unpack and return proportionally
             if (recipeItem.semi_finished_id) {
-              const { data: semiFinished } = await supabase
-                .from("semi_finished")
-                .select("output_quantity")
-                .eq("id", recipeItem.semi_finished_id)
-                .maybeSingle();
-
-              if (!semiFinished?.output_quantity) continue;
-
-              const { data: semiIngredients } = await supabase
-                .from("semi_finished_ingredients")
-                .select("ingredient_id, quantity")
-                .eq("semi_finished_id", recipeItem.semi_finished_id);
-
-              if (!semiIngredients) continue;
-
-              const ratio = Number(recipeItem.quantity) / Number(semiFinished.output_quantity);
-
-              for (const semiIng of semiIngredients) {
-                if (!semiIng.ingredient_id) continue;
-
-                const { data: currentInv } = await supabase
-                  .from("inventory")
-                  .select("id, quantity")
-                  .eq("location_id", locationId)
-                  .eq("ingredient_id", semiIng.ingredient_id)
-                  .maybeSingle();
-
-                if (currentInv) {
-                  const returnQty = Number(semiIng.quantity) * ratio * item.quantity;
-                  await supabase
-                    .from("inventory")
-                    .update({ quantity: Number(currentInv.quantity) + returnQty })
-                    .eq("id", currentInv.id);
-
-                  await supabase.from("inventory_movements").insert({
-                    location_id: locationId,
-                    ingredient_id: semiIng.ingredient_id,
-                    movement_type: "adjustment",
-                    quantity: returnQty,
-                    notes: `Возврат заказа #${selectedOrder.order_number}`,
-                    reference_id: selectedOrder.id,
-                  });
-                }
-              }
+              await returnSemiFinishedIngredients(
+                locationId,
+                recipeItem.semi_finished_id,
+                Number(recipeItem.quantity),
+                item.quantity,
+                selectedOrder.id,
+                selectedOrder.order_number
+              );
             }
           }
         }

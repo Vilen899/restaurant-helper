@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
@@ -25,6 +26,7 @@ interface SemiFinishedWithUnit extends SemiFinished {
 
 interface SemiFinishedIngredientWithDetails extends SemiFinishedIngredient {
   ingredient?: Ingredient & { unit?: Unit };
+  semi_finished_component?: SemiFinishedWithUnit;
 }
 
 export default function SemiFinishedPage() {
@@ -49,6 +51,8 @@ export default function SemiFinishedPage() {
   const [selectedSemiFinished, setSelectedSemiFinished] = useState<SemiFinishedWithUnit | null>(null);
   const [recipeIngredients, setRecipeIngredients] = useState<SemiFinishedIngredientWithDetails[]>([]);
   const [newIngredient, setNewIngredient] = useState({ ingredient_id: '', quantity: '' });
+  const [newSemiFinished, setNewSemiFinished] = useState({ semi_finished_id: '', quantity: '' });
+  const [recipeTab, setRecipeTab] = useState<'ingredients' | 'semifinished'>('ingredients');
 
   useEffect(() => {
     fetchData();
@@ -142,13 +146,19 @@ export default function SemiFinishedPage() {
   const openRecipeDialog = async (item: SemiFinishedWithUnit) => {
     setSelectedSemiFinished(item);
     setNewIngredient({ ingredient_id: '', quantity: '' });
+    setNewSemiFinished({ semi_finished_id: '', quantity: '' });
+    setRecipeTab('ingredients');
 
     const { data } = await supabase
       .from('semi_finished_ingredients')
-      .select('*, ingredient:ingredients(*, unit:units(*))')
+      .select(`
+        *,
+        ingredient:ingredients(*, unit:units(*)),
+        semi_finished_component:semi_finished!semi_finished_ingredients_semi_finished_component_id_fkey(*, unit:units(*))
+      `)
       .eq('semi_finished_id', item.id);
 
-    setRecipeIngredients((data as SemiFinishedIngredientWithDetails[]) || []);
+    setRecipeIngredients((data as unknown as SemiFinishedIngredientWithDetails[]) || []);
     setRecipeDialogOpen(true);
   };
 
@@ -174,6 +184,34 @@ export default function SemiFinishedPage() {
     }
   };
 
+  const addSemiFinishedToRecipe = async () => {
+    if (!selectedSemiFinished || !newSemiFinished.semi_finished_id || !newSemiFinished.quantity) {
+      toast.error('Выберите заготовку и укажите количество');
+      return;
+    }
+
+    // Prevent adding itself
+    if (newSemiFinished.semi_finished_id === selectedSemiFinished.id) {
+      toast.error('Нельзя добавить заготовку саму в себя');
+      return;
+    }
+
+    try {
+      await supabase.from('semi_finished_ingredients').insert({
+        semi_finished_id: selectedSemiFinished.id,
+        semi_finished_component_id: newSemiFinished.semi_finished_id,
+        quantity: parseFloat(newSemiFinished.quantity),
+      });
+
+      toast.success('Заготовка добавлена');
+      setNewSemiFinished({ semi_finished_id: '', quantity: '' });
+      openRecipeDialog(selectedSemiFinished);
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Ошибка добавления');
+    }
+  };
+
   const removeIngredientFromRecipe = async (id: string) => {
     try {
       await supabase.from('semi_finished_ingredients').delete().eq('id', id);
@@ -189,9 +227,37 @@ export default function SemiFinishedPage() {
 
   const calculateRecipeCost = (): number => {
     return recipeIngredients.reduce((sum, ri) => {
-      const cost = ri.ingredient?.cost_per_unit || 0;
-      return sum + Number(cost) * Number(ri.quantity);
+      if (ri.ingredient) {
+        const cost = ri.ingredient?.cost_per_unit || 0;
+        return sum + Number(cost) * Number(ri.quantity);
+      }
+      if (ri.semi_finished_component) {
+        // Calculate cost of nested semi-finished based on its ingredients
+        // This is a simplified calculation - actual cost comes from DB
+        return sum; // Will be calculated via trigger
+      }
+      return sum;
     }, 0);
+  };
+
+  const getItemName = (ri: SemiFinishedIngredientWithDetails) => {
+    if (ri.ingredient) return ri.ingredient.name;
+    if (ri.semi_finished_component) return `🍳 ${ri.semi_finished_component.name}`;
+    return '—';
+  };
+
+  const getItemUnit = (ri: SemiFinishedIngredientWithDetails) => {
+    if (ri.ingredient) return ri.ingredient.unit?.abbreviation || '';
+    if (ri.semi_finished_component) return ri.semi_finished_component.unit?.abbreviation || '';
+    return '';
+  };
+
+  const getItemCost = (ri: SemiFinishedIngredientWithDetails): number => {
+    if (ri.ingredient) {
+      return Number(ri.quantity) * Number(ri.ingredient.cost_per_unit || 0);
+    }
+    // For semi-finished, we'd need to calculate based on its ingredients
+    return 0;
   };
 
   const filteredItems = semiFinished.filter(item =>
@@ -363,12 +429,12 @@ export default function SemiFinishedPage() {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Current ingredients */}
+            {/* Current recipe items */}
             {recipeIngredients.length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Ингредиент</TableHead>
+                    <TableHead>Компонент</TableHead>
                     <TableHead className="text-right">Количество</TableHead>
                     <TableHead className="text-right">Стоимость</TableHead>
                     <TableHead></TableHead>
@@ -377,12 +443,12 @@ export default function SemiFinishedPage() {
                 <TableBody>
                   {recipeIngredients.map(ri => (
                     <TableRow key={ri.id}>
-                      <TableCell>{ri.ingredient?.name}</TableCell>
+                      <TableCell>{getItemName(ri)}</TableCell>
                       <TableCell className="text-right">
-                        {Number(ri.quantity)} {ri.ingredient?.unit?.abbreviation}
+                        {Number(ri.quantity)} {getItemUnit(ri)}
                       </TableCell>
                       <TableCell className="text-right">
-                        {(Number(ri.quantity) * Number(ri.ingredient?.cost_per_unit || 0)).toFixed(0)} ֏
+                        {getItemCost(ri).toFixed(0)} ֏
                       </TableCell>
                       <TableCell>
                         <Button
@@ -399,48 +465,101 @@ export default function SemiFinishedPage() {
               </Table>
             )}
 
-            {/* Add ingredient */}
-            <div className="flex gap-2 items-end border-t pt-4">
-              <div className="flex-1">
-                <Label className="text-xs">Ингредиент</Label>
-                <Select
-                  value={newIngredient.ingredient_id}
-                  onValueChange={(v) => setNewIngredient({ ...newIngredient, ingredient_id: v })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ingredients
-                      .filter(i => !recipeIngredients.some(ri => ri.ingredient_id === i.id))
-                      .map(i => (
-                        <SelectItem key={i.id} value={i.id}>
-                          {i.name} ({i.unit?.abbreviation})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <CreateIngredientDialog
-                units={units}
-                onCreated={(newIng) => {
-                  fetchData();
-                  setNewIngredient({ ...newIngredient, ingredient_id: newIng.id });
-                }}
-              />
-              <div className="w-28">
-                <Label className="text-xs">Количество</Label>
-                <Input
-                  type="number"
-                  value={newIngredient.quantity}
-                  onChange={(e) => setNewIngredient({ ...newIngredient, quantity: e.target.value })}
-                  placeholder="0"
-                />
-              </div>
-              <Button onClick={addIngredientToRecipe}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            {/* Add component tabs */}
+            <Tabs value={recipeTab} onValueChange={(v) => setRecipeTab(v as 'ingredients' | 'semifinished')} className="border-t pt-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="ingredients">Ингредиенты</TabsTrigger>
+                <TabsTrigger value="semifinished">Заготовки</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="ingredients" className="mt-4">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <Label className="text-xs">Ингредиент</Label>
+                    <Select
+                      value={newIngredient.ingredient_id}
+                      onValueChange={(v) => setNewIngredient({ ...newIngredient, ingredient_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ingredients
+                          .filter(i => !recipeIngredients.some(ri => ri.ingredient_id === i.id))
+                          .map(i => (
+                            <SelectItem key={i.id} value={i.id}>
+                              {i.name} ({i.unit?.abbreviation})
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <CreateIngredientDialog
+                    units={units}
+                    onCreated={(newIng) => {
+                      fetchData();
+                      setNewIngredient({ ...newIngredient, ingredient_id: newIng.id });
+                    }}
+                  />
+                  <div className="w-28">
+                    <Label className="text-xs">Количество</Label>
+                    <Input
+                      type="number"
+                      value={newIngredient.quantity}
+                      onChange={(e) => setNewIngredient({ ...newIngredient, quantity: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                  <Button onClick={addIngredientToRecipe}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="semifinished" className="mt-4">
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <Label className="text-xs">Заготовка</Label>
+                    <Select
+                      value={newSemiFinished.semi_finished_id}
+                      onValueChange={(v) => setNewSemiFinished({ ...newSemiFinished, semi_finished_id: v })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {semiFinished
+                          .filter(sf => 
+                            sf.id !== selectedSemiFinished?.id && 
+                            sf.is_active &&
+                            !recipeIngredients.some(ri => ri.semi_finished_component_id === sf.id)
+                          )
+                          .map(sf => (
+                            <SelectItem key={sf.id} value={sf.id}>
+                              {sf.name} ({sf.unit?.abbreviation}) — выход: {Number(sf.output_quantity)}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-28">
+                    <Label className="text-xs">Количество</Label>
+                    <Input
+                      type="number"
+                      value={newSemiFinished.quantity}
+                      onChange={(e) => setNewSemiFinished({ ...newSemiFinished, quantity: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                  <Button onClick={addSemiFinishedToRecipe}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Укажите сколько единиц заготовки нужно. При списании система рассчитает пропорционально ингредиенты.
+                </p>
+              </TabsContent>
+            </Tabs>
           </div>
 
           <DialogFooter>
