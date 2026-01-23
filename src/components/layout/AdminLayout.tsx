@@ -22,6 +22,7 @@ import {
   CreditCard,
   Clock,
   Printer,
+  Monitor,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -88,6 +89,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/admin/locations', icon: MapPin, label: 'Точки', roles: ['admin'] },
       { path: '/admin/payment-methods', icon: CreditCard, label: 'Способы оплаты', roles: ['admin'] },
       { path: '/admin/discounts', icon: Package, label: 'Скидки', roles: ['admin'] },
+      { path: '/admin/customer-display', icon: Monitor, label: 'Экран покупателя', roles: ['admin'] },
       { path: '/admin/fiscal-settings', icon: Printer, label: 'Настройки ККТ', roles: ['admin'] },
     ],
   },

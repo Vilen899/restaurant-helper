@@ -161,16 +161,21 @@ export default function RecipesPage() {
       const { data, error } = await supabase
         .from('menu_item_ingredients')
         .insert(insertData)
-        .select('*, ingredient:ingredients(*, unit:units(*)), semi_finished:semi_finished(*, unit:units(*))')
+        .select('*')
         .single();
 
       if (error) throw error;
 
-      // Enrich with calculated cost
+      // Enrich with ingredient/semi-finished details from local state
       const enrichedData = { ...data } as RecipeIngredient;
-      if (data.semi_finished) {
-        const sf = semiFinished.find(s => s.id === data.semi_finished_id);
-        enrichedData.semi_finished = { ...data.semi_finished, calculated_cost: sf?.calculated_cost };
+      if (addType === 'ingredient') {
+        const ing = ingredients.find(i => i.id === newIngredientId) as Ingredient & { unit?: Unit };
+        enrichedData.ingredient = ing;
+      } else {
+        const sf = semiFinished.find(s => s.id === newSemiFinishedId);
+        if (sf) {
+          enrichedData.semi_finished = { ...sf, calculated_cost: sf.calculated_cost };
+        }
       }
 
       setRecipeIngredients([...recipeIngredients, enrichedData]);
