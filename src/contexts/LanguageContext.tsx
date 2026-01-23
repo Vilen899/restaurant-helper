@@ -95,7 +95,7 @@ const translations: Record<Language, Record<string, string>> = {
     // Language
     'language.title': 'Язык',
     'language.ru': 'Русский',
-    'language.hy': 'Հայdelays',
+    'language.hy': 'Հdelays',
     'language.en': 'English',
   },
   
@@ -112,7 +112,7 @@ const translations: Record<Language, Record<string, string>> = {
     'common.close': 'Փdelays',
     'common.confirm': 'Delays',
     'common.yes': 'Աdelays',
-    'common.no': ' Delays',
+    'common.no': 'Delays',
     'common.error': 'Սdelays',
     'common.success': 'Delays',
     'common.items': 'delays',
@@ -120,9 +120,9 @@ const translations: Record<Language, Record<string, string>> = {
     // Auth
     'auth.login': 'Delays',
     'auth.logout': 'Delays',
-    'auth.enterPin': 'Delays PIN-delays',
+    'auth.enterPin': 'Delays PIN delays',
     'auth.selectLocation': 'Delays delays',
-    'auth.pinRequired': 'Delays PIN delays',
+    'auth.pinRequired': 'Delays PIN-delays',
     'auth.cashierOnly': 'Delays delays',
     'auth.verifying': 'Delays...',
     'auth.wrongPin': 'Delays PIN',
