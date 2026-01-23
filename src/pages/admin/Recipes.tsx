@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, ChefHat, Upload, Package } from 'lucide-react';
+import { Plus, Trash2, Search, ChefHat, Upload, Package, Pencil, X, Check } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -58,6 +58,10 @@ export default function RecipesPage() {
   const [newIngredientId, setNewIngredientId] = useState('');
   const [newSemiFinishedId, setNewSemiFinishedId] = useState('');
   const [newIngredientQty, setNewIngredientQty] = useState('');
+
+  // Edit mode for inline quantity editing
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingQty, setEditingQty] = useState('');
 
   useEffect(() => {
     fetchData();
@@ -222,6 +226,69 @@ export default function RecipesPage() {
     }
   };
 
+  const updateIngredientQuantity = async (recordId: string) => {
+    const qtyStr = String(editingQty).trim().replace(',', '.');
+    const qty = Number(qtyStr);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error('Количество должно быть больше 0');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('menu_item_ingredients')
+        .update({ quantity: qty })
+        .eq('id', recordId);
+
+      if (error) throw error;
+
+      setRecipeIngredients(prev =>
+        prev.map(ri => ri.id === recordId ? { ...ri, quantity: qty } : ri)
+      );
+      setEditingId(null);
+      setEditingQty('');
+      toast.success('Количество обновлено');
+      fetchData();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Ошибка обновления');
+    }
+  };
+
+  const clearEntireRecipe = async () => {
+    if (!selectedItem) return;
+    if (recipeIngredients.length === 0) {
+      toast.info('Рецепт уже пуст');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('menu_item_ingredients')
+        .delete()
+        .eq('menu_item_id', selectedItem.id);
+
+      if (error) throw error;
+
+      setRecipeIngredients([]);
+      toast.success('Рецепт очищен');
+      fetchData();
+    } catch (error) {
+      console.error('Error:', error);
+      toast.error('Ошибка удаления рецепта');
+    }
+  };
+
+  const startEdit = (ri: RecipeIngredient) => {
+    setEditingId(ri.id);
+    setEditingQty(String(ri.quantity));
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingQty('');
+  };
+
   const calculateRecipeCost = () => {
     return recipeIngredients.reduce((total, ri) => {
       const quantity = Number(ri.quantity);
@@ -384,7 +451,20 @@ export default function RecipesPage() {
 
           {/* Current ingredients */}
           <div className="space-y-4">
-            <h4 className="font-medium">Состав блюда</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium">Состав блюда</h4>
+              {recipeIngredients.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearEntireRecipe}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Очистить рецепт
+                </Button>
+              )}
+            </div>
             
             {recipeIngredients.length === 0 ? (
               <p className="text-muted-foreground text-center py-4">
@@ -398,7 +478,7 @@ export default function RecipesPage() {
                     <TableHead className="text-right">Кол-во</TableHead>
                     <TableHead className="text-right">Цена/ед.</TableHead>
                     <TableHead className="text-right">Сумма</TableHead>
-                    <TableHead className="w-10"></TableHead>
+                    <TableHead className="w-20"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -416,22 +496,76 @@ export default function RecipesPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        {ri.quantity} {getItemUnit(ri)}
+                        {editingId === ri.id ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <Input
+                              type="text"
+                              inputMode="decimal"
+                              value={editingQty}
+                              onChange={(e) => setEditingQty(e.target.value)}
+                              className="w-20 h-8 text-right"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') updateIngredientQuantity(ri.id);
+                                if (e.key === 'Escape') cancelEdit();
+                              }}
+                            />
+                            <span className="text-muted-foreground text-sm">{getItemUnit(ri)}</span>
+                          </div>
+                        ) : (
+                          <span className="cursor-pointer hover:underline" onClick={() => startEdit(ri)}>
+                            {ri.quantity} {getItemUnit(ri)}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         {getItemCostPerUnit(ri).toFixed(0)} ֏
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {(Number(ri.quantity) * getItemCostPerUnit(ri)).toFixed(0)} ֏
+                        {(Number(editingId === ri.id ? (Number(editingQty.replace(',', '.')) || ri.quantity) : ri.quantity) * getItemCostPerUnit(ri)).toFixed(0)} ֏
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeIngredientFromRecipe(ri.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {editingId === ri.id ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => updateIngredientQuantity(ri.id)}
+                              >
+                                <Check className="h-4 w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={cancelEdit}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => startEdit(ri)}
+                              >
+                                <Pencil className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => removeIngredientFromRecipe(ri.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
