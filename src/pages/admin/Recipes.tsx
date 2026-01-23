@@ -458,7 +458,7 @@ export default function RecipesPage() {
               </TabsList>
               
               <TabsContent value="ingredient" className="mt-4">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <Select value={newIngredientId} onValueChange={setNewIngredientId}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Выберите ингредиент" />
@@ -480,13 +480,21 @@ export default function RecipesPage() {
                       setNewIngredientId(newIng.id);
                     }}
                   />
-                  <Input
-                    type="number"
-                    placeholder="Кол-во"
-                    value={newIngredientQty}
-                    onChange={(e) => setNewIngredientQty(e.target.value)}
-                    className="w-24"
-                  />
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Кол-во"
+                      value={newIngredientQty}
+                      onChange={(e) => setNewIngredientQty(e.target.value)}
+                      className="w-28 pr-10"
+                    />
+                    {newIngredientId && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
+                        {(ingredients.find(i => i.id === newIngredientId) as any)?.unit?.abbreviation || ''}
+                      </span>
+                    )}
+                  </div>
                   <Button onClick={addIngredientToRecipe}>
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -494,7 +502,7 @@ export default function RecipesPage() {
               </TabsContent>
               
               <TabsContent value="semi_finished" className="mt-4">
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <Select value={newSemiFinishedId} onValueChange={setNewSemiFinishedId}>
                     <SelectTrigger className="flex-1">
                       <SelectValue placeholder="Выберите заготовку" />
@@ -509,13 +517,21 @@ export default function RecipesPage() {
                         ))}
                     </SelectContent>
                   </Select>
-                  <Input
-                    type="number"
-                    placeholder="Кол-во"
-                    value={newIngredientQty}
-                    onChange={(e) => setNewIngredientQty(e.target.value)}
-                    className="w-24"
-                  />
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="Кол-во"
+                      value={newIngredientQty}
+                      onChange={(e) => setNewIngredientQty(e.target.value)}
+                      className="w-28 pr-10"
+                    />
+                    {newSemiFinishedId && (
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">
+                        {semiFinished.find(s => s.id === newSemiFinishedId)?.unit?.abbreviation || ''}
+                      </span>
+                    )}
+                  </div>
                   <Button onClick={addIngredientToRecipe}>
                     <Plus className="h-4 w-4" />
                   </Button>
