@@ -7,11 +7,10 @@ import { toast } from 'sonner';
 interface LockScreenProps {
   onUnlock: () => void;
   userName: string;
-  userId: string;
   locationId: string;
 }
 
-export function LockScreen({ onUnlock, userName, userId, locationId }: LockScreenProps) {
+export function LockScreen({ onUnlock, userName, locationId }: LockScreenProps) {
   const [pin, setPin] = useState('');
   const [verifying, setVerifying] = useState(false);
 
@@ -30,8 +29,7 @@ export function LockScreen({ onUnlock, userName, userId, locationId }: LockScree
       if (error || data?.error) {
         toast.error('Неверный PIN');
         setPin('');
-      } else if (data?.success && data?.user?.id === userId) {
-        // Verify the PIN matches the same user
+      } else if (data?.success) {
         onUnlock();
       } else {
         toast.error('Неверный PIN');

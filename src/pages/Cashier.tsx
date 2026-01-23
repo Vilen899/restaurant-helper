@@ -352,7 +352,6 @@ export default function CashierPage() {
       <LockScreen
         onUnlock={() => setIsLocked(false)}
         userName={session.full_name}
-        userId={session.id}
         locationId={session.location_id}
       />
     );
