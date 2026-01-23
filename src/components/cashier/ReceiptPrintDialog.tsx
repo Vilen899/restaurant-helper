@@ -5,15 +5,19 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { format } from 'date-fns';
 
 interface OrderData {
-  orderNumber: number;
+  orderNumber: number | string;
   items: Array<{ name: string; quantity: number; price: number }>;
   subtotal: number;
   total: number;
+  discount?: number;
+  discountName?: string;
   paymentMethod: string;
+  paymentMethodName?: string;
   cashReceived?: number;
   change?: number;
   cashierName: string;
   locationName?: string;
+  isOffline?: boolean;
 }
 
 interface ReceiptPrintDialogProps {
@@ -116,13 +120,19 @@ export function ReceiptPrintDialog({ open, onOpenChange, order }: ReceiptPrintDi
       <span>Подытог:</span>
       <span>${order.subtotal.toLocaleString()} ֏</span>
     </div>
+    ${order.discount && order.discount > 0 ? `
+    <div class="total-row" style="color: green;">
+      <span>Скидка${order.discountName ? ` (${order.discountName})` : ''}:</span>
+      <span>-${order.discount.toLocaleString()} ֏</span>
+    </div>
+    ` : ''}
     <div class="total-row final">
       <span>ИТОГО:</span>
       <span>${order.total.toLocaleString()} ֏</span>
     </div>
     <div class="total-row">
       <span>Оплата:</span>
-      <span>${order.paymentMethod}</span>
+      <span>${order.paymentMethodName || order.paymentMethod}</span>
     </div>
     ${order.cashReceived ? `
     <div class="total-row">
@@ -132,6 +142,11 @@ export function ReceiptPrintDialog({ open, onOpenChange, order }: ReceiptPrintDi
     <div class="total-row">
       <span>Сдача:</span>
       <span>${(order.change || 0).toLocaleString()} ֏</span>
+    </div>
+    ` : ''}
+    ${order.isOffline ? `
+    <div class="total-row" style="color: orange; font-size: 10px; margin-top: 8px;">
+      <span>⚠ Оффлайн заказ - будет синхронизирован</span>
     </div>
     ` : ''}
   </div>
@@ -166,9 +181,11 @@ export function ReceiptPrintDialog({ open, onOpenChange, order }: ReceiptPrintDi
           <DialogTitle className="flex items-center gap-2 text-green-600">
             <Check className="h-6 w-6" />
             Заказ #{order.orderNumber} оплачен!
+            {order.isOffline && <span className="text-amber-500 ml-2">(оффлайн)</span>}
           </DialogTitle>
           <DialogDescription>
             Сумма: {order.total.toLocaleString()} ֏
+            {order.discount && order.discount > 0 ? ` • Скидка: -${order.discount.toLocaleString()} ֏` : ''}
             {order.change ? ` • Сдача: ${order.change.toLocaleString()} ֏` : ''}
           </DialogDescription>
         </DialogHeader>

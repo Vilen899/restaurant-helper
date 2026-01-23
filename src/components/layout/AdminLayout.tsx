@@ -87,6 +87,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/admin/staff', icon: Users, label: 'Персонал', roles: ['admin'] },
       { path: '/admin/locations', icon: MapPin, label: 'Точки', roles: ['admin'] },
       { path: '/admin/payment-methods', icon: CreditCard, label: 'Способы оплаты', roles: ['admin'] },
+      { path: '/admin/discounts', icon: Package, label: 'Скидки', roles: ['admin'] },
       { path: '/admin/fiscal-settings', icon: Printer, label: 'Настройки ККТ', roles: ['admin'] },
     ],
   },

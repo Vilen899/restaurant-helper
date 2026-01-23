@@ -18,10 +18,13 @@ import {
   Printer,
   Image,
   RefreshCw,
+  WifiOff,
+  CloudUpload,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Tables } from "@/integrations/supabase/types";
@@ -32,9 +35,11 @@ import { PaymentDialog } from "@/components/cashier/PaymentDialog";
 import { ReceiptPrintDialog } from "@/components/cashier/ReceiptPrintDialog";
 import { LockScreen } from "@/components/cashier/LockScreen";
 import { MenuSearch } from "@/components/cashier/MenuSearch";
+import { DiscountSelector } from "@/components/cashier/DiscountSelector";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useMenuCache } from "@/hooks/useMenuCache";
+import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -98,6 +103,7 @@ export default function CashierPage() {
   const { t } = useLanguage();
   const [session, setSession] = useState<CashierSession | null>(null);
   const { menuItems, categories, paymentMethods, loading, fromCache, refreshMenu } = useMenuCache();
+  const { isOnline, queueCount, syncing, addToQueue, syncQueue } = useOfflineQueue();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -107,6 +113,15 @@ export default function CashierPage() {
   const [processing, setProcessing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
+  
+  // Discount state
+  const [appliedDiscount, setAppliedDiscount] = useState<{
+    id: string;
+    name: string;
+    type: 'percent' | 'fixed';
+    value: number;
+    reason?: string;
+  } | null>(null);
 
   useEffect(() => {
     const sessionData = sessionStorage.getItem("cashier_session");
@@ -216,16 +231,85 @@ export default function CashierPage() {
     );
   };
 
-  const clearCart = () => setCart([]);
+  const clearCart = () => {
+    setCart([]);
+    setAppliedDiscount(null);
+  };
 
   const subtotal = cart.reduce((sum, ci) => sum + Number(ci.menuItem.price) * ci.quantity, 0);
-  const total = subtotal;
+  
+  // Calculate discount amount
+  const discountAmount = appliedDiscount
+    ? appliedDiscount.type === 'percent'
+      ? Math.round(subtotal * appliedDiscount.value / 100)
+      : Math.min(appliedDiscount.value, subtotal)
+    : 0;
+  
+  const total = subtotal - discountAmount;
   const totalItems = cart.reduce((sum, ci) => sum + ci.quantity, 0);
 
   const handlePayment = async (method: PaymentMethod, cashReceived?: number) => {
     if (!session) return;
 
     setProcessing(true);
+    
+    // Данные для чека (сохраняем до обработки)
+    const orderData = {
+      items: cart.map((ci) => ({
+        menuItemId: ci.menuItem.id,
+        menuItemName: ci.menuItem.name,
+        name: ci.menuItem.name,
+        quantity: ci.quantity,
+        price: Number(ci.menuItem.price),
+      })),
+      subtotal,
+      total,
+      discount: discountAmount,
+      discountId: appliedDiscount?.id,
+      discountName: appliedDiscount?.name,
+      discountType: appliedDiscount?.type,
+      discountValue: appliedDiscount?.value,
+      paymentMethod: method.code,
+      paymentMethodName: method.name,
+      cashReceived,
+      change: cashReceived ? Math.max(0, cashReceived - total) : undefined,
+      cashierName: session.full_name,
+    };
+
+    // Если оффлайн - добавляем в очередь
+    if (!isOnline) {
+      const queuedOrder = addToQueue({
+        locationId: session.location_id,
+        createdBy: session.id,
+        cart: orderData.items,
+        subtotal,
+        total,
+        discount: discountAmount,
+        discountId: appliedDiscount?.id,
+        discountName: appliedDiscount?.name,
+        discountType: appliedDiscount?.type,
+        discountValue: appliedDiscount?.value,
+        paymentMethod: method.code,
+        paymentMethodName: method.name,
+        cashReceived,
+        change: orderData.change,
+        cashierName: session.full_name,
+      });
+      
+      setLastOrder({
+        orderNumber: `OFF-${queuedOrder.id.slice(0, 4).toUpperCase()}`,
+        ...orderData,
+        isOffline: true,
+      });
+      
+      toast.info('Заказ сохранён офлайн');
+      setPaymentDialogOpen(false);
+      setReceiptDialogOpen(true);
+      clearCart();
+      setProcessing(false);
+      return;
+    }
+
     try {
       // Создаём заказ
       const { data: order, error: orderError } = await supabase
@@ -234,6 +318,11 @@ export default function CashierPage() {
           location_id: session.location_id,
           created_by: session.id,
           subtotal: subtotal,
+          discount: discountAmount,
+          discount_id: appliedDiscount?.id || null,
+          discount_name: appliedDiscount?.name || null,
+          discount_type: appliedDiscount?.type || null,
+          discount_value: appliedDiscount?.value || null,
           total: total,
           status: "completed",
           payment_method: method.code,
@@ -296,17 +385,7 @@ export default function CashierPage() {
       // Сохраняем данные для чека
       setLastOrder({
         orderNumber: order.order_number,
-        items: cart.map((ci) => ({
-          name: ci.menuItem.name,
-          quantity: ci.quantity,
-          price: Number(ci.menuItem.price),
-        })),
-        subtotal,
-        total,
-        paymentMethod: method.name,
-        cashReceived,
-        change: cashReceived ? Math.max(0, cashReceived - total) : undefined,
-        cashierName: session.full_name,
+        ...orderData,
       });
 
       setPaymentDialogOpen(false);
@@ -352,6 +431,7 @@ export default function CashierPage() {
       <LockScreen
         onUnlock={() => setIsLocked(false)}
         userName={session.full_name}
+        userId={session.id}
         locationId={session.location_id}
       />
     );
@@ -385,6 +465,25 @@ export default function CashierPage() {
           </div>
           
           <div className="flex items-center gap-2">
+            {/* Offline/Online status */}
+            {!isOnline && (
+              <Badge variant="destructive" className="gap-1">
+                <WifiOff className="h-3 w-3" />
+                Оффлайн
+              </Badge>
+            )}
+            {queueCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={syncQueue}
+                disabled={syncing || !isOnline}
+                className="gap-1"
+              >
+                <CloudUpload className="h-4 w-4" />
+                {syncing ? 'Синхр...' : `${queueCount} в очереди`}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -549,9 +648,31 @@ export default function CashierPage() {
         </ScrollArea>
 
         <div className="p-4 border-t space-y-3">
-          <div className="flex justify-between text-lg">
-            <span>Итого:</span>
-            <span className="font-bold">{total.toLocaleString()} ֏</span>
+          {/* Discount selector */}
+          {cart.length > 0 && (
+            <DiscountSelector
+              subtotal={subtotal}
+              appliedDiscount={appliedDiscount}
+              onDiscountChange={setAppliedDiscount}
+            />
+          )}
+          
+          {/* Totals */}
+          <div className="space-y-1">
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Подытог:</span>
+              <span>{subtotal.toLocaleString()} ֏</span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Скидка:</span>
+                <span>-{discountAmount.toLocaleString()} ֏</span>
+              </div>
+            )}
+            <div className="flex justify-between text-lg">
+              <span>Итого:</span>
+              <span className="font-bold">{total.toLocaleString()} ֏</span>
+            </div>
           </div>
           <Button className="w-full h-12 text-lg" onClick={() => setPaymentDialogOpen(true)} disabled={cart.length === 0}>
             Оплатить

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Lock } from 'lucide-react';
+import { Lock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -7,37 +7,47 @@ import { toast } from 'sonner';
 interface LockScreenProps {
   onUnlock: () => void;
   userName: string;
+  userId: string; // ID текущего кассира
   locationId: string;
 }
 
-export function LockScreen({ onUnlock, userName, locationId }: LockScreenProps) {
+export function LockScreen({ onUnlock, userName, userId, locationId }: LockScreenProps) {
   const [pin, setPin] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [error, setError] = useState('');
 
   const handleUnlock = async () => {
     if (pin.length !== 4) {
-      toast.error('Введите 4-значный PIN');
+      setError('Введите 4-значный PIN');
       return;
     }
 
     setVerifying(true);
+    setError('');
+    
     try {
-      const { data, error } = await supabase.functions.invoke('verify-pin', {
+      const { data, error: apiError } = await supabase.functions.invoke('verify-pin', {
         body: { pin, location_id: locationId },
       });
 
-      if (error || data?.error) {
-        toast.error('Неверный PIN');
+      if (apiError || data?.error) {
+        setError('Неверный PIN');
         setPin('');
-      } else if (data?.success) {
-        onUnlock();
+      } else if (data?.success && data?.user) {
+        // Проверяем, что это тот же пользователь
+        if (data.user.id === userId) {
+          onUnlock();
+        } else {
+          setError(`Только ${userName} может разблокировать`);
+          setPin('');
+        }
       } else {
-        toast.error('Неверный PIN');
+        setError('Неверный PIN');
         setPin('');
       }
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Ошибка проверки PIN');
+    } catch (err) {
+      console.error('Error:', err);
+      setError('Ошибка проверки PIN');
     } finally {
       setVerifying(false);
     }
@@ -45,6 +55,7 @@ export function LockScreen({ onUnlock, userName, locationId }: LockScreenProps) 
 
   const handleKeyPress = (digit: string) => {
     if (pin.length < 4) {
+      setError('');
       const newPin = pin + digit;
       setPin(newPin);
       if (newPin.length === 4) {
@@ -55,6 +66,7 @@ export function LockScreen({ onUnlock, userName, locationId }: LockScreenProps) 
 
   const handleBackspace = () => {
     setPin(pin.slice(0, -1));
+    setError('');
   };
 
   return (
@@ -64,11 +76,14 @@ export function LockScreen({ onUnlock, userName, locationId }: LockScreenProps) 
           <Lock className="h-10 w-10 text-primary" />
         </div>
         <h1 className="text-2xl font-bold">{userName}</h1>
-        <p className="text-muted-foreground">Введите PIN для разблокировки</p>
+        <p className="text-muted-foreground">Введите свой PIN для разблокировки</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Только вы можете разблокировать экран
+        </p>
       </div>
 
       {/* PIN Display */}
-      <div className="flex gap-3 mb-8">
+      <div className="flex gap-3 mb-4">
         {[0, 1, 2, 3].map((i) => (
           <div
             key={i}
@@ -78,6 +93,14 @@ export function LockScreen({ onUnlock, userName, locationId }: LockScreenProps) 
           />
         ))}
       </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="flex items-center gap-2 text-destructive mb-4 bg-destructive/10 px-4 py-2 rounded-lg">
+          <AlertCircle className="h-4 w-4" />
+          <span className="text-sm">{error}</span>
+        </div>
+      )}
 
       {/* Keypad */}
       <div className="grid grid-cols-3 gap-3 max-w-xs">
