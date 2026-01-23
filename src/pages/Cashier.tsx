@@ -2,15 +2,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus,
-  Minus,
   Trash2,
-  CreditCard,
-  Banknote,
   UtensilsCrossed,
-  ShoppingCart,
   Check,
-  LogOut,
   Coffee,
   Pizza,
   Salad,
@@ -18,11 +12,8 @@ import {
   Droplet,
   IceCream,
   Package,
-  Printer,
-  Wallet,
-  Smartphone,
-  QrCode,
   Clock,
+  RotateCcw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -98,71 +89,6 @@ const defaultCategoryStyle = {
   bg: "bg-muted/50 border-muted hover:bg-muted",
 };
 
-// -------------------- CloseShiftDialog компонент --------------------
-interface CloseShiftDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  locationId: string;
-  userId: string;
-  userName: string;
-  onConfirm: () => void;
-}
-
-export function CloseShiftDialog({
-  open,
-  onOpenChange,
-  locationId,
-  userId,
-  userName,
-  onConfirm,
-}: CloseShiftDialogProps) {
-  const [processing, setProcessing] = useState(false);
-
-  const handleCloseShift = async () => {
-    setProcessing(true);
-    try {
-      // Обновляем статус смены
-      await supabase
-        .from("cashier_shifts")
-        .update({ status: "closed", closed_at: new Date().toISOString() })
-        .eq("user_id", userId)
-        .eq("location_id", locationId);
-
-      toast.success("Смена закрыта");
-      onConfirm();
-      onOpenChange(false);
-    } catch (error) {
-      console.error(error);
-      toast.error("Ошибка закрытия смены");
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Закрыть смену</DialogTitle>
-          <DialogDescription>
-            Пользователь: {userName}
-            <br />
-            Точка: {locationId}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
-            Отмена
-          </Button>
-          <Button onClick={handleCloseShift} className="flex-1" disabled={processing}>
-            {processing ? "Обработка..." : "Закрыть"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // -------------------- CashierPage компонент --------------------
 export default function CashierPage() {
   const navigate = useNavigate();
@@ -174,10 +100,8 @@ export default function CashierPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
-  const [closeShiftDialogOpen, setCloseShiftDialogOpen] = useState(false);
+  const [zReportDialogOpen, setZReportDialogOpen] = useState(false);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
-  const [lastOrder, setLastOrder] = useState<any>(null);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [cashReceived, setCashReceived] = useState("");
   const [processing, setProcessing] = useState(false);
@@ -290,7 +214,16 @@ export default function CashierPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCloseShiftDialogOpen(true)}
+              onClick={() => setRefundDialogOpen(true)}
+              className="gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Возврат
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setZReportDialogOpen(true)}
               className="gap-2 text-destructive hover:text-destructive"
             >
               <Clock className="h-4 w-4" />
@@ -389,15 +322,24 @@ export default function CashierPage() {
         </div>
       </div>
 
-      {/* CloseShiftDialog */}
+      {/* Z-Report Dialog */}
       {session && (
-        <CloseShiftDialog
-          open={closeShiftDialogOpen}
-          onOpenChange={setCloseShiftDialogOpen}
+        <ZReportDialog
+          open={zReportDialogOpen}
+          onOpenChange={setZReportDialogOpen}
           locationId={session.location_id}
-          userId={session.id}
           userName={session.full_name}
           onConfirm={handleLogout}
+        />
+      )}
+
+      {/* Refund Dialog */}
+      {session && (
+        <RefundDialog
+          open={refundDialogOpen}
+          onOpenChange={setRefundDialogOpen}
+          locationId={session.location_id}
+          onRefundComplete={() => toast.success('Возврат успешно оформлен')}
         />
       )}
     </div>
