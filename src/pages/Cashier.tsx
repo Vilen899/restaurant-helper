@@ -42,6 +42,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useMenuCache } from "@/hooks/useMenuCache";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
+import { useAutoLock } from "@/hooks/useAutoLock";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -117,6 +118,14 @@ export default function CashierPage() {
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
   
+  // Auto-lock timer (5 minutes by default)
+  const AUTO_LOCK_MINUTES = 5;
+  useAutoLock({
+    timeoutMinutes: AUTO_LOCK_MINUTES,
+    enabled: !!session && !isLocked,
+    onLock: () => setIsLocked(true),
+  });
+  
   // Discount state
   const [appliedDiscount, setAppliedDiscount] = useState<{
     id: string;
@@ -125,6 +134,29 @@ export default function CashierPage() {
     value: number;
     reason?: string;
   } | null>(null);
+  
+  // Customer display broadcast channel
+  const broadcastToCustomerDisplay = (items: CartItem[], subtotalVal: number, discountVal: number, totalVal: number) => {
+    try {
+      const channel = new BroadcastChannel('customer_display');
+      channel.postMessage({
+        type: 'cart_update',
+        data: {
+          items: items.map(ci => ({
+            name: ci.menuItem.name,
+            quantity: ci.quantity,
+            price: Number(ci.menuItem.price),
+          })),
+          subtotal: subtotalVal,
+          discount: discountVal,
+          total: totalVal,
+        },
+      });
+      channel.close();
+    } catch (e) {
+      // BroadcastChannel not supported
+    }
+  };
 
   useEffect(() => {
     const sessionData = sessionStorage.getItem("cashier_session");
@@ -250,6 +282,35 @@ export default function CashierPage() {
   
   const total = subtotal - discountAmount;
   const totalItems = cart.reduce((sum, ci) => sum + ci.quantity, 0);
+
+  // Broadcast cart to customer display when cart changes
+  useEffect(() => {
+    broadcastToCustomerDisplay(cart, subtotal, discountAmount, total);
+  }, [cart, subtotal, discountAmount, total]);
+  
+  // Check low stock after successful sale
+  const checkLowStock = async (locationId: string) => {
+    try {
+      const { data } = await supabase
+        .from('inventory')
+        .select('quantity, ingredient:ingredients(name, min_stock)')
+        .eq('location_id', locationId);
+      
+      if (data) {
+        const lowStock = data.filter(inv => {
+          const minStock = Number((inv.ingredient as any)?.min_stock || 0);
+          return minStock > 0 && Number(inv.quantity) <= minStock;
+        });
+        
+        if (lowStock.length > 0) {
+          const names = lowStock.map(i => (i.ingredient as any)?.name).filter(Boolean).slice(0, 3);
+          toast.warning(`Низкий остаток: ${names.join(', ')}${lowStock.length > 3 ? ` и ещё ${lowStock.length - 3}` : ''}`);
+        }
+      }
+    } catch (e) {
+      console.error('Low stock check error:', e);
+    }
+  };
 
   const handlePayment = async (method: PaymentMethod, cashReceived?: number) => {
     if (!session) return;
@@ -394,6 +455,9 @@ export default function CashierPage() {
       setPaymentDialogOpen(false);
       setReceiptDialogOpen(true);
       clearCart();
+      
+      // Check low stock after sale
+      checkLowStock(session.location_id);
     } catch (error) {
       console.error("Error:", error);
       toast.error("Ошибка оформления заказа");

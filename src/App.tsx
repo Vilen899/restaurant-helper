@@ -32,6 +32,8 @@ import DocumentsPage from "./pages/admin/Documents";
 import WorkTimePage from "./pages/admin/WorkTime";
 import FiscalSettingsPage from "./pages/admin/FiscalSettings";
 import DiscountsPage from "./pages/admin/Discounts";
+import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
+import CustomerDisplayPage from "./pages/CustomerDisplay";
 const queryClient = new QueryClient();
 
 // Wrapper component to use hooks inside BrowserRouter
@@ -44,6 +46,7 @@ function AppRoutes() {
       <Route path="/" element={<PinLogin />} />
       <Route path="/pin" element={<PinLogin />} />
       <Route path="/cashier" element={<CashierPage />} />
+      <Route path="/customer-display" element={<CustomerDisplayPage />} />
       
       {/* Admin auth */}
       <Route path="/admin/login" element={<Auth />} />
@@ -70,6 +73,7 @@ function AppRoutes() {
         <Route path="work-time" element={<WorkTimePage />} />
         <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
         <Route path="discounts" element={<DiscountsPage />} />
+        <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />
