@@ -20,6 +20,8 @@ import {
   X,
   Soup,
   CreditCard,
+  Clock,
+  Printer,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -72,6 +74,8 @@ const menuGroups: MenuGroup[] = [
     items: [
       { path: '/admin/reports', icon: FileText, label: 'Продажи', roles: ['admin', 'manager'] },
       { path: '/admin/reports/inventory', icon: Warehouse, label: 'Остатки', roles: ['admin', 'manager'] },
+      { path: '/admin/documents', icon: FileText, label: 'Документы', roles: ['admin', 'manager'] },
+      { path: '/admin/work-time', icon: Clock, label: 'Рабочее время', roles: ['admin', 'manager'] },
     ],
   },
   {
@@ -82,6 +86,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/admin/staff', icon: Users, label: 'Персонал', roles: ['admin'] },
       { path: '/admin/locations', icon: MapPin, label: 'Точки', roles: ['admin'] },
       { path: '/admin/payment-methods', icon: CreditCard, label: 'Способы оплаты', roles: ['admin'] },
+      { path: '/admin/fiscal-settings', icon: Printer, label: 'Настройки ККТ', roles: ['admin'] },
     ],
   },
 ];

@@ -27,6 +27,10 @@ import CategoriesPage from "./pages/admin/Categories";
 import ReportsPage from "./pages/admin/Reports";
 import InventoryReportPage from "./pages/admin/InventoryReport";
 import PaymentMethodsPage from "./pages/admin/PaymentMethods";
+import DocumentsPage from "./pages/admin/Documents";
+import WorkTimePage from "./pages/admin/WorkTime";
+import FiscalSettingsPage from "./pages/admin/FiscalSettings";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -63,6 +67,9 @@ const App = () => (
               <Route path="reports" element={<ReportsPage />} />
               <Route path="reports/inventory" element={<InventoryReportPage />} />
               <Route path="payment-methods" element={<PaymentMethodsPage />} />
+              <Route path="documents" element={<DocumentsPage />} />
+              <Route path="work-time" element={<WorkTimePage />} />
+              <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

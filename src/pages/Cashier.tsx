@@ -4,7 +4,7 @@ import {
   Plus, Minus, Trash2, CreditCard, Banknote, 
   UtensilsCrossed, ShoppingCart, Check, LogOut,
   Coffee, Pizza, Salad, Sandwich, Droplet, IceCream, Package, Printer,
-  Wallet, Smartphone, QrCode, Clock
+  Wallet, Smartphone, QrCode, Clock, RotateCcw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,8 @@ import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 import { cn } from '@/lib/utils';
 import { NumericKeypad } from '@/components/cashier/NumericKeypad';
-import { CloseShiftDialog } from '@/components/cashier/CloseShiftDialog';
+import { ZReportDialog } from '@/components/cashier/ZReportDialog';
+import { RefundDialog } from '@/components/cashier/RefundDialog';
 
 type MenuItem = Tables<'menu_items'>;
 type MenuCategory = Tables<'menu_categories'>;
@@ -60,6 +61,7 @@ export default function CashierPage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [closeShiftDialogOpen, setCloseShiftDialogOpen] = useState(false);
+  const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [lastOrder, setLastOrder] = useState<{
     order_number: number;
     items: CartItem[];
