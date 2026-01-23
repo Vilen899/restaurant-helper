@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useManifest } from "@/hooks/useManifest";
 
 // Pages
 import Index from "./pages/Index";
@@ -33,6 +34,48 @@ import FiscalSettingsPage from "./pages/admin/FiscalSettings";
 
 const queryClient = new QueryClient();
 
+// Wrapper component to use hooks inside BrowserRouter
+function AppRoutes() {
+  useManifest();
+  
+  return (
+    <Routes>
+      {/* Cashier routes */}
+      <Route path="/" element={<PinLogin />} />
+      <Route path="/pin" element={<PinLogin />} />
+      <Route path="/cashier" element={<CashierPage />} />
+      
+      {/* Admin auth */}
+      <Route path="/admin/login" element={<Auth />} />
+      
+      {/* Admin routes */}
+      <Route path="/admin" element={
+        <ProtectedRoute allowedRoles={['admin', 'manager']}>
+          <AdminLayout />
+        </ProtectedRoute>
+      }>
+        <Route index element={<AdminDashboard />} />
+        <Route path="menu" element={<MenuPage />} />
+        <Route path="categories" element={<CategoriesPage />} />
+        <Route path="recipes" element={<RecipesPage />} />
+        <Route path="semi-finished" element={<SemiFinishedPage />} />
+        <Route path="ingredients" element={<IngredientsPage />} />
+        <Route path="inventory" element={<InventoryPage />} />
+        <Route path="locations" element={<LocationsPage />} />
+        <Route path="staff" element={<StaffPage />} />
+        <Route path="reports" element={<ReportsPage />} />
+        <Route path="reports/inventory" element={<InventoryReportPage />} />
+        <Route path="payment-methods" element={<PaymentMethodsPage />} />
+        <Route path="documents" element={<DocumentsPage />} />
+        <Route path="work-time" element={<WorkTimePage />} />
+        <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
+      </Route>
+
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
@@ -40,40 +83,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
-          <Routes>
-            {/* Cashier routes */}
-            <Route path="/" element={<PinLogin />} />
-            <Route path="/pin" element={<PinLogin />} />
-            <Route path="/cashier" element={<CashierPage />} />
-            
-            {/* Admin auth */}
-            <Route path="/admin/login" element={<Auth />} />
-            
-            {/* Admin routes */}
-            <Route path="/admin" element={
-              <ProtectedRoute allowedRoles={['admin', 'manager']}>
-                <AdminLayout />
-              </ProtectedRoute>
-            }>
-              <Route index element={<AdminDashboard />} />
-              <Route path="menu" element={<MenuPage />} />
-              <Route path="categories" element={<CategoriesPage />} />
-              <Route path="recipes" element={<RecipesPage />} />
-              <Route path="semi-finished" element={<SemiFinishedPage />} />
-              <Route path="ingredients" element={<IngredientsPage />} />
-              <Route path="inventory" element={<InventoryPage />} />
-              <Route path="locations" element={<LocationsPage />} />
-              <Route path="staff" element={<StaffPage />} />
-              <Route path="reports" element={<ReportsPage />} />
-              <Route path="reports/inventory" element={<InventoryReportPage />} />
-              <Route path="payment-methods" element={<PaymentMethodsPage />} />
-              <Route path="documents" element={<DocumentsPage />} />
-              <Route path="work-time" element={<WorkTimePage />} />
-              <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
-            </Route>
-
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <AppRoutes />
         </BrowserRouter>
       </TooltipProvider>
     </AuthProvider>
