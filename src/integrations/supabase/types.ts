@@ -50,6 +50,86 @@ export type Database = {
         }
         Relationships: []
       }
+      fiscal_settings: {
+        Row: {
+          api_login: string | null
+          api_password: string | null
+          api_token: string | null
+          api_url: string | null
+          auto_print_receipt: boolean
+          company_address: string | null
+          company_name: string | null
+          connection_type: string
+          created_at: string
+          device_id: string | null
+          driver: string
+          enabled: boolean
+          id: string
+          inn: string | null
+          ip_address: string | null
+          location_id: string | null
+          operator_name: string | null
+          port: string | null
+          print_copy: boolean
+          serial_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_login?: string | null
+          api_password?: string | null
+          api_token?: string | null
+          api_url?: string | null
+          auto_print_receipt?: boolean
+          company_address?: string | null
+          company_name?: string | null
+          connection_type?: string
+          created_at?: string
+          device_id?: string | null
+          driver?: string
+          enabled?: boolean
+          id?: string
+          inn?: string | null
+          ip_address?: string | null
+          location_id?: string | null
+          operator_name?: string | null
+          port?: string | null
+          print_copy?: boolean
+          serial_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_login?: string | null
+          api_password?: string | null
+          api_token?: string | null
+          api_url?: string | null
+          auto_print_receipt?: boolean
+          company_address?: string | null
+          company_name?: string | null
+          connection_type?: string
+          created_at?: string
+          device_id?: string | null
+          driver?: string
+          enabled?: boolean
+          id?: string
+          inn?: string | null
+          ip_address?: string | null
+          location_id?: string | null
+          operator_name?: string | null
+          port?: string | null
+          print_copy?: boolean
+          serial_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fiscal_settings_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: true
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingredients: {
         Row: {
           cost_per_unit: number
