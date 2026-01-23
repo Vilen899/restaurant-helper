@@ -34,6 +34,7 @@ import FiscalSettingsPage from "./pages/admin/FiscalSettings";
 import DiscountsPage from "./pages/admin/Discounts";
 import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
 import CustomerDisplayPage from "./pages/CustomerDisplay";
+import CashierSettingsPage from "./pages/admin/CashierSettings";
 const queryClient = new QueryClient();
 
 // Wrapper component to use hooks inside BrowserRouter
@@ -74,6 +75,7 @@ function AppRoutes() {
         <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
         <Route path="discounts" element={<DiscountsPage />} />
         <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
+        <Route path="cashier-settings" element={<CashierSettingsPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

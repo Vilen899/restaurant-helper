@@ -90,6 +90,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/admin/payment-methods', icon: CreditCard, label: 'Способы оплаты', roles: ['admin'] },
       { path: '/admin/discounts', icon: Package, label: 'Скидки', roles: ['admin'] },
       { path: '/admin/customer-display', icon: Monitor, label: 'Экран покупателя', roles: ['admin'] },
+      { path: '/admin/cashier-settings', icon: Clock, label: 'Настройки кассы', roles: ['admin'] },
       { path: '/admin/fiscal-settings', icon: Printer, label: 'Настройки ККТ', roles: ['admin'] },
     ],
   },
