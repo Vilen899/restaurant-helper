@@ -30,6 +30,8 @@ import { RefundDialog } from "@/components/cashier/RefundDialog";
 import { PaymentDialog } from "@/components/cashier/PaymentDialog";
 import { ReceiptPrintDialog } from "@/components/cashier/ReceiptPrintDialog";
 import { LockScreen } from "@/components/cashier/LockScreen";
+import { LanguageSelector } from "@/components/LanguageSelector";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -90,6 +92,7 @@ const defaultCategoryStyle = {
 
 export default function CashierPage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [session, setSession] = useState<CashierSession | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [categories, setCategories] = useState<MenuCategory[]>([]);
@@ -134,6 +137,33 @@ export default function CashierPage() {
 
   const openShift = async (cashierSession: CashierSession) => {
     try {
+      // Check for existing open shift first
+      const { data: existingShift, error: checkError } = await supabase
+        .from("shifts")
+        .select("id, started_at")
+        .eq("user_id", cashierSession.id)
+        .eq("location_id", cashierSession.location_id)
+        .is("ended_at", null)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error("Error checking existing shift:", checkError);
+      }
+
+      // If open shift exists, use it instead of creating new one
+      if (existingShift) {
+        const updatedSession = {
+          ...cashierSession,
+          shift_id: existingShift.id,
+          shift_start: existingShift.started_at,
+        };
+        setSession(updatedSession);
+        sessionStorage.setItem("cashier_session", JSON.stringify(updatedSession));
+        toast.info("Восстановлена открытая смена");
+        return;
+      }
+
+      // Create new shift
       const { data, error } = await supabase
         .from("shifts")
         .insert({
@@ -336,7 +366,7 @@ export default function CashierPage() {
     navigate("/pin");
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Загрузка...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center">{t('common.loading')}</div>;
 
   if (isLocked && session) {
     return (
@@ -359,7 +389,7 @@ export default function CashierPage() {
             </div>
             <div>
               <p className="font-semibold">{session?.full_name}</p>
-              <p className="text-xs text-muted-foreground">Кассир • Смена открыта</p>
+              <p className="text-xs text-muted-foreground">{t('cashier.title')} • {t('cashier.shiftOpened')}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -371,9 +401,10 @@ export default function CashierPage() {
                 className="gap-2"
               >
                 <Printer className="h-4 w-4" />
-                Чек #{lastOrder.orderNumber}
+                {t('cashier.receipt')} #{lastOrder.orderNumber}
               </Button>
             )}
+            <LanguageSelector />
             <Button
               variant="ghost"
               size="sm"
@@ -381,7 +412,7 @@ export default function CashierPage() {
               className="gap-2"
             >
               <Lock className="h-4 w-4" />
-              Блокировка
+              {t('cashier.lock')}
             </Button>
             <Button
               variant="outline"
@@ -390,7 +421,7 @@ export default function CashierPage() {
               className="gap-2"
             >
               <RotateCcw className="h-4 w-4" />
-              Возврат
+              {t('cashier.refund')}
             </Button>
             <Button
               variant="outline"
@@ -399,7 +430,7 @@ export default function CashierPage() {
               className="gap-2 text-destructive hover:text-destructive"
             >
               <Clock className="h-4 w-4" />
-              Закрыть смену
+              {t('cashier.closeShift')}
             </Button>
             <Button
               variant="ghost"

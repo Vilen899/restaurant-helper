@@ -30,6 +30,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import logo from '@/assets/logo.webp';
+import { LanguageSelector } from '@/components/LanguageSelector';
 
 interface MenuGroup {
   label: string;
@@ -286,14 +287,17 @@ export default function AdminLayout() {
               </div>
             )}
             {sidebarOpen && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive hover:bg-destructive/10"
-                onClick={handleSignOut}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <LanguageSelector />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                  onClick={handleSignOut}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
             )}
           </div>
         </div>
