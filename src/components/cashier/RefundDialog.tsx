@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { RotateCcw, Search, Package } from "lucide-react";
+import { RotateCcw, Search, Package, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -10,18 +11,26 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format } from "date-fns";
+import { format, subDays, startOfDay, endOfDay } from "date-fns";
 
 interface Order {
   id: string;
   order_number: number;
   total: number;
   payment_method: string;
+  status: string;
   created_at: string;
   order_items: Array<{
     id: string;
@@ -47,18 +56,72 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
   const [returnToStock, setReturnToStock] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [loading, setLoading] = useState(false);
+  
+  // Filters
+  const [dateFilter, setDateFilter] = useState("today");
+  const [statusFilter, setStatusFilter] = useState("completed");
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     if (open) {
       setSearchTerm("");
-      setOrders([]);
       setSelectedOrder(null);
       setSelectedItems(new Set());
+      loadOrders();
     }
-  }, [open]);
+  }, [open, dateFilter, statusFilter]);
+
+  const getDateRange = () => {
+    const now = new Date();
+    switch (dateFilter) {
+      case "today":
+        return { start: startOfDay(now), end: endOfDay(now) };
+      case "yesterday":
+        return { start: startOfDay(subDays(now, 1)), end: endOfDay(subDays(now, 1)) };
+      case "week":
+        return { start: startOfDay(subDays(now, 7)), end: endOfDay(now) };
+      case "month":
+        return { start: startOfDay(subDays(now, 30)), end: endOfDay(now) };
+      default:
+        return { start: startOfDay(now), end: endOfDay(now) };
+    }
+  };
+
+  const loadOrders = async () => {
+    setLoading(true);
+    try {
+      const { start, end } = getDateRange();
+      
+      let query = supabase
+        .from("orders")
+        .select("*, order_items(*, menu_item:menu_items(name))")
+        .eq("location_id", locationId)
+        .gte("created_at", start.toISOString())
+        .lte("created_at", end.toISOString())
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (statusFilter !== "all") {
+        query = query.eq("status", statusFilter as "completed" | "cancelled" | "pending" | "preparing" | "ready");
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setOrders((data || []) as Order[]);
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Ошибка загрузки заказов");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const searchOrders = async () => {
-    if (!searchTerm.trim()) return;
+    if (!searchTerm.trim()) {
+      loadOrders();
+      return;
+    }
 
     setLoading(true);
     try {
@@ -66,8 +129,7 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
         .from("orders")
         .select("*, order_items(*, menu_item:menu_items(name))")
         .eq("location_id", locationId)
-        .eq("status", "completed")
-        .or(`order_number.eq.${parseInt(searchTerm) || 0}`)
+        .eq("order_number", parseInt(searchTerm) || 0)
         .order("created_at", { ascending: false })
         .limit(10);
 
@@ -108,7 +170,6 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
 
     setProcessing(true);
     try {
-      // Обновляем статус заказа
       const { error: orderError } = await supabase
         .from("orders")
         .update({ status: "cancelled" })
@@ -125,7 +186,6 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
           if (!recipe) continue;
 
           for (const recipeItem of recipe) {
-            // Возврат ингредиентов
             if (recipeItem.ingredient_id) {
               const { data: currentInv } = await supabase
                 .from("inventory")
@@ -152,7 +212,6 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
               }
             }
 
-            // Возврат полуфабрикатов
             if (recipeItem.semi_finished_id) {
               const { data: semiFinished } = await supabase
                 .from("semi_finished")
@@ -214,6 +273,17 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
     }
   };
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <Badge variant="default">Завершён</Badge>;
+      case "cancelled":
+        return <Badge variant="destructive">Отменён</Badge>;
+      default:
+        return <Badge variant="secondary">{status}</Badge>;
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -222,7 +292,7 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
             <RotateCcw className="h-5 w-5" />
             Возврат заказа
           </DialogTitle>
-          <DialogDescription>Найдите заказ по номеру для оформления возврата</DialogDescription>
+          <DialogDescription>Найдите заказ для оформления возврата</DialogDescription>
         </DialogHeader>
 
         {!selectedOrder ? (
@@ -237,7 +307,45 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
               <Button onClick={searchOrders} disabled={loading}>
                 <Search className="h-4 w-4" />
               </Button>
+              <Button 
+                variant={showFilters ? "secondary" : "outline"} 
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <Filter className="h-4 w-4" />
+              </Button>
             </div>
+
+            {showFilters && (
+              <div className="grid grid-cols-2 gap-3 p-3 bg-muted/50 rounded-lg">
+                <div className="space-y-1">
+                  <Label className="text-xs">Период</Label>
+                  <Select value={dateFilter} onValueChange={setDateFilter}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="today">Сегодня</SelectItem>
+                      <SelectItem value="yesterday">Вчера</SelectItem>
+                      <SelectItem value="week">Неделя</SelectItem>
+                      <SelectItem value="month">Месяц</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Статус</Label>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="completed">Завершённые</SelectItem>
+                      <SelectItem value="cancelled">Отменённые</SelectItem>
+                      <SelectItem value="all">Все</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
 
             {loading ? (
               <div className="text-center py-8">
@@ -248,12 +356,15 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
                 {orders.map((order) => (
                   <Card
                     key={order.id}
-                    className="cursor-pointer hover:border-primary"
-                    onClick={() => handleSelectOrder(order)}
+                    className={`cursor-pointer hover:border-primary ${order.status === 'cancelled' ? 'opacity-60' : ''}`}
+                    onClick={() => order.status === 'completed' && handleSelectOrder(order)}
                   >
                     <CardContent className="p-3 flex items-center justify-between">
                       <div>
-                        <p className="font-medium">Заказ #{order.order_number}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">Заказ #{order.order_number}</p>
+                          {getStatusBadge(order.status)}
+                        </div>
                         <p className="text-sm text-muted-foreground">
                           {format(new Date(order.created_at), "dd.MM.yy HH:mm")} • {order.order_items.length} позиций
                         </p>
@@ -263,9 +374,11 @@ export function RefundDialog({ open, onOpenChange, locationId, onRefundComplete 
                   </Card>
                 ))}
               </div>
-            ) : searchTerm ? (
-              <p className="text-center text-muted-foreground py-8">Заказы не найдены</p>
-            ) : null}
+            ) : (
+              <p className="text-center text-muted-foreground py-8">
+                Заказы не найдены
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
