@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -9,9 +8,10 @@ interface LockScreenProps {
   onUnlock: () => void;
   userName: string;
   userId: string;
+  locationId: string;
 }
 
-export function LockScreen({ onUnlock, userName, userId }: LockScreenProps) {
+export function LockScreen({ onUnlock, userName, userId, locationId }: LockScreenProps) {
   const [pin, setPin] = useState('');
   const [verifying, setVerifying] = useState(false);
 
@@ -24,14 +24,18 @@ export function LockScreen({ onUnlock, userName, userId }: LockScreenProps) {
     setVerifying(true);
     try {
       const { data, error } = await supabase.functions.invoke('verify-pin', {
-        body: { pin, user_id: userId },
+        body: { pin, location_id: locationId },
       });
 
-      if (error || !data?.valid) {
+      if (error || data?.error) {
         toast.error('Неверный PIN');
         setPin('');
-      } else {
+      } else if (data?.success && data?.user?.id === userId) {
+        // Verify the PIN matches the same user
         onUnlock();
+      } else {
+        toast.error('Неверный PIN');
+        setPin('');
       }
     } catch (error) {
       console.error('Error:', error);
