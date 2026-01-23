@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, Edit, Package, ChefHat } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, Plus, Trash2, Edit, Package, ChefHat, Check, ChevronsUpDown } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,10 +10,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 import { CreateIngredientDialog } from '@/components/admin/CreateIngredientDialog';
+import { cn } from '@/lib/utils';
 
 type SemiFinished = Tables<'semi_finished'>;
 type Ingredient = Tables<'ingredients'>;
@@ -51,6 +54,11 @@ export default function SemiFinishedPage() {
   const [dialogNewIngredient, setDialogNewIngredient] = useState({ ingredient_id: '', quantity: '' });
   const [dialogNewSemiFinished, setDialogNewSemiFinished] = useState({ semi_finished_id: '', quantity: '' });
   const [dialogRecipeTab, setDialogRecipeTab] = useState<'ingredients' | 'semifinished'>('ingredients');
+  const [ingredientSearchOpen, setIngredientSearchOpen] = useState(false);
+  const [sfSearchOpen, setSfSearchOpen] = useState(false);
+  
+  // Autofocus ref
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   // Separate Recipe dialog (for viewing from table)
   const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
@@ -96,6 +104,8 @@ export default function SemiFinishedPage() {
     setDialogNewSemiFinished({ semi_finished_id: '', quantity: '' });
     setDialogRecipeTab('ingredients');
     setDialogOpen(true);
+    // Autofocus on name field after dialog opens
+    setTimeout(() => nameInputRef.current?.focus(), 100);
   };
 
   const openEditDialog = async (item: SemiFinished) => {
@@ -532,6 +542,7 @@ export default function SemiFinishedPage() {
             <div className="space-y-2">
               <Label>Название *</Label>
               <Input
+                ref={nameInputRef}
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Соус Цезарь"
@@ -626,23 +637,54 @@ export default function SemiFinishedPage() {
                   <div className="flex gap-2 items-end">
                     <div className="flex-1">
                       <Label className="text-xs">Ингредиент</Label>
-                      <Select
-                        value={dialogNewIngredient.ingredient_id}
-                        onValueChange={(v) => setDialogNewIngredient({ ...dialogNewIngredient, ingredient_id: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {ingredients
-                            .filter(i => !dialogRecipeIngredients.some(ri => ri.ingredient_id === i.id))
-                            .map(i => (
-                              <SelectItem key={i.id} value={i.id}>
-                                {i.name} ({i.unit?.abbreviation})
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+                      <Popover open={ingredientSearchOpen} onOpenChange={setIngredientSearchOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={ingredientSearchOpen}
+                            className="w-full justify-between font-normal"
+                          >
+                            {dialogNewIngredient.ingredient_id
+                              ? (() => {
+                                  const ing = ingredients.find(i => i.id === dialogNewIngredient.ingredient_id);
+                                  return ing ? `${ing.name} (${ing.unit?.abbreviation})` : 'Выберите...';
+                                })()
+                              : 'Выберите...'}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Поиск ингредиента..." />
+                            <CommandList>
+                              <CommandEmpty>Не найдено</CommandEmpty>
+                              <CommandGroup>
+                                {ingredients
+                                  .filter(i => !dialogRecipeIngredients.some(ri => ri.ingredient_id === i.id))
+                                  .map(i => (
+                                    <CommandItem
+                                      key={i.id}
+                                      value={i.name}
+                                      onSelect={() => {
+                                        setDialogNewIngredient({ ...dialogNewIngredient, ingredient_id: i.id });
+                                        setIngredientSearchOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          dialogNewIngredient.ingredient_id === i.id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {i.name} ({i.unit?.abbreviation})
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <CreateIngredientDialog
                       units={units}
@@ -670,27 +712,58 @@ export default function SemiFinishedPage() {
                   <div className="flex gap-2 items-end">
                     <div className="flex-1">
                       <Label className="text-xs">Заготовка</Label>
-                      <Select
-                        value={dialogNewSemiFinished.semi_finished_id}
-                        onValueChange={(v) => setDialogNewSemiFinished({ ...dialogNewSemiFinished, semi_finished_id: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {semiFinished
-                            .filter(sf => 
-                              sf.id !== editingId && 
-                              sf.is_active &&
-                              !dialogRecipeIngredients.some(ri => ri.semi_finished_component_id === sf.id)
-                            )
-                            .map(sf => (
-                              <SelectItem key={sf.id} value={sf.id}>
-                                {sf.name} ({sf.unit?.abbreviation})
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+                      <Popover open={sfSearchOpen} onOpenChange={setSfSearchOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={sfSearchOpen}
+                            className="w-full justify-between font-normal"
+                          >
+                            {dialogNewSemiFinished.semi_finished_id
+                              ? (() => {
+                                  const sf = semiFinished.find(s => s.id === dialogNewSemiFinished.semi_finished_id);
+                                  return sf ? `${sf.name} (${sf.unit?.abbreviation})` : 'Выберите...';
+                                })()
+                              : 'Выберите...'}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Поиск заготовки..." />
+                            <CommandList>
+                              <CommandEmpty>Не найдено</CommandEmpty>
+                              <CommandGroup>
+                                {semiFinished
+                                  .filter(sf => 
+                                    sf.id !== editingId && 
+                                    sf.is_active &&
+                                    !dialogRecipeIngredients.some(ri => ri.semi_finished_component_id === sf.id)
+                                  )
+                                  .map(sf => (
+                                    <CommandItem
+                                      key={sf.id}
+                                      value={sf.name}
+                                      onSelect={() => {
+                                        setDialogNewSemiFinished({ ...dialogNewSemiFinished, semi_finished_id: sf.id });
+                                        setSfSearchOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          dialogNewSemiFinished.semi_finished_id === sf.id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {sf.name} ({sf.unit?.abbreviation})
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                     <div className="w-24">
                       <Label className="text-xs">Кол-во</Label>
