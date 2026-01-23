@@ -18,7 +18,6 @@ export function LockScreen({ onUnlock, userName, userId, locationId }: LockScree
 
   const handleUnlock = async () => {
     if (pin.length !== 4) {
-      setError('Введите 4-значный PIN');
       return;
     }
 
