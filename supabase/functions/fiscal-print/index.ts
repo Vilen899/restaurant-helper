@@ -41,6 +41,12 @@ interface FiscalSettings {
   inn: string | null;
   operator_name: string | null;
   company_name: string | null;
+  // HDM-specific fields (Armenian fiscal printers)
+  kkm_password: string | null;
+  vat_rate: number | null;
+  terminal_id: string | null;
+  default_timeout: number | null;
+  payment_timeout: number | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -162,6 +168,8 @@ async function executeFiscalAction(
 
   // Execute based on driver type
   switch (driver) {
+    case "hdm":
+      return await hdmRequest(baseUrl, headers, action, orderData, settings);
     case "atol":
       return await atolRequest(baseUrl, headers, action, orderData, settings);
     case "shtrih":
@@ -536,6 +544,206 @@ async function aisinoRequest(
     }
   } catch (error) {
     throw new Error(`Aisino error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// HDM driver implementation (Armenian fiscal printers - ISP930, etc.)
+// Based on iiko integration format
+async function hdmRequest(
+  baseUrl: string,
+  headers: Record<string, string>,
+  action: string,
+  orderData?: PrintRequest["order_data"],
+  settings?: FiscalSettings
+): Promise<{ success: boolean; message?: string; data?: unknown }> {
+  const cashierId = settings?.api_login || "1";
+  const cashierPin = settings?.api_password || "";
+  const kkmPassword = settings?.kkm_password || "";
+  const vatRate = settings?.vat_rate || 20;
+  const timeout = settings?.default_timeout || 30000;
+  
+  // HDM uses specific auth headers
+  const hdmHeaders: Record<string, string> = {
+    ...headers,
+    "Content-Type": "application/json",
+  };
+
+  try {
+    switch (action) {
+      case "test_connection": {
+        // Try HDM status endpoint
+        const loginData = {
+          cashierId: parseInt(cashierId),
+          cashierPin: cashierPin,
+          password: kkmPassword,
+        };
+        
+        const response = await fetch(`${baseUrl}/api/login`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(loginData),
+          signal: AbortSignal.timeout(timeout),
+        });
+        
+        if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          return { success: true, message: "HDM connected", data };
+        }
+        
+        // Try alternative status check
+        const statusResponse = await fetch(`${baseUrl}/api/status`, {
+          method: "GET",
+          headers: hdmHeaders,
+          signal: AbortSignal.timeout(timeout),
+        });
+        
+        if (statusResponse.ok) {
+          return { success: true, message: "HDM connected" };
+        }
+        
+        throw new Error(`Status: ${response.status}`);
+      }
+      
+      case "print_receipt": {
+        if (!orderData) throw new Error("No order data");
+        
+        // HDM/iiko format for receipt
+        const paymentTimeout = settings?.payment_timeout || 120000;
+        const isCash = orderData.payment_method?.toLowerCase() === "cash" || 
+                       orderData.payment_method?.toLowerCase() === "կdelays" ||
+                       orderData.payment_method === "paidAmount";
+        
+        const receiptData = {
+          cashierId: parseInt(cashierId),
+          cashierPin: cashierPin,
+          password: kkmPassword,
+          receiptType: "sale",
+          items: orderData.items.map((item, idx) => ({
+            id: idx + 1,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            amount: item.total,
+            vatRate: vatRate,
+            adgCode: "56.10", // Default ADG code for food service
+            unit: "հdelays.", // Armenian: pieces
+          })),
+          payments: [{
+            type: isCash ? "paidAmount" : "paidAmountCard",
+            amount: orderData.total,
+          }],
+          total: orderData.total,
+          discount: orderData.discount || 0,
+          operator: settings?.operator_name || orderData.cashier_name,
+          fiscalNumber: orderData.order_number,
+        };
+        
+        const response = await fetch(`${baseUrl}/api/receipt`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(receiptData),
+          signal: AbortSignal.timeout(paymentTimeout),
+        });
+        
+        if (response.ok) {
+          const data = await response.json().catch(() => ({}));
+          return { success: true, message: "Receipt printed", data };
+        }
+        
+        // Try alternative endpoint
+        const altResponse = await fetch(`${baseUrl}/api/sale`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(receiptData),
+          signal: AbortSignal.timeout(paymentTimeout),
+        });
+        
+        if (altResponse.ok) {
+          const data = await altResponse.json().catch(() => ({}));
+          return { success: true, message: "Receipt printed", data };
+        }
+        
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Print failed: ${response.status} - ${errorText}`);
+      }
+      
+      case "open_drawer": {
+        const drawerData = {
+          cashierId: parseInt(cashierId),
+          cashierPin: cashierPin,
+          password: kkmPassword,
+          command: "openDrawer",
+        };
+        
+        const response = await fetch(`${baseUrl}/api/drawer`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(drawerData),
+          signal: AbortSignal.timeout(timeout),
+        });
+        
+        if (response.ok) {
+          return { success: true, message: "Drawer opened" };
+        }
+        
+        // Try command endpoint
+        const cmdResponse = await fetch(`${baseUrl}/api/command`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify({ ...drawerData, action: "openDrawer" }),
+          signal: AbortSignal.timeout(timeout),
+        });
+        
+        return { success: cmdResponse.ok, message: cmdResponse.ok ? "Drawer opened" : "Failed" };
+      }
+      
+      case "x_report": {
+        const reportData = {
+          cashierId: parseInt(cashierId),
+          cashierPin: cashierPin,
+          password: kkmPassword,
+          reportType: "X",
+        };
+        
+        const response = await fetch(`${baseUrl}/api/report`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(reportData),
+          signal: AbortSignal.timeout(timeout),
+        });
+        
+        if (response.ok) {
+          return { success: true, message: "X-report printed" };
+        }
+        throw new Error(`X-report failed: ${response.status}`);
+      }
+      
+      case "z_report": {
+        const reportData = {
+          cashierId: parseInt(cashierId),
+          cashierPin: cashierPin,
+          password: kkmPassword,
+          reportType: "Z",
+        };
+        
+        const response = await fetch(`${baseUrl}/api/report`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(reportData),
+          signal: AbortSignal.timeout(timeout),
+        });
+        
+        if (response.ok) {
+          return { success: true, message: "Z-report printed" };
+        }
+        throw new Error(`Z-report failed: ${response.status}`);
+      }
+      
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+  } catch (error) {
+    throw new Error(`HDM error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

@@ -61,18 +61,23 @@ export type Database = {
           company_name: string | null
           connection_type: string
           created_at: string
+          default_timeout: number | null
           device_id: string | null
           driver: string
           enabled: boolean
           id: string
           inn: string | null
           ip_address: string | null
+          kkm_password: string | null
           location_id: string | null
           operator_name: string | null
+          payment_timeout: number | null
           port: string | null
           print_copy: boolean
           serial_number: string | null
+          terminal_id: string | null
           updated_at: string
+          vat_rate: number | null
         }
         Insert: {
           api_login?: string | null
@@ -84,18 +89,23 @@ export type Database = {
           company_name?: string | null
           connection_type?: string
           created_at?: string
+          default_timeout?: number | null
           device_id?: string | null
           driver?: string
           enabled?: boolean
           id?: string
           inn?: string | null
           ip_address?: string | null
+          kkm_password?: string | null
           location_id?: string | null
           operator_name?: string | null
+          payment_timeout?: number | null
           port?: string | null
           print_copy?: boolean
           serial_number?: string | null
+          terminal_id?: string | null
           updated_at?: string
+          vat_rate?: number | null
         }
         Update: {
           api_login?: string | null
@@ -107,18 +117,23 @@ export type Database = {
           company_name?: string | null
           connection_type?: string
           created_at?: string
+          default_timeout?: number | null
           device_id?: string | null
           driver?: string
           enabled?: boolean
           id?: string
           inn?: string | null
           ip_address?: string | null
+          kkm_password?: string | null
           location_id?: string | null
           operator_name?: string | null
+          payment_timeout?: number | null
           port?: string | null
           print_copy?: boolean
           serial_number?: string | null
+          terminal_id?: string | null
           updated_at?: string
+          vat_rate?: number | null
         }
         Relationships: [
           {
