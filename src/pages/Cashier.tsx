@@ -20,6 +20,7 @@ import {
   RefreshCw,
   WifiOff,
   CloudUpload,
+  Users,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import { ReceiptPrintDialog } from "@/components/cashier/ReceiptPrintDialog";
 import { LockScreen } from "@/components/cashier/LockScreen";
 import { MenuSearch } from "@/components/cashier/MenuSearch";
 import { DiscountSelector } from "@/components/cashier/DiscountSelector";
+import { OfflineQueueDialog } from "@/components/cashier/OfflineQueueDialog";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useMenuCache } from "@/hooks/useMenuCache";
@@ -103,13 +105,14 @@ export default function CashierPage() {
   const { t } = useLanguage();
   const [session, setSession] = useState<CashierSession | null>(null);
   const { menuItems, categories, paymentMethods, loading, fromCache, refreshMenu } = useMenuCache();
-  const { isOnline, queueCount, syncing, addToQueue, syncQueue } = useOfflineQueue();
+  const { isOnline, queue, queueCount, syncing, addToQueue, removeFromQueue, syncQueue } = useOfflineQueue();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [zReportDialogOpen, setZReportDialogOpen] = useState(false);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
+  const [offlineQueueDialogOpen, setOfflineQueueDialogOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
@@ -476,12 +479,11 @@ export default function CashierPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={syncQueue}
-                disabled={syncing || !isOnline}
+                onClick={() => setOfflineQueueDialogOpen(true)}
                 className="gap-1"
               >
                 <CloudUpload className="h-4 w-4" />
-                {syncing ? 'Синхр...' : `${queueCount} в очереди`}
+                {queueCount} в очереди
               </Button>
             )}
             <Button
@@ -512,6 +514,19 @@ export default function CashierPage() {
             >
               <Lock className="h-4 w-4" />
               {t('cashier.lock')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                // Сменить кассира - переход на PIN-экран без закрытия смены
+                sessionStorage.setItem("cashier_switch", "true");
+                navigate("/pin");
+              }}
+              className="gap-2"
+            >
+              <Users className="h-4 w-4" />
+              Сменить
             </Button>
             <Button
               variant="outline"
@@ -717,6 +732,34 @@ export default function CashierPage() {
           onRefundComplete={() => toast.success('Возврат успешно оформлен')}
         />
       )}
+
+      {/* Offline Queue Dialog */}
+      <OfflineQueueDialog
+        open={offlineQueueDialogOpen}
+        onOpenChange={setOfflineQueueDialogOpen}
+        queue={queue}
+        syncing={syncing}
+        isOnline={isOnline}
+        onSync={syncQueue}
+        onPrint={(order) => {
+          setLastOrder({
+            orderNumber: `OFF-${order.id.slice(0, 4).toUpperCase()}`,
+            items: order.cart.map(i => ({ name: i.menuItemName, quantity: i.quantity, price: i.price })),
+            subtotal: order.subtotal,
+            total: order.total,
+            discount: order.discount,
+            discountName: order.discountName,
+            paymentMethod: order.paymentMethod,
+            paymentMethodName: order.paymentMethodName,
+            cashReceived: order.cashReceived,
+            change: order.change,
+            cashierName: order.cashierName,
+            isOffline: true,
+          });
+          setReceiptDialogOpen(true);
+        }}
+        onRemove={removeFromQueue}
+      />
     </div>
   );
 }
