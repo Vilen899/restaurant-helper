@@ -17,6 +17,7 @@ import {
   Lock,
   Printer,
   Image,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,8 +31,10 @@ import { RefundDialog } from "@/components/cashier/RefundDialog";
 import { PaymentDialog } from "@/components/cashier/PaymentDialog";
 import { ReceiptPrintDialog } from "@/components/cashier/ReceiptPrintDialog";
 import { LockScreen } from "@/components/cashier/LockScreen";
+import { MenuSearch } from "@/components/cashier/MenuSearch";
 import { LanguageSelector } from "@/components/LanguageSelector";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useMenuCache } from "@/hooks/useMenuCache";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -94,10 +97,7 @@ export default function CashierPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const [session, setSession] = useState<CashierSession | null>(null);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [categories, setCategories] = useState<MenuCategory[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { menuItems, categories, paymentMethods, loading, fromCache, refreshMenu } = useMenuCache();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -131,8 +131,6 @@ export default function CashierPage() {
     if (!parsed.shift_id) {
       openShift(parsed);
     }
-    
-    fetchMenuData();
   }, [navigate]);
 
   const openShift = async (cashierSession: CashierSession) => {
@@ -184,25 +182,6 @@ export default function CashierPage() {
       sessionStorage.setItem("cashier_session", JSON.stringify(updatedSession));
     } catch (error) {
       console.error("Error opening shift:", error);
-    }
-  };
-
-  const fetchMenuData = async () => {
-    try {
-      const [{ data: items }, { data: cats }, { data: payments }] = await Promise.all([
-        supabase.from("menu_items").select("*").eq("is_active", true).order("sort_order"),
-        supabase.from("menu_categories").select("*").eq("is_active", true).order("sort_order"),
-        supabase.from("payment_methods").select("*").eq("is_active", true).order("sort_order"),
-      ]);
-
-      setMenuItems(items || []);
-      setCategories(cats || []);
-      setPaymentMethods(payments || []);
-    } catch (error) {
-      console.error(error);
-      toast.error("Ошибка загрузки меню");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -374,6 +353,7 @@ export default function CashierPage() {
         onUnlock={() => setIsLocked(false)}
         userName={session.full_name}
         userId={session.id}
+        locationId={session.location_id}
       />
     );
   }
@@ -382,17 +362,38 @@ export default function CashierPage() {
     <div className="min-h-screen bg-background flex">
       {/* Главная часть меню */}
       <div className="flex-1 flex flex-col">
-        <header className="h-16 border-b bg-card flex items-center justify-between px-6 shadow-sm">
+        <header className="h-16 border-b bg-card flex items-center justify-between px-6 shadow-sm gap-4">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-lg">
               <UtensilsCrossed className="text-primary-foreground h-5 w-5" />
             </div>
             <div>
               <p className="font-semibold">{session?.full_name}</p>
-              <p className="text-xs text-muted-foreground">{t('cashier.title')} • {t('cashier.shiftOpened')}</p>
+              <p className="text-xs text-muted-foreground">
+                {t('cashier.title')} • {t('cashier.shiftOpened')}
+                {fromCache && <span className="ml-1 text-amber-500">(кэш)</span>}
+              </p>
             </div>
           </div>
+          
+          {/* Search */}
+          <div className="flex-1 max-w-md">
+            <MenuSearch
+              menuItems={menuItems}
+              categories={categories}
+              onItemSelect={addToCart}
+            />
+          </div>
+          
           <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={refreshMenu}
+              title="Обновить меню"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
             {lastOrder && (
               <Button
                 variant="ghost"
@@ -401,7 +402,7 @@ export default function CashierPage() {
                 className="gap-2"
               >
                 <Printer className="h-4 w-4" />
-                {t('cashier.receipt')} #{lastOrder.orderNumber}
+                #{lastOrder.orderNumber}
               </Button>
             )}
             <LanguageSelector />
