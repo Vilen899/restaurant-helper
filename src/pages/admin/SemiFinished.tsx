@@ -12,6 +12,7 @@ import { Switch } from '@/components/ui/switch';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
+import { CreateIngredientDialog } from '@/components/admin/CreateIngredientDialog';
 
 type SemiFinished = Tables<'semi_finished'>;
 type Ingredient = Tables<'ingredients'>;
@@ -420,6 +421,13 @@ export default function SemiFinishedPage() {
                   </SelectContent>
                 </Select>
               </div>
+              <CreateIngredientDialog
+                units={units}
+                onCreated={(newIng) => {
+                  fetchData();
+                  setNewIngredient({ ...newIngredient, ingredient_id: newIng.id });
+                }}
+              />
               <div className="w-28">
                 <Label className="text-xs">Количество</Label>
                 <Input

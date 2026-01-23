@@ -607,35 +607,73 @@ async function hdmRequest(
       case "print_receipt": {
         if (!orderData) throw new Error("No order data");
         
-        // HDM/iiko format for receipt
+        // HDM/Armenian fiscal format (like on the receipt photo)
+        // Format: Name, Price x Quantity = Total, ADG code, product code
         const paymentTimeout = settings?.payment_timeout || 120000;
-        const isCash = orderData.payment_method?.toLowerCase() === "cash" || 
-                       orderData.payment_method?.toLowerCase() === "կdelays" ||
-                       orderData.payment_method === "paidAmount";
+        const paymentMethodLower = orderData.payment_method?.toLowerCase() || "";
+        const isCash = paymentMethodLower === "cash" || 
+                       paymentMethodLower === "կdelays" ||
+                       paymentMethodLower === "kankhik" ||
+                       paymentMethodLower === "paidamount" ||
+                       paymentMethodLower === "naличные" ||
+                       paymentMethodLower === "наличные";
+        
+        // Format items with Armenian receipt structure
+        // Example: "Buffalwich Small" + "1400.00x1.000=1400.00" + "ДАU: 56.10, Н/Ч 0303"
+        const formattedItems = orderData.items.map((item, idx) => ({
+          id: idx + 1,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          amount: item.total,
+          vatRate: vatRate,
+          // ADG code for food service (РЕСТОРАНЫ, БЫСТРОЕ ПИТАНИЕ) = 56.10
+          adgCode: "56.10",
+          // Product code - sequential
+          productCode: String(idx + 1).padStart(4, "0"),
+          // Unit: pieces (հdelays.)
+          unit: "հat.",
+        }));
         
         const receiptData = {
+          // Cashier authentication
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
           password: kkmPassword,
+          
+          // Receipt type
           receiptType: "sale",
-          items: orderData.items.map((item, idx) => ({
-            id: idx + 1,
-            name: item.name,
-            quantity: item.quantity,
-            price: item.price,
-            amount: item.total,
-            vatRate: vatRate,
-            adgCode: "56.10", // Default ADG code for food service
-            unit: "հdelays.", // Armenian: pieces
-          })),
+          documentType: 3, // Գdelays = Sale receipt
+          
+          // Items with Armenian format
+          items: formattedItems,
+          
+          // Payment info
           payments: [{
             type: isCash ? "paidAmount" : "paidAmountCard",
+            // Armenian: Ադdelays = cash received, Աdelays = card
+            paymentType: isCash ? 0 : 1,
             amount: orderData.total,
           }],
-          total: orderData.total,
+          
+          // Totals ( Delays/Delays: total, Աdelays: received, Ցdelays: change)
+          subtotal: orderData.subtotal,
           discount: orderData.discount || 0,
+          total: orderData.total,
+          
+          // Operator info
           operator: settings?.operator_name || orderData.cashier_name,
+          operatorName: settings?.operator_name || orderData.cashier_name,
+          
+          // Receipt metadata
+          receiptNumber: orderData.order_number,
           fiscalNumber: orderData.order_number,
+          date: orderData.date,
+          
+          // Company info from settings
+          companyName: settings?.company_name,
+          inn: settings?.inn,
+          terminalId: settings?.terminal_id,
         };
         
         const response = await fetch(`${baseUrl}/api/receipt`, {
@@ -650,7 +688,7 @@ async function hdmRequest(
           return { success: true, message: "Receipt printed", data };
         }
         
-        // Try alternative endpoint
+        // Try alternative endpoint (some HDM devices use /api/sale)
         const altResponse = await fetch(`${baseUrl}/api/sale`, {
           method: "POST",
           headers: hdmHeaders,
@@ -660,6 +698,19 @@ async function hdmRequest(
         
         if (altResponse.ok) {
           const data = await altResponse.json().catch(() => ({}));
+          return { success: true, message: "Receipt printed", data };
+        }
+        
+        // Try iiko-compatible endpoint
+        const iikoResponse = await fetch(`${baseUrl}/api/fiscal/receipt`, {
+          method: "POST",
+          headers: hdmHeaders,
+          body: JSON.stringify(receiptData),
+          signal: AbortSignal.timeout(paymentTimeout),
+        });
+        
+        if (iikoResponse.ok) {
+          const data = await iikoResponse.json().catch(() => ({}));
           return { success: true, message: "Receipt printed", data };
         }
         

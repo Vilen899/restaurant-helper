@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 import { RecipeImportDialog } from '@/components/admin/RecipeImportDialog';
+import { CreateIngredientDialog } from '@/components/admin/CreateIngredientDialog';
 
 type MenuItem = Tables<'menu_items'>;
 type Ingredient = Tables<'ingredients'>;
@@ -306,12 +307,12 @@ export default function RecipesPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Цена продажи</p>
-                    <p className="text-lg font-bold">₽ {Number(item.price).toLocaleString('ru-RU')}</p>
+                    <p className="text-lg font-bold">{Number(item.price).toLocaleString()} ֏</p>
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-muted-foreground">Себестоимость</p>
                     <p className="text-lg font-bold text-primary">
-                      ₽ {Number(item.cost_price).toLocaleString('ru-RU', { minimumFractionDigits: 2 })}
+                      {Number(item.cost_price).toLocaleString()} ֏
                     </p>
                   </div>
                 </div>
@@ -319,7 +320,7 @@ export default function RecipesPage() {
                   <div className="mt-3 pt-3 border-t flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Маржа</span>
                     <Badge variant={Number(item.price) - Number(item.cost_price) > 0 ? 'default' : 'destructive'}>
-                      ₽ {(Number(item.price) - Number(item.cost_price)).toLocaleString('ru-RU', { minimumFractionDigits: 2 })} (
+                      {(Number(item.price) - Number(item.cost_price)).toLocaleString()} ֏ (
                       {Math.round((Number(item.price) - Number(item.cost_price)) / Number(item.price) * 100)}%)
                     </Badge>
                   </div>
@@ -347,12 +348,12 @@ export default function RecipesPage() {
           <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
             <div className="text-center">
               <p className="text-sm text-muted-foreground">Цена продажи</p>
-              <p className="text-xl font-bold">₽ {Number(selectedItem?.price || 0).toLocaleString('ru-RU')}</p>
+              <p className="text-xl font-bold">{Number(selectedItem?.price || 0).toLocaleString()} ֏</p>
             </div>
             <div className="text-center">
               <p className="text-sm text-muted-foreground">Себестоимость</p>
               <p className="text-xl font-bold text-primary">
-                ₽ {calculateRecipeCost().toLocaleString('ru-RU', { minimumFractionDigits: 2 })}
+                {calculateRecipeCost().toLocaleString()} ֏
               </p>
             </div>
             <div className="text-center">
@@ -403,10 +404,10 @@ export default function RecipesPage() {
                         {ri.quantity} {getItemUnit(ri)}
                       </TableCell>
                       <TableCell className="text-right">
-                        ₽ {getItemCostPerUnit(ri).toFixed(2)}
+                        {getItemCostPerUnit(ri).toFixed(0)} ֏
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        ₽ {(Number(ri.quantity) * getItemCostPerUnit(ri)).toFixed(2)}
+                        {(Number(ri.quantity) * getItemCostPerUnit(ri)).toFixed(0)} ֏
                       </TableCell>
                       <TableCell>
                         <Button
@@ -422,7 +423,7 @@ export default function RecipesPage() {
                   <TableRow className="font-bold">
                     <TableCell colSpan={3}>Итого себестоимость</TableCell>
                     <TableCell className="text-right">
-                      ₽ {calculateRecipeCost().toFixed(2)}
+                      {calculateRecipeCost().toFixed(0)} ֏
                     </TableCell>
                     <TableCell></TableCell>
                   </TableRow>
@@ -452,11 +453,18 @@ export default function RecipesPage() {
                         .filter(ing => !recipeIngredients.some(ri => ri.ingredient_id === ing.id))
                         .map(ing => (
                           <SelectItem key={ing.id} value={ing.id}>
-                            {ing.name} (₽ {Number(ing.cost_per_unit).toFixed(2)}/{(ing as any).unit?.abbreviation})
+                            {ing.name} ({Number(ing.cost_per_unit).toFixed(0)} ֏/{(ing as any).unit?.abbreviation})
                           </SelectItem>
                         ))}
                     </SelectContent>
                   </Select>
+                  <CreateIngredientDialog
+                    units={units}
+                    onCreated={(newIng) => {
+                      fetchData();
+                      setNewIngredientId(newIng.id);
+                    }}
+                  />
                   <Input
                     type="number"
                     placeholder="Кол-во"
@@ -481,7 +489,7 @@ export default function RecipesPage() {
                         .filter(sf => !recipeIngredients.some(ri => ri.semi_finished_id === sf.id))
                         .map(sf => (
                           <SelectItem key={sf.id} value={sf.id}>
-                            {sf.name} (₽ {Number(sf.calculated_cost || 0).toFixed(2)}/{sf.unit?.abbreviation})
+                            {sf.name} ({Number(sf.calculated_cost || 0).toFixed(0)} ֏/{sf.unit?.abbreviation})
                           </SelectItem>
                         ))}
                     </SelectContent>
