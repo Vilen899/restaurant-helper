@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, differenceInMinutes } from 'date-fns';
+import { format, startOfMonth, endOfMonth, differenceInMinutes, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Clock, Download, Users, Calendar, Timer, DollarSign } from 'lucide-react';
+import { Clock, Download, Users, Calendar, Timer, DollarSign, CalendarRange } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/admin/PageHeader';
@@ -39,22 +41,33 @@ export default function WorkTimePage() {
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(startOfMonth(new Date()));
+  const [dateTo, setDateTo] = useState<Date | undefined>(endOfMonth(new Date()));
+  const [useCustomRange, setUseCustomRange] = useState(false);
 
   useEffect(() => {
     fetchData();
-  }, [selectedMonth, selectedLocation]);
+  }, [selectedMonth, selectedLocation, dateFrom, dateTo, useCustomRange]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const monthStart = startOfMonth(new Date(selectedMonth + '-01'));
-      const monthEnd = endOfMonth(monthStart);
+      let startDate: Date;
+      let endDate: Date;
+
+      if (useCustomRange && dateFrom && dateTo) {
+        startDate = dateFrom;
+        endDate = dateTo;
+      } else {
+        startDate = startOfMonth(new Date(selectedMonth + '-01'));
+        endDate = endOfMonth(startDate);
+      }
 
       let query = supabase
         .from('shifts')
         .select('*, location:locations(name)')
-        .gte('started_at', monthStart.toISOString())
-        .lte('started_at', monthEnd.toISOString())
+        .gte('started_at', startDate.toISOString())
+        .lte('started_at', endDate.toISOString())
         .order('started_at', { ascending: false });
 
       if (selectedLocation !== 'all') {
@@ -176,18 +189,74 @@ export default function WorkTimePage() {
         <StatCard title="К выплате" value={`${totalEarnings.toLocaleString()} ֏`} icon={DollarSign} variant="warning" />
       </div>
 
-      <div className="flex items-center gap-4">
-        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-          <SelectTrigger className="w-48">
-            <Calendar className="h-4 w-4 mr-2" />
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {months.map(m => (
-              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Button 
+            variant={useCustomRange ? "outline" : "default"} 
+            size="sm"
+            onClick={() => setUseCustomRange(false)}
+          >
+            По месяцу
+          </Button>
+          <Button 
+            variant={useCustomRange ? "default" : "outline"} 
+            size="sm"
+            onClick={() => setUseCustomRange(true)}
+          >
+            <CalendarRange className="h-4 w-4 mr-2" />
+            По датам
+          </Button>
+        </div>
+
+        {!useCustomRange ? (
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="w-48">
+              <Calendar className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map(m => (
+                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-36">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {dateFrom ? format(dateFrom, 'dd.MM.yyyy') : 'С даты'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={dateFrom}
+                  onSelect={setDateFrom}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <span className="text-muted-foreground">—</span>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-36">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {dateTo ? format(dateTo, 'dd.MM.yyyy') : 'По дату'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={dateTo}
+                  onSelect={setDateTo}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
 
         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
           <SelectTrigger className="w-48">

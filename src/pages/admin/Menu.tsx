@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, UtensilsCrossed, Upload, Image } from 'lucide-react';
+import { Plus, Pencil, Trash2, UtensilsCrossed, Upload, Image, X, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -88,6 +88,52 @@ export default function MenuPage() {
       image_url: (item as any).image_url || '',
     });
     setDialogOpen(true);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Выберите изображение');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Файл слишком большой (макс. 5 МБ)');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('menu-images')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage
+        .from('menu-images')
+        .getPublicUrl(fileName);
+
+      setFormData({ ...formData, image_url: urlData.publicUrl });
+      toast.success('Фото загружено');
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      toast.error('Ошибка загрузки фото');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const removeImage = () => {
+    setFormData({ ...formData, image_url: '' });
   };
 
   const handleSubmit = async () => {
@@ -220,6 +266,15 @@ export default function MenuPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredItems.map(item => (
             <Card key={item.id} className={!item.is_active ? 'opacity-60' : ''}>
+              {(item as any).image_url && (
+                <div className="aspect-video w-full overflow-hidden rounded-t-lg">
+                  <img 
+                    src={(item as any).image_url} 
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -342,6 +397,53 @@ export default function MenuPage() {
                   placeholder="280"
                 />
               </div>
+            </div>
+
+            {/* Image upload */}
+            <div className="space-y-2">
+              <Label>Фото блюда</Label>
+              {formData.image_url ? (
+                <div className="relative w-full aspect-video rounded-lg overflow-hidden border">
+                  <img 
+                    src={formData.image_url} 
+                    alt="Preview" 
+                    className="w-full h-full object-cover"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-2 right-2"
+                    onClick={removeImage}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div 
+                  className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploading ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Загрузка...</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2">
+                      <Upload className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">Нажмите для загрузки</p>
+                      <p className="text-xs text-muted-foreground">PNG, JPG до 5 МБ</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageUpload}
+              />
             </div>
 
             <div className="flex items-center justify-between">

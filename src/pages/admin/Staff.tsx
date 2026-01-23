@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -52,6 +53,11 @@ export default function StaffPage() {
   const [pinDialogOpen, setPinDialogOpen] = useState(false);
   const [pinMember, setPinMember] = useState<StaffMember | null>(null);
   const [newPin, setNewPin] = useState('');
+
+  // Delete dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteMember, setDeleteMember] = useState<StaffMember | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     full_name: '',
@@ -178,6 +184,36 @@ export default function StaffPage() {
     } catch (error: any) {
       console.error('Error:', error);
       toast.error(error.message || 'Ошибка установки PIN');
+    }
+  };
+
+  const openDeleteDialog = (member: StaffMember) => {
+    setDeleteMember(member);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteStaff = async () => {
+    if (!deleteMember) return;
+
+    setDeleting(true);
+    try {
+      // Delete user_role first
+      await supabase.from('user_roles').delete().eq('user_id', deleteMember.id);
+
+      // Delete profile (will cascade delete auth user via FK)
+      const { error } = await supabase.from('profiles').delete().eq('id', deleteMember.id);
+
+      if (error) throw error;
+
+      toast.success('Сотрудник удалён');
+      setDeleteDialogOpen(false);
+      setDeleteMember(null);
+      fetchData();
+    } catch (error: any) {
+      console.error('Error:', error);
+      toast.error(error.message || 'Ошибка удаления сотрудника');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -405,6 +441,9 @@ export default function StaffPage() {
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => openEditDialog(member)}>
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openDeleteDialog(member)} title="Удалить">
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </div>
                   </TableCell>
@@ -662,6 +701,29 @@ export default function StaffPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить сотрудника?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить сотрудника <strong>{deleteMember?.full_name}</strong>?
+              Это действие нельзя отменить. Все данные сотрудника, включая смены и историю, могут быть потеряны.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Отмена</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteStaff} 
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? 'Удаление...' : 'Удалить'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
