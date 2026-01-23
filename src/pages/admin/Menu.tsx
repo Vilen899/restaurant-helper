@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Plus, Pencil, Trash2, UtensilsCrossed } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Pencil, Trash2, UtensilsCrossed, Upload, Image } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,8 @@ export default function MenuPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editItem, setEditItem] = useState<MenuItem | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -35,6 +37,7 @@ export default function MenuPage() {
     category_id: '',
     output_weight: '',
     is_active: true,
+    image_url: '',
   });
 
   useEffect(() => {
@@ -68,6 +71,7 @@ export default function MenuPage() {
       category_id: categories[0]?.id || '',
       output_weight: '',
       is_active: true,
+      image_url: '',
     });
     setDialogOpen(true);
   };
@@ -81,6 +85,7 @@ export default function MenuPage() {
       category_id: item.category_id,
       output_weight: item.output_weight?.toString() || '',
       is_active: item.is_active,
+      image_url: (item as any).image_url || '',
     });
     setDialogOpen(true);
   };
@@ -98,6 +103,7 @@ export default function MenuPage() {
       category_id: formData.category_id,
       output_weight: formData.output_weight ? parseFloat(formData.output_weight) : null,
       is_active: formData.is_active,
+      image_url: formData.image_url || null,
     };
 
     try {
