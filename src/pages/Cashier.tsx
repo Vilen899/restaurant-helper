@@ -120,19 +120,20 @@ export default function CashierPage() {
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
   
-  // Auto-lock settings from admin
-  const [autoLockSettings, setAutoLockSettings] = useState({
+  // Settings from admin
+  const [cashierSettings, setCashierSettings] = useState({
     autoLockEnabled: true,
     autoLockMinutes: 5,
+    allowNegativeStock: true,
   });
   
-  // Load auto-lock settings
+  // Load cashier settings
   useEffect(() => {
     const saved = localStorage.getItem('cashier_settings');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setAutoLockSettings(prev => ({ ...prev, ...parsed }));
+        setCashierSettings(prev => ({ ...prev, ...parsed }));
       } catch (e) {
         console.error('Error loading cashier settings:', e);
       }
@@ -142,15 +143,15 @@ export default function CashierPage() {
     const channel = new BroadcastChannel('cashier_settings');
     channel.onmessage = (event) => {
       if (event.data.type === 'settings_update') {
-        setAutoLockSettings(prev => ({ ...prev, ...event.data.data }));
+        setCashierSettings(prev => ({ ...prev, ...event.data.data }));
       }
     };
     return () => channel.close();
   }, []);
   
   useAutoLock({
-    timeoutMinutes: autoLockSettings.autoLockMinutes,
-    enabled: autoLockSettings.autoLockEnabled && !!session && !isLocked,
+    timeoutMinutes: cashierSettings.autoLockMinutes,
+    enabled: cashierSettings.autoLockEnabled && !!session && !isLocked,
     onLock: () => setIsLocked(true),
   });
   
@@ -276,7 +277,45 @@ export default function CashierPage() {
 
   const getCategoryStyle = (name: string) => categoryStyles[name] || defaultCategoryStyle;
 
-  const addToCart = (item: MenuItem) => {
+  const addToCart = async (item: MenuItem) => {
+    // Check stock if negative sales disabled
+    if (!cashierSettings.allowNegativeStock && session) {
+      try {
+        // Get recipe ingredients for this item
+        const { data: recipe } = await supabase
+          .from("menu_item_ingredients")
+          .select("ingredient_id, semi_finished_id, quantity")
+          .eq("menu_item_id", item.id);
+
+        if (recipe && recipe.length > 0) {
+          // Check inventory for each ingredient
+          for (const recipeItem of recipe) {
+            if (recipeItem.ingredient_id) {
+              const { data: inv } = await supabase
+                .from("inventory")
+                .select("quantity")
+                .eq("location_id", session.location_id)
+                .eq("ingredient_id", recipeItem.ingredient_id)
+                .maybeSingle();
+
+              const currentQty = inv ? Number(inv.quantity) : 0;
+              const existingInCart = cart.find((ci) => ci.menuItem.id === item.id);
+              const cartQty = existingInCart ? existingInCart.quantity : 0;
+              const requiredQty = Number(recipeItem.quantity) * (cartQty + 1);
+
+              if (currentQty < requiredQty) {
+                toast.error(`Недостаточно остатков для "${item.name}"`);
+                return;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Stock check error:", e);
+        // Allow sale on error
+      }
+    }
+
     // Sound should be triggered directly from the click handler.
     playCartAddSound();
     setCart((prev) => {

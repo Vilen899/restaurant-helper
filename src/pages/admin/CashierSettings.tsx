@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Timer, Lock, Save, Volume2, VolumeX } from 'lucide-react';
+import { Timer, Lock, Save, Volume2, VolumeX, PackageMinus } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ interface CashierSettings {
   autoLockMinutes: number;
   soundEnabled: boolean;
   soundVolume: number;
+  allowNegativeStock: boolean;
 }
 
 const STORAGE_KEY = 'cashier_settings';
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS: CashierSettings = {
   autoLockMinutes: 5,
   soundEnabled: true,
   soundVolume: 50,
+  allowNegativeStock: true,
 };
 
 export default function CashierSettingsPage() {
@@ -76,6 +78,34 @@ export default function CashierSettingsPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
+        {/* Negative stock settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PackageMinus className="h-5 w-5" />
+              Продажа при отсутствии остатков
+            </CardTitle>
+            <CardDescription>
+              Разрешить продажу товаров при нулевом или отрицательном остатке на складе
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="negative-stock-enabled" className="flex-1">
+                <div>Разрешить минусовые продажи</div>
+                <p className="text-sm text-muted-foreground font-normal mt-1">
+                  Продажа будет возможна даже если товара нет на складе
+                </p>
+              </Label>
+              <Switch
+                id="negative-stock-enabled"
+                checked={settings.allowNegativeStock}
+                onCheckedChange={(checked) => updateSetting('allowNegativeStock', checked)}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Auto-lock settings */}
         <Card>
           <CardHeader>
@@ -199,6 +229,10 @@ export default function CashierSettingsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-muted-foreground">
+            <p>
+              <strong className="text-foreground">Минусовые продажи</strong> позволяют продавать товар
+              даже если его нет на складе. Остаток уйдёт в минус и будет виден в отчётах.
+            </p>
             <p>
               <strong className="text-foreground">Автоблокировка</strong> защищает кассу от 
               несанкционированного доступа, когда кассир отошёл от рабочего места.
