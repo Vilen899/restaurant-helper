@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import {
   Trash2,
   UtensilsCrossed,
-  Check,
   Coffee,
   Pizza,
   Salad,
@@ -14,25 +13,23 @@ import {
   Package,
   Clock,
   RotateCcw,
+  LogOut,
+  Lock,
+  Printer,
+  Image,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Tables } from "@/integrations/supabase/types";
 import { cn } from "@/lib/utils";
-import { NumericKeypad } from "@/components/cashier/NumericKeypad";
 import { ZReportDialog } from "@/components/cashier/ZReportDialog";
 import { RefundDialog } from "@/components/cashier/RefundDialog";
+import { PaymentDialog } from "@/components/cashier/PaymentDialog";
+import { ReceiptPrintDialog } from "@/components/cashier/ReceiptPrintDialog";
+import { LockScreen } from "@/components/cashier/LockScreen";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -48,6 +45,8 @@ interface CashierSession {
   full_name: string;
   role: string;
   location_id: string;
+  shift_id?: string;
+  shift_start?: string;
 }
 
 // Иконки и стили категорий
@@ -89,7 +88,6 @@ const defaultCategoryStyle = {
   bg: "bg-muted/50 border-muted hover:bg-muted",
 };
 
-// -------------------- CashierPage компонент --------------------
 export default function CashierPage() {
   const navigate = useNavigate();
   const [session, setSession] = useState<CashierSession | null>(null);
@@ -102,9 +100,10 @@ export default function CashierPage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [zReportDialogOpen, setZReportDialogOpen] = useState(false);
   const [refundDialogOpen, setRefundDialogOpen] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
-  const [cashReceived, setCashReceived] = useState("");
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lastOrder, setLastOrder] = useState<any>(null);
 
   useEffect(() => {
     const sessionData = sessionStorage.getItem("cashier_session");
@@ -124,8 +123,39 @@ export default function CashierPage() {
     }
 
     setSession(parsed);
+    
+    // Открываем смену если её нет
+    if (!parsed.shift_id) {
+      openShift(parsed);
+    }
+    
     fetchMenuData();
   }, [navigate]);
+
+  const openShift = async (cashierSession: CashierSession) => {
+    try {
+      const { data, error } = await supabase
+        .from("shifts")
+        .insert({
+          user_id: cashierSession.id,
+          location_id: cashierSession.location_id,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const updatedSession = {
+        ...cashierSession,
+        shift_id: data.id,
+        shift_start: data.started_at,
+      };
+      setSession(updatedSession);
+      sessionStorage.setItem("cashier_session", JSON.stringify(updatedSession));
+    } catch (error) {
+      console.error("Error opening shift:", error);
+    }
+  };
 
   const fetchMenuData = async () => {
     try {
@@ -177,17 +207,129 @@ export default function CashierPage() {
     );
   };
 
-  const removeFromCart = (itemId: string) => {
-    setCart((prev) => prev.filter((ci) => ci.menuItem.id !== itemId));
-  };
-
   const clearCart = () => setCart([]);
 
   const subtotal = cart.reduce((sum, ci) => sum + Number(ci.menuItem.price) * ci.quantity, 0);
   const total = subtotal;
   const totalItems = cart.reduce((sum, ci) => sum + ci.quantity, 0);
-  const isCashPayment = selectedPaymentMethod?.code === "cash";
-  const change = isCashPayment && cashReceived ? Math.max(0, parseFloat(cashReceived) - total) : 0;
+
+  const handlePayment = async (method: PaymentMethod, cashReceived?: number) => {
+    if (!session) return;
+
+    setProcessing(true);
+    try {
+      // Создаём заказ
+      const { data: order, error: orderError } = await supabase
+        .from("orders")
+        .insert({
+          location_id: session.location_id,
+          created_by: session.id,
+          subtotal: subtotal,
+          total: total,
+          status: "completed",
+          payment_method: method.code,
+          completed_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      // Добавляем позиции
+      const orderItems = cart.map((ci) => ({
+        order_id: order.id,
+        menu_item_id: ci.menuItem.id,
+        quantity: ci.quantity,
+        unit_price: ci.menuItem.price,
+        total_price: Number(ci.menuItem.price) * ci.quantity,
+      }));
+
+      const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+      if (itemsError) throw itemsError;
+
+      // Списываем ингредиенты
+      for (const ci of cart) {
+        const { data: recipe } = await supabase
+          .from("menu_item_ingredients")
+          .select("ingredient_id, semi_finished_id, quantity")
+          .eq("menu_item_id", ci.menuItem.id);
+
+        if (!recipe) continue;
+
+        for (const recipeItem of recipe) {
+          if (recipeItem.ingredient_id) {
+            const { data: currentInv } = await supabase
+              .from("inventory")
+              .select("id, quantity")
+              .eq("location_id", session.location_id)
+              .eq("ingredient_id", recipeItem.ingredient_id)
+              .maybeSingle();
+
+            if (currentInv) {
+              const usedQty = Number(recipeItem.quantity) * ci.quantity;
+              await supabase
+                .from("inventory")
+                .update({ quantity: Math.max(0, Number(currentInv.quantity) - usedQty) })
+                .eq("id", currentInv.id);
+
+              await supabase.from("inventory_movements").insert({
+                location_id: session.location_id,
+                ingredient_id: recipeItem.ingredient_id,
+                movement_type: "sale",
+                quantity: -usedQty,
+                reference_id: order.id,
+              });
+            }
+          }
+        }
+      }
+
+      // Сохраняем данные для чека
+      setLastOrder({
+        orderNumber: order.order_number,
+        items: cart.map((ci) => ({
+          name: ci.menuItem.name,
+          quantity: ci.quantity,
+          price: Number(ci.menuItem.price),
+        })),
+        subtotal,
+        total,
+        paymentMethod: method.name,
+        cashReceived,
+        change: cashReceived ? Math.max(0, cashReceived - total) : undefined,
+        cashierName: session.full_name,
+      });
+
+      setPaymentDialogOpen(false);
+      setReceiptDialogOpen(true);
+      clearCart();
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Ошибка оформления заказа");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCloseShift = async () => {
+    if (!session?.shift_id) {
+      handleLogout();
+      return;
+    }
+
+    try {
+      // Закрываем смену
+      await supabase
+        .from("shifts")
+        .update({ ended_at: new Date().toISOString() })
+        .eq("id", session.shift_id);
+
+      handleLogout();
+    } catch (error) {
+      console.error("Error:", error);
+      handleLogout();
+    }
+  };
 
   const handleLogout = () => {
     sessionStorage.removeItem("cashier_session");
@@ -195,6 +337,16 @@ export default function CashierPage() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center">Загрузка...</div>;
+
+  if (isLocked && session) {
+    return (
+      <LockScreen
+        onUnlock={() => setIsLocked(false)}
+        userName={session.full_name}
+        userId={session.id}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -211,6 +363,26 @@ export default function CashierPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {lastOrder && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setReceiptDialogOpen(true)}
+                className="gap-2"
+              >
+                <Printer className="h-4 w-4" />
+                Чек #{lastOrder.orderNumber}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsLocked(true)}
+              className="gap-2"
+            >
+              <Lock className="h-4 w-4" />
+              Блокировка
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -228,6 +400,14 @@ export default function CashierPage() {
             >
               <Clock className="h-4 w-4" />
               Закрыть смену
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLogout}
+              className="gap-2"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           </div>
         </header>
@@ -261,10 +441,27 @@ export default function CashierPage() {
               </Button>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 mt-4">
                 {itemsByCategory.get(selectedCategory)?.map((item) => (
-                  <Card key={item.id} className="cursor-pointer" onClick={() => addToCart(item)}>
-                    <CardContent>
-                      <p>{item.name}</p>
-                      <p className="font-bold">{Number(item.price).toLocaleString()} ֏</p>
+                  <Card key={item.id} className="cursor-pointer overflow-hidden" onClick={() => addToCart(item)}>
+                    {item.image_url && (
+                      <div className="aspect-square bg-muted">
+                        <img
+                          src={item.image_url}
+                          alt={item.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    <CardContent className={cn("p-3", !item.image_url && "pt-6")}>
+                      {!item.image_url && (
+                        <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mx-auto mb-2">
+                          <Image className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+                      <p className="font-medium text-center line-clamp-2">{item.name}</p>
+                      <p className="font-bold text-center text-primary">{Number(item.price).toLocaleString()} ֏</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -290,19 +487,28 @@ export default function CashierPage() {
         <ScrollArea className="flex-1 p-3 space-y-2">
           {cart.map((ci) => (
             <Card key={ci.menuItem.id}>
-              <CardContent className="flex justify-between items-center">
-                <div>
-                  <p>{ci.menuItem.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {ci.quantity} × {Number(ci.menuItem.price).toLocaleString()} ֏
-                  </p>
+              <CardContent className="flex justify-between items-center p-3">
+                <div className="flex items-center gap-3">
+                  {ci.menuItem.image_url && (
+                    <img
+                      src={ci.menuItem.image_url}
+                      alt=""
+                      className="w-10 h-10 rounded object-cover"
+                    />
+                  )}
+                  <div>
+                    <p className="font-medium">{ci.menuItem.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {ci.quantity} × {Number(ci.menuItem.price).toLocaleString()} ֏
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="icon" onClick={() => updateQuantity(ci.menuItem.id, -1)}>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQuantity(ci.menuItem.id, -1)}>
                     -
                   </Button>
-                  <span>{ci.quantity}</span>
-                  <Button variant="outline" size="icon" onClick={() => updateQuantity(ci.menuItem.id, 1)}>
+                  <span className="w-6 text-center">{ci.quantity}</span>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => updateQuantity(ci.menuItem.id, 1)}>
                     +
                   </Button>
                 </div>
@@ -311,16 +517,33 @@ export default function CashierPage() {
           ))}
         </ScrollArea>
 
-        <div className="p-4 border-t space-y-2">
-          <div className="flex justify-between">
+        <div className="p-4 border-t space-y-3">
+          <div className="flex justify-between text-lg">
             <span>Итого:</span>
             <span className="font-bold">{total.toLocaleString()} ֏</span>
           </div>
-          <Button className="w-full" onClick={() => setPaymentDialogOpen(true)} disabled={cart.length === 0}>
+          <Button className="w-full h-12 text-lg" onClick={() => setPaymentDialogOpen(true)} disabled={cart.length === 0}>
             Оплатить
           </Button>
         </div>
       </div>
+
+      {/* Payment Dialog */}
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        total={total}
+        paymentMethods={paymentMethods}
+        onConfirm={handlePayment}
+        processing={processing}
+      />
+
+      {/* Receipt Dialog */}
+      <ReceiptPrintDialog
+        open={receiptDialogOpen}
+        onOpenChange={setReceiptDialogOpen}
+        order={lastOrder}
+      />
 
       {/* Z-Report Dialog */}
       {session && (
@@ -329,7 +552,7 @@ export default function CashierPage() {
           onOpenChange={setZReportDialogOpen}
           locationId={session.location_id}
           userName={session.full_name}
-          onConfirm={handleLogout}
+          onConfirm={handleCloseShift}
         />
       )}
 
