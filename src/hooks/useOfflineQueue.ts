@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { deductIngredient, deductSemiFinishedIngredients } from '@/hooks/useInventoryDeduction';
 
 interface QueuedOrder {
   id: string;
@@ -144,35 +145,30 @@ export function useOfflineQueue() {
         for (const item of order.cart) {
           const { data: recipe } = await supabase
             .from('menu_item_ingredients')
-            .select('ingredient_id, quantity')
+            .select('ingredient_id, semi_finished_id, quantity')
             .eq('menu_item_id', item.menuItemId);
 
           if (recipe) {
             for (const recipeItem of recipe) {
+              // Direct ingredient
               if (recipeItem.ingredient_id) {
-                const { data: currentInv } = await supabase
-                  .from('inventory')
-                  .select('id, quantity')
-                  .eq('location_id', order.locationId)
-                  .eq('ingredient_id', recipeItem.ingredient_id)
-                  .maybeSingle();
+                await deductIngredient(
+                  order.locationId,
+                  recipeItem.ingredient_id,
+                  Number(recipeItem.quantity) * item.quantity,
+                  createdOrder.id
+                );
+              }
 
-                if (currentInv) {
-                  const usedQty = Number(recipeItem.quantity) * item.quantity;
-                  // Allow negative inventory (sales into minus)
-                  await supabase
-                    .from('inventory')
-                    .update({ quantity: Number(currentInv.quantity) - usedQty })
-                    .eq('id', currentInv.id);
-
-                  await supabase.from('inventory_movements').insert({
-                    location_id: order.locationId,
-                    ingredient_id: recipeItem.ingredient_id,
-                    movement_type: 'sale',
-                    quantity: -usedQty,
-                    reference_id: createdOrder.id,
-                  });
-                }
+              // Semi-finished product
+              if (recipeItem.semi_finished_id) {
+                await deductSemiFinishedIngredients(
+                  order.locationId,
+                  recipeItem.semi_finished_id,
+                  Number(recipeItem.quantity),
+                  item.quantity,
+                  createdOrder.id
+                );
               }
             }
           }
