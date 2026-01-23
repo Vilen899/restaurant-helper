@@ -43,6 +43,7 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import { useMenuCache } from "@/hooks/useMenuCache";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
+import { playCartAddSound } from "@/lib/sounds";
 
 type MenuItem = Tables<"menu_items">;
 type MenuCategory = Tables<"menu_categories">;
@@ -275,6 +276,8 @@ export default function CashierPage() {
   const getCategoryStyle = (name: string) => categoryStyles[name] || defaultCategoryStyle;
 
   const addToCart = (item: MenuItem) => {
+    // Sound should be triggered directly from the click handler.
+    playCartAddSound();
     setCart((prev) => {
       const existing = prev.find((ci) => ci.menuItem.id === item.id);
       if (existing) {

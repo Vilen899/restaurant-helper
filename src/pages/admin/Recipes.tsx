@@ -125,6 +125,14 @@ export default function RecipesPage() {
       return;
     }
 
+    // RU-friendly numeric parsing: allow comma decimals (e.g. 0,25)
+    const qtyStr = String(newIngredientQty).trim().replace(/\s+/g, '').replace(',', '.');
+    const qty = Number(qtyStr);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error('Количество должно быть больше 0');
+      return;
+    }
+
     if (addType === 'ingredient' && !newIngredientId) {
       toast.error('Выберите ингредиент');
       return;
@@ -153,7 +161,7 @@ export default function RecipesPage() {
     try {
       const insertData = {
         menu_item_id: selectedItem.id,
-        quantity: parseFloat(newIngredientQty),
+        quantity: qty,
         ingredient_id: addType === 'ingredient' ? newIngredientId : null,
         semi_finished_id: addType === 'semi_finished' ? newSemiFinishedId : null,
       };
@@ -188,7 +196,9 @@ export default function RecipesPage() {
       fetchData();
     } catch (error) {
       console.error('Error:', error);
-      toast.error('Ошибка добавления');
+      const err: any = error;
+      const msg = err?.message ? `Ошибка добавления: ${err.message}` : 'Ошибка добавления';
+      toast.error(msg);
     }
   };
 
