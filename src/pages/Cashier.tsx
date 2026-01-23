@@ -459,9 +459,10 @@ export default function CashierPage() {
 
             if (currentInv) {
               const usedQty = Number(recipeItem.quantity) * ci.quantity;
+              // Allow negative inventory (sales into minus)
               await supabase
                 .from("inventory")
-                .update({ quantity: Math.max(0, Number(currentInv.quantity) - usedQty) })
+                .update({ quantity: Number(currentInv.quantity) - usedQty })
                 .eq("id", currentInv.id);
 
               await supabase.from("inventory_movements").insert({
