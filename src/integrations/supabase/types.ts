@@ -50,6 +50,39 @@ export type Database = {
         }
         Relationships: []
       }
+      discounts: {
+        Row: {
+          created_at: string
+          discount_type: string
+          id: string
+          is_active: boolean
+          name: string
+          sort_order: number
+          updated_at: string
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          discount_type?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          sort_order?: number
+          updated_at?: string
+          value?: number
+        }
+        Update: {
+          created_at?: string
+          discount_type?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          sort_order?: number
+          updated_at?: string
+          value?: number
+        }
+        Relationships: []
+      }
       fiscal_settings: {
         Row: {
           api_login: string | null
@@ -492,6 +525,11 @@ export type Database = {
           created_at: string
           created_by: string | null
           discount: number
+          discount_id: string | null
+          discount_name: string | null
+          discount_reason: string | null
+          discount_type: string | null
+          discount_value: number | null
           id: string
           location_id: string
           notes: string | null
@@ -506,6 +544,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           discount?: number
+          discount_id?: string | null
+          discount_name?: string | null
+          discount_reason?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           id?: string
           location_id: string
           notes?: string | null
@@ -520,6 +563,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           discount?: number
+          discount_id?: string | null
+          discount_name?: string | null
+          discount_reason?: string | null
+          discount_type?: string | null
+          discount_value?: number | null
           id?: string
           location_id?: string
           notes?: string | null
@@ -530,6 +578,13 @@ export type Database = {
           total?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_discount_id_fkey"
+            columns: ["discount_id"]
+            isOneToOne: false
+            referencedRelation: "discounts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_location_id_fkey"
             columns: ["location_id"]
