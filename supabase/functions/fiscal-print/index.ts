@@ -168,6 +168,10 @@ async function executeFiscalAction(
       return await shtrihRequest(baseUrl, headers, action, orderData, settings);
     case "evotor":
       return await evotorRequest(baseUrl, headers, action, orderData, settings);
+    case "newland":
+      return await newlandRequest(baseUrl, headers, action, orderData, settings);
+    case "aisino":
+      return await aisinoRequest(baseUrl, headers, action, orderData, settings);
     case "custom":
     default:
       return await customApiRequest(baseUrl, headers, action, orderData, settings);
@@ -371,6 +375,167 @@ async function evotorRequest(
     }
   } catch (error) {
     throw new Error(`Evotor error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Newland driver implementation
+async function newlandRequest(
+  baseUrl: string,
+  headers: Record<string, string>,
+  action: string,
+  orderData?: PrintRequest["order_data"],
+  settings?: FiscalSettings
+): Promise<{ success: boolean; message?: string; data?: unknown }> {
+  try {
+    switch (action) {
+      case "test_connection": {
+        const response = await fetch(`${baseUrl}/api/device/status`, { headers });
+        if (response.ok) {
+          return { success: true, message: "Newland connected" };
+        }
+        // Try alternative endpoint
+        const altResponse = await fetch(`${baseUrl}/status`, { headers });
+        return { success: altResponse.ok, message: altResponse.ok ? "Newland connected" : "Connection failed" };
+      }
+      
+      case "print_receipt": {
+        if (!orderData) throw new Error("No order data");
+        
+        const receiptData = {
+          type: "sale",
+          operator: settings?.operator_name || "Cashier",
+          items: orderData.items.map((item, idx) => ({
+            id: idx + 1,
+            name: item.name,
+            qty: item.quantity,
+            price: item.price,
+            amount: item.total,
+          })),
+          payment: {
+            method: orderData.payment_method === "cash" ? 0 : 1,
+            amount: orderData.total,
+          },
+          total: orderData.total,
+          discount: orderData.discount,
+        };
+        
+        const response = await fetch(`${baseUrl}/api/fiscal/receipt`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(receiptData),
+        });
+        
+        if (response.ok) {
+          return { success: true, message: "Receipt printed", data: await response.json().catch(() => ({})) };
+        }
+        throw new Error(`Print failed: ${response.status}`);
+      }
+      
+      case "open_drawer": {
+        const response = await fetch(`${baseUrl}/api/device/drawer`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ action: "open" }),
+        });
+        return { success: response.ok, message: response.ok ? "Drawer opened" : "Failed" };
+      }
+      
+      case "x_report":
+      case "z_report": {
+        const reportType = action === "x_report" ? "X" : "Z";
+        const response = await fetch(`${baseUrl}/api/fiscal/report`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ type: reportType }),
+        });
+        return { success: response.ok, message: `${reportType}-report printed` };
+      }
+      
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+  } catch (error) {
+    throw new Error(`Newland error: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Aisino driver implementation
+async function aisinoRequest(
+  baseUrl: string,
+  headers: Record<string, string>,
+  action: string,
+  orderData?: PrintRequest["order_data"],
+  settings?: FiscalSettings
+): Promise<{ success: boolean; message?: string; data?: unknown }> {
+  try {
+    switch (action) {
+      case "test_connection": {
+        const response = await fetch(`${baseUrl}/api/v1/device/info`, { headers });
+        if (response.ok) {
+          return { success: true, message: "Aisino connected" };
+        }
+        const altResponse = await fetch(`${baseUrl}/device/status`, { headers });
+        return { success: altResponse.ok, message: altResponse.ok ? "Aisino connected" : "Connection failed" };
+      }
+      
+      case "print_receipt": {
+        if (!orderData) throw new Error("No order data");
+        
+        const receiptData = {
+          invoiceType: "SALE",
+          cashier: settings?.operator_name || "Cashier",
+          companyTin: settings?.inn,
+          companyName: settings?.company_name,
+          items: orderData.items.map(item => ({
+            description: item.name,
+            quantity: item.quantity,
+            unitPrice: item.price,
+            totalAmount: item.total,
+          })),
+          payments: [{
+            paymentType: orderData.payment_method === "cash" ? "CASH" : "CARD",
+            amount: orderData.total,
+          }],
+          totalAmount: orderData.total,
+          discountAmount: orderData.discount,
+        };
+        
+        const response = await fetch(`${baseUrl}/api/v1/fiscal/invoice`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(receiptData),
+        });
+        
+        if (response.ok) {
+          return { success: true, message: "Receipt printed", data: await response.json().catch(() => ({})) };
+        }
+        throw new Error(`Print failed: ${response.status}`);
+      }
+      
+      case "open_drawer": {
+        const response = await fetch(`${baseUrl}/api/v1/device/cashdrawer`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ command: "OPEN" }),
+        });
+        return { success: response.ok, message: response.ok ? "Drawer opened" : "Failed" };
+      }
+      
+      case "x_report": {
+        const response = await fetch(`${baseUrl}/api/v1/fiscal/report/x`, { method: "POST", headers });
+        return { success: response.ok, message: "X-report printed" };
+      }
+      
+      case "z_report": {
+        const response = await fetch(`${baseUrl}/api/v1/fiscal/report/z`, { method: "POST", headers });
+        return { success: response.ok, message: "Z-report printed" };
+      }
+      
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
+  } catch (error) {
+    throw new Error(`Aisino error: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
