@@ -16,7 +16,7 @@ interface FiscalConfig {
   id?: string;
   location_id: string;
   enabled: boolean;
-  driver: 'atol' | 'shtrih' | 'evotor' | 'custom';
+  driver: 'atol' | 'shtrih' | 'evotor' | 'newland' | 'aisino' | 'custom';
   connection_type: 'network' | 'api';
   api_url: string;
   ip_address: string;
@@ -348,6 +348,8 @@ export default function FiscalSettingsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="custom">Произвольный API (универсальный)</SelectItem>
+                  <SelectItem value="newland">Newland</SelectItem>
+                  <SelectItem value="aisino">Aisino</SelectItem>
                   <SelectItem value="atol">АТОЛ</SelectItem>
                   <SelectItem value="shtrih">Штрих-М</SelectItem>
                   <SelectItem value="evotor">Эвотор</SelectItem>
