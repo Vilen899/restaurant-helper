@@ -16,7 +16,7 @@ interface FiscalConfig {
   id?: string;
   location_id: string;
   enabled: boolean;
-  driver: 'atol' | 'shtrih' | 'evotor' | 'newland' | 'aisino' | 'custom';
+  driver: 'hdm' | 'atol' | 'shtrih' | 'evotor' | 'newland' | 'aisino' | 'custom';
   connection_type: 'network' | 'api';
   api_url: string;
   ip_address: string;
@@ -32,16 +32,22 @@ interface FiscalConfig {
   company_address: string;
   auto_print_receipt: boolean;
   print_copy: boolean;
+  // HDM-specific fields
+  kkm_password: string;
+  vat_rate: number;
+  terminal_id: string;
+  default_timeout: number;
+  payment_timeout: number;
 }
 
 const defaultConfig: FiscalConfig = {
   location_id: '',
   enabled: false,
-  driver: 'custom',
+  driver: 'hdm',
   connection_type: 'api',
   api_url: '',
   ip_address: '',
-  port: '5555',
+  port: '8080',
   api_login: '',
   api_password: '',
   api_token: '',
@@ -53,6 +59,12 @@ const defaultConfig: FiscalConfig = {
   company_address: '',
   auto_print_receipt: true,
   print_copy: false,
+  // HDM defaults from iiko config
+  kkm_password: '',
+  vat_rate: 20,
+  terminal_id: '',
+  default_timeout: 30000,
+  payment_timeout: 120000,
 };
 
 export default function FiscalSettingsPage() {
@@ -113,11 +125,11 @@ export default function FiscalSettingsPage() {
           id: data.id,
           location_id: data.location_id,
           enabled: data.enabled,
-          driver: data.driver as FiscalConfig['driver'],
+          driver: (data.driver as FiscalConfig['driver']) || 'hdm',
           connection_type: data.connection_type as FiscalConfig['connection_type'],
           api_url: data.api_url || '',
           ip_address: data.ip_address || '',
-          port: data.port || '5555',
+          port: data.port || '8080',
           api_login: data.api_login || '',
           api_password: data.api_password || '',
           api_token: data.api_token || '',
@@ -129,6 +141,12 @@ export default function FiscalSettingsPage() {
           company_address: data.company_address || '',
           auto_print_receipt: data.auto_print_receipt,
           print_copy: data.print_copy,
+          // HDM fields
+          kkm_password: (data as any).kkm_password || '',
+          vat_rate: (data as any).vat_rate || 20,
+          terminal_id: (data as any).terminal_id || '',
+          default_timeout: (data as any).default_timeout || 30000,
+          payment_timeout: (data as any).payment_timeout || 120000,
         });
       } else {
         setConfig({ ...defaultConfig, location_id: locationId });
@@ -169,6 +187,12 @@ export default function FiscalSettingsPage() {
         company_address: config.company_address || null,
         auto_print_receipt: config.auto_print_receipt,
         print_copy: config.print_copy,
+        // HDM-specific
+        kkm_password: config.kkm_password || null,
+        vat_rate: config.vat_rate || 20,
+        terminal_id: config.terminal_id || null,
+        default_timeout: config.default_timeout || 30000,
+        payment_timeout: config.payment_timeout || 120000,
       };
 
       if (config.id) {
@@ -347,6 +371,7 @@ export default function FiscalSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="hdm">HDM (ISP930 и др. - Армения)</SelectItem>
                   <SelectItem value="custom">Произвольный API (универсальный)</SelectItem>
                   <SelectItem value="newland">Newland</SelectItem>
                   <SelectItem value="aisino">Aisino</SelectItem>
@@ -410,22 +435,22 @@ export default function FiscalSettingsPage() {
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>Логин</Label>
+              <Label>{config.driver === 'hdm' ? 'ID кассира (CashierId)' : 'Логин'}</Label>
               <Input
                 value={config.api_login}
                 onChange={(e) => setConfig({ ...config, api_login: e.target.value })}
-                placeholder="Логин от API"
+                placeholder={config.driver === 'hdm' ? '3' : 'Логин от API'}
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Пароль</Label>
+              <Label>{config.driver === 'hdm' ? 'ПИН кассира (CashierPin)' : 'Пароль'}</Label>
               <div className="relative">
                 <Input
                   type={showPassword ? 'text' : 'password'}
                   value={config.api_password}
                   onChange={(e) => setConfig({ ...config, api_password: e.target.value })}
-                  placeholder="Пароль от API"
+                  placeholder={config.driver === 'hdm' ? '4321' : 'Пароль от API'}
                 />
                 <Button
                   type="button"
@@ -439,29 +464,99 @@ export default function FiscalSettingsPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>API Токен (альтернатива)</Label>
-              <div className="relative">
-                <Input
-                  type={showToken ? 'text' : 'password'}
-                  value={config.api_token}
-                  onChange={(e) => setConfig({ ...config, api_token: e.target.value })}
-                  placeholder="Bearer токен (если используется)"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-0 top-0"
-                  onClick={() => setShowToken(!showToken)}
-                >
-                  {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
+            {/* HDM-specific fields */}
+            {config.driver === 'hdm' && (
+              <>
+                <div className="space-y-2">
+                  <Label>Пароль ККМ (KkmPassword)</Label>
+                  <div className="relative">
+                    <Input
+                      type={showToken ? 'text' : 'password'}
+                      value={config.kkm_password}
+                      onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
+                      placeholder="Aa1111Bb"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0"
+                      onClick={() => setShowToken(!showToken)}
+                    >
+                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Ставка НДС (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={config.vat_rate}
+                      onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) || 20 })}
+                      placeholder="16.67"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Terminal ID</Label>
+                    <Input
+                      value={config.terminal_id}
+                      onChange={(e) => setConfig({ ...config, terminal_id: e.target.value })}
+                      placeholder="19065338"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Таймаут операции (мс)</Label>
+                    <Input
+                      type="number"
+                      value={config.default_timeout}
+                      onChange={(e) => setConfig({ ...config, default_timeout: parseInt(e.target.value) || 30000 })}
+                      placeholder="30000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Таймаут оплаты (мс)</Label>
+                    <Input
+                      type="number"
+                      value={config.payment_timeout}
+                      onChange={(e) => setConfig({ ...config, payment_timeout: parseInt(e.target.value) || 120000 })}
+                      placeholder="120000"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {config.driver !== 'hdm' && (
+              <div className="space-y-2">
+                <Label>API Токен (альтернатива)</Label>
+                <div className="relative">
+                  <Input
+                    type={showToken ? 'text' : 'password'}
+                    value={config.api_token}
+                    onChange={(e) => setConfig({ ...config, api_token: e.target.value })}
+                    placeholder="Bearer токен (если используется)"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0"
+                    onClick={() => setShowToken(!showToken)}
+                  >
+                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Используйте либо логин/пароль, либо токен
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Используйте либо логин/пароль, либо токен
-              </p>
-            </div>
+            )}
 
             <div className="pt-4 border-t space-y-4">
               <h4 className="font-medium">Реквизиты организации</h4>
