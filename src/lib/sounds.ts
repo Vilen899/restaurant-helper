@@ -10,14 +10,34 @@ const getAudioContext = () => {
   return audioContext;
 };
 
+/** Get current sound settings from localStorage */
+export const getSoundSettings = () => {
+  if (typeof window === "undefined") return { soundEnabled: true, soundVolume: 50 };
+  try {
+    const saved = localStorage.getItem("cashier_settings");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        soundEnabled: parsed.soundEnabled ?? true,
+        soundVolume: parsed.soundVolume ?? 50,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return { soundEnabled: true, soundVolume: 50 };
+};
+
 /** Short, subtle beep for cashier cart add (must be called from user gesture). */
 export const playCartAddSound = async () => {
   try {
+    const { soundEnabled, soundVolume } = getSoundSettings();
+    if (!soundEnabled) return;
+
     const ctx = getAudioContext();
     if (!ctx) return;
 
     if (ctx.state === "suspended") {
-      // Some browsers require resume inside a user gesture.
       await ctx.resume();
     }
 
@@ -30,9 +50,10 @@ export const playCartAddSound = async () => {
     oscillator.connect(gainNode);
     gainNode.connect(ctx.destination);
 
-    // very low volume to avoid being annoying in POS flow
+    // Scale volume: 0-100 -> 0-0.15
+    const baseVolume = (soundVolume / 100) * 0.15;
     const t0 = ctx.currentTime;
-    gainNode.gain.setValueAtTime(0.08, t0);
+    gainNode.gain.setValueAtTime(baseVolume, t0);
     gainNode.gain.exponentialRampToValueAtTime(0.001, t0 + 0.08);
 
     oscillator.start(t0);
