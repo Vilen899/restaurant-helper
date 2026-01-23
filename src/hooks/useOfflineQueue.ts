@@ -216,12 +216,18 @@ export function useOfflineQueue() {
     return queue.find(o => o.id === orderId);
   }, [queue]);
 
+  // Удалить заказ из очереди
+  const removeFromQueue = useCallback((orderId: string) => {
+    setQueue(prev => prev.filter(o => o.id !== orderId));
+  }, []);
+
   return {
     isOnline,
     queue,
     queueCount,
     syncing,
     addToQueue,
+    removeFromQueue,
     markAsPrinted,
     syncQueue,
     getOrderForReceipt,
