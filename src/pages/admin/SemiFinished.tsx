@@ -187,6 +187,13 @@ export default function SemiFinishedPage() {
       return;
     }
 
+    const qtyStr = String(dialogNewIngredient.quantity).trim().replace(',', '.');
+    const qty = parseFloat(qtyStr);
+    if (!Number.isFinite(qty) || qty < 0.001) {
+      toast.error('Количество должно быть не меньше 0.001');
+      return;
+    }
+
     if (editingId) {
       // Save immediately for existing semi-finished
       try {
@@ -234,6 +241,13 @@ export default function SemiFinishedPage() {
   const addDialogSemiFinished = async () => {
     if (!dialogNewSemiFinished.semi_finished_id || !dialogNewSemiFinished.quantity) {
       toast.error('Выберите заготовку и укажите количество');
+      return;
+    }
+
+    const qtyStr = String(dialogNewSemiFinished.quantity).trim().replace(',', '.');
+    const qty = parseFloat(qtyStr);
+    if (!Number.isFinite(qty) || qty < 0.001) {
+      toast.error('Количество должно быть не меньше 0.001');
       return;
     }
 

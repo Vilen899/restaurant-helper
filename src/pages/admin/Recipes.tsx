@@ -132,8 +132,8 @@ export default function RecipesPage() {
     // RU-friendly numeric parsing: allow comma decimals (e.g. 0,25)
     const qtyStr = String(newIngredientQty).trim().replace(/\s+/g, '').replace(',', '.');
     const qty = Number(qtyStr);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error('Количество должно быть больше 0');
+    if (!Number.isFinite(qty) || qty < 0.001) {
+      toast.error('Количество должно быть не меньше 0.001');
       return;
     }
 
@@ -229,8 +229,8 @@ export default function RecipesPage() {
   const updateIngredientQuantity = async (recordId: string) => {
     const qtyStr = String(editingQty).trim().replace(',', '.');
     const qty = Number(qtyStr);
-    if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error('Количество должно быть больше 0');
+    if (!Number.isFinite(qty) || qty < 0.001) {
+      toast.error('Количество должно быть не меньше 0.001');
       return;
     }
 
