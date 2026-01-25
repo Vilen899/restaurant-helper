@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Package, AlertTriangle, CheckCircle, XCircle, Download } from 'lucide-react';
+import { Search, Package, AlertTriangle, CheckCircle, XCircle, Download, TrendingDown } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,7 +20,7 @@ interface InventoryItem extends Inventory {
   location?: Location;
 }
 
-type StockStatus = 'ok' | 'low' | 'out';
+type StockStatus = 'ok' | 'low' | 'out' | 'negative';
 
 interface InventoryReportItem {
   id: string;
@@ -64,6 +64,7 @@ export default function InventoryReportPage() {
   };
 
   const getStatus = (quantity: number, minStock: number): StockStatus => {
+    if (quantity < 0) return 'negative';
     if (quantity <= 0) return 'out';
     if (minStock > 0 && quantity < minStock) return 'low';
     return 'ok';
@@ -92,6 +93,13 @@ export default function InventoryReportPage() {
             Нет
           </Badge>
         );
+      case 'negative':
+        return (
+          <Badge variant="destructive" className="bg-red-700">
+            <TrendingDown className="h-3 w-3 mr-1" />
+            Минус
+          </Badge>
+        );
     }
   };
 
@@ -116,9 +124,9 @@ export default function InventoryReportPage() {
     return matchesSearch && matchesLocation && matchesStatus;
   });
 
-  // Sort: out first, then low, then ok
+  // Sort: negative first, then out, low, ok
   const sortedItems = [...filteredItems].sort((a, b) => {
-    const statusOrder = { out: 0, low: 1, ok: 2 };
+    const statusOrder = { negative: 0, out: 1, low: 2, ok: 3 };
     return statusOrder[a.status] - statusOrder[b.status];
   });
 
@@ -128,6 +136,7 @@ export default function InventoryReportPage() {
     ok: reportItems.filter(i => i.status === 'ok').length,
     low: reportItems.filter(i => i.status === 'low').length,
     out: reportItems.filter(i => i.status === 'out').length,
+    negative: reportItems.filter(i => i.status === 'negative').length,
   };
 
   const exportToCSV = () => {
@@ -138,7 +147,7 @@ export default function InventoryReportPage() {
       item.quantity.toString(),
       item.unit_abbr,
       item.min_stock.toString(),
-      item.status === 'ok' ? 'В норме' : item.status === 'low' ? 'Мало' : 'Нет',
+      item.status === 'ok' ? 'В норме' : item.status === 'low' ? 'Мало' : item.status === 'out' ? 'Нет' : 'Минус',
     ]);
 
     const csvContent = [headers, ...rows].map(row => row.join(';')).join('\n');
@@ -174,7 +183,7 @@ export default function InventoryReportPage() {
       </div>
 
       {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Всего позиций</CardDescription>
@@ -208,6 +217,15 @@ export default function InventoryReportPage() {
             <CardTitle className="text-2xl text-destructive">{stats.out}</CardTitle>
           </CardHeader>
         </Card>
+        <Card className="border-red-700/50 bg-red-950/10">
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <TrendingDown className="h-4 w-4 text-red-700" />
+              Отрицательные
+            </CardDescription>
+            <CardTitle className="text-2xl text-red-700">{stats.negative}</CardTitle>
+          </CardHeader>
+        </Card>
       </div>
 
       {/* Filters */}
@@ -233,7 +251,7 @@ export default function InventoryReportPage() {
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Статус" />
           </SelectTrigger>
           <SelectContent>
@@ -241,6 +259,7 @@ export default function InventoryReportPage() {
             <SelectItem value="ok">В норме</SelectItem>
             <SelectItem value="low">Мало</SelectItem>
             <SelectItem value="out">Нет в наличии</SelectItem>
+            <SelectItem value="negative">Отрицательные</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -267,10 +286,17 @@ export default function InventoryReportPage() {
             </TableHeader>
             <TableBody>
               {sortedItems.map(item => (
-                <TableRow key={item.id} className={item.status === 'out' ? 'bg-destructive/5' : item.status === 'low' ? 'bg-amber-500/5' : ''}>
+                <TableRow 
+                  key={item.id} 
+                  className={
+                    item.status === 'negative' ? 'bg-red-950/20' : 
+                    item.status === 'out' ? 'bg-destructive/5' : 
+                    item.status === 'low' ? 'bg-amber-500/5' : ''
+                  }
+                >
                   <TableCell className="font-medium">{item.ingredient_name}</TableCell>
                   <TableCell>{item.location_name}</TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className={`text-right ${item.status === 'negative' ? 'text-red-600 font-bold' : ''}`}>
                     {item.quantity.toFixed(2)} {item.unit_abbr}
                   </TableCell>
                   <TableCell className="text-right">
