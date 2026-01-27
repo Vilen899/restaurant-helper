@@ -133,13 +133,46 @@ export default function CashierPage() {
     } catch {}
   };
 
+  // Восстановление сессии и смены
   useEffect(() => {
     const sessionData = sessionStorage.getItem("cashier_session");
     if (!sessionData) { toast.error("Войдите по PIN-коду"); navigate("/pin"); return; }
     const parsed = JSON.parse(sessionData) as CashierSession;
     if (parsed.role !== "cashier") { toast.error("Доступ только для кассиров"); sessionStorage.removeItem("cashier_session"); navigate("/"); return; }
-    setSession(parsed);
+    
+    // Если в сессии уже есть смена, используем её
+    if (parsed.shift_id) {
+      setSession(parsed);
+    } else {
+      // Проверяем открытую смену в БД
+      checkExistingShift(parsed);
+    }
   }, [navigate]);
+
+  // Проверка и восстановление открытой смены из БД
+  const checkExistingShift = async (sessionData: CashierSession) => {
+    try {
+      const { data: existingShift } = await supabase
+        .from("shifts")
+        .select("id, started_at")
+        .eq("user_id", sessionData.id)
+        .eq("location_id", sessionData.location_id)
+        .is("ended_at", null)
+        .maybeSingle();
+
+      if (existingShift) {
+        const updatedSession = { ...sessionData, shift_id: existingShift.id, shift_start: existingShift.started_at };
+        setSession(updatedSession);
+        sessionStorage.setItem("cashier_session", JSON.stringify(updatedSession));
+        toast.info("Смена восстановлена");
+      } else {
+        setSession(sessionData);
+      }
+    } catch (error) {
+      console.error("Error checking shift:", error);
+      setSession(sessionData);
+    }
+  };
 
   // Открытие смены
   const openShift = async () => {
