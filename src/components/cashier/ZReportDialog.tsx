@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { FileText, Printer, Banknote, CreditCard, AlertTriangle, Check, X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { FileText, Printer, Banknote, CreditCard, AlertTriangle, Check, X, Clock, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
-import { format } from 'date-fns';
+import { format, differenceInMinutes } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
 interface ZReportData {
@@ -28,6 +28,8 @@ interface ZReportDialogProps {
   onOpenChange: (open: boolean) => void;
   locationId: string;
   userName: string;
+  shiftStart?: string;
+  hourlyRate?: number;
   onConfirm: () => void;
 }
 
@@ -36,12 +38,27 @@ export function ZReportDialog({
   onOpenChange,
   locationId,
   userName,
+  shiftStart,
+  hourlyRate = 0,
   onConfirm,
 }: ZReportDialogProps) {
   const [reportData, setReportData] = useState<ZReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [actualCash, setActualCash] = useState('');
   const [discrepancy, setDiscrepancy] = useState(0);
+
+  // Calculate shift duration and earnings
+  const shiftStats = useMemo(() => {
+    if (!shiftStart) return { hours: 0, minutes: 0, totalMinutes: 0, earnings: 0, timeString: '0ч 0м' };
+    
+    const totalMinutes = differenceInMinutes(new Date(), new Date(shiftStart));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    const earnings = Math.round((totalMinutes / 60) * hourlyRate);
+    const timeString = `${hours}ч ${minutes}м`;
+    
+    return { hours, minutes, totalMinutes, earnings, timeString };
+  }, [shiftStart, hourlyRate]);
 
   useEffect(() => {
     if (open) {
@@ -233,6 +250,28 @@ export function ZReportDialog({
           </div>
         ) : reportData && (
           <div className="space-y-4">
+            {/* Shift Stats */}
+            {shiftStart && (
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="bg-blue-50 border-blue-200 dark:bg-blue-950/30 dark:border-blue-900">
+                  <CardContent className="p-3 text-center">
+                    <Clock className="h-5 w-5 mx-auto mb-1 text-blue-600" />
+                    <p className="text-sm text-muted-foreground">Время работы</p>
+                    <p className="text-xl font-bold text-blue-600">{shiftStats.timeString}</p>
+                  </CardContent>
+                </Card>
+                {hourlyRate > 0 && (
+                  <Card className="bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-900">
+                    <CardContent className="p-3 text-center">
+                      <DollarSign className="h-5 w-5 mx-auto mb-1 text-green-600" />
+                      <p className="text-sm text-muted-foreground">Заработано</p>
+                      <p className="text-xl font-bold text-green-600">{shiftStats.earnings.toLocaleString()} ֏</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+
             {/* Summary */}
             <div className="grid grid-cols-2 gap-3">
               <Card>
