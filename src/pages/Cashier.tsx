@@ -32,6 +32,7 @@ import { PaymentDialog } from "@/components/cashier/PaymentDialog";
 import { LockScreen } from "@/components/cashier/LockScreen";
 import { MenuSearch } from "@/components/cashier/MenuSearch";
 import { OfflineQueueDialog } from "@/components/cashier/OfflineQueueDialog";
+import { ShiftTimer } from "@/components/cashier/ShiftTimer";
 import { useMenuCache } from "@/hooks/useMenuCache";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
@@ -54,6 +55,7 @@ interface CashierSession {
   location_id: string;
   shift_id?: string;
   shift_start?: string;
+  hourly_rate?: number;
 }
 
 const categoryStyles: Record<string, { icon: typeof Coffee; color: string; bg: string }> = {
@@ -152,6 +154,15 @@ export default function CashierPage() {
   // Проверка и восстановление открытой смены из БД
   const checkExistingShift = async (sessionData: CashierSession) => {
     try {
+      // Fetch profile with hourly_rate
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("hourly_rate")
+        .eq("id", sessionData.id)
+        .maybeSingle();
+
+      const hourlyRate = profile?.hourly_rate || 0;
+
       const { data: existingShift } = await supabase
         .from("shifts")
         .select("id, started_at")
@@ -161,12 +172,17 @@ export default function CashierPage() {
         .maybeSingle();
 
       if (existingShift) {
-        const updatedSession = { ...sessionData, shift_id: existingShift.id, shift_start: existingShift.started_at };
+        const updatedSession = { 
+          ...sessionData, 
+          shift_id: existingShift.id, 
+          shift_start: existingShift.started_at,
+          hourly_rate: hourlyRate,
+        };
         setSession(updatedSession);
         sessionStorage.setItem("cashier_session", JSON.stringify(updatedSession));
         toast.info("Смена восстановлена");
       } else {
-        setSession(sessionData);
+        setSession({ ...sessionData, hourly_rate: hourlyRate });
       }
     } catch (error) {
       console.error("Error checking shift:", error);
@@ -586,12 +602,12 @@ ${cashReceived ? `
             </Button>
           )}
 
-          {/* Статус смены */}
+          {/* Таймер смены и заработок */}
           {session?.shift_id ? (
-            <Badge variant="outline" className="justify-center text-green-600 border-green-600">
-              <Clock className="w-3 h-3 mr-1" />
-              Смена: {session.shift_start ? format(new Date(session.shift_start), 'HH:mm') : '—'}
-            </Badge>
+            <ShiftTimer 
+              shiftStart={session.shift_start} 
+              hourlyRate={session.hourly_rate || 0} 
+            />
           ) : (
             <Badge variant="outline" className="justify-center text-amber-600 border-amber-600">
               Смена не открыта
@@ -724,6 +740,8 @@ ${cashReceived ? `
             onOpenChange={setZReportDialogOpen}
             locationId={session.location_id}
             userName={session.full_name}
+            shiftStart={session.shift_start}
+            hourlyRate={session.hourly_rate}
             onConfirm={handleShiftClosed}
           />
           <OfflineQueueDialog
