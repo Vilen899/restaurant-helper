@@ -1,94 +1,143 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Delete, MapPin } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import logo from "@/assets/logo.webp";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+export default function PinLogin() {
+  const navigate = useNavigate();
 
-async function hashPin(pin: string) {
-  const encoder = new TextEncoder();
-  const salt = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) || "default_salt_key";
-  const data = encoder.encode(pin + salt);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+  const [pin, setPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedLocation, setSelectedLocation] = useState("");
 
-serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  useEffect(() => {
+    const fetchLocations = async () => {
+      const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
+      if (data?.length) {
+        setLocations(data);
+        setSelectedLocation(data[0].id);
+      }
+    };
+    fetchLocations();
+  }, []);
 
-  try {
-    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
-      auth: { persistSession: false },
-    });
+  const handleNumberClick = (num: string) => {
+    if (pin.length < 4 && !loading) setPin((prev) => prev + num);
+  };
+  const handleDelete = () => {
+    if (!loading) setPin((prev) => prev.slice(0, -1));
+  };
+  const handleClear = () => setPin("");
 
-    let body: any = {};
-    try {
-      body = await req.json();
-    } catch {}
-    const { pin, location_id } = body;
+  useEffect(() => {
+    if (pin.length === 4) handlePinSubmit();
+  }, [pin]);
 
-    if (!pin || !location_id) {
-      return new Response(JSON.stringify({ success: false, message: "PIN и точка обязательны" }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+  const handlePinSubmit = async () => {
+    if (!selectedLocation) {
+      toast.error("Выберите точку");
+      return;
     }
+    setLoading(true);
+    try {
+      const res = await fetch("/functions/verify-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin, location_id: selectedLocation }),
+      });
+      const data = await res.json();
 
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, pin_hash, location_id")
-      .eq("is_active", true)
-      .not("pin_hash", "is", null);
-
-    const inputHash = await hashPin(pin);
-
-    for (const profile of profiles ?? []) {
-      if (profile.pin_hash !== inputHash) continue;
-      if (profile.location_id && profile.location_id !== location_id) continue;
-
-      // Проверка открытой смены
-      const { data: openShift } = await supabase
-        .from("shifts")
-        .select("location_id, location:locations(name)")
-        .eq("user_id", profile.id)
-        .is("ended_at", null)
-        .maybeSingle();
-
-      if (openShift && openShift.location_id !== location_id) {
-        const locationName = (openShift.location as any)?.name || "другой точке";
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-            message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+      if (!data.success) {
+        toast.error(data.message || "Ошибка входа");
+        setPin("");
+        return;
       }
 
-      // Успешный вход
-      return new Response(
-        JSON.stringify({
-          success: true,
-          user: { id: profile.id, full_name: profile.full_name, location_id },
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      toast.success(`Добро пожаловать, ${data.user.full_name}!`);
+      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+      navigate("/cashier");
+    } catch {
+      toast.error("Ошибка подключения");
+      setPin("");
+    } finally {
+      setLoading(false);
     }
+  };
 
-    return new Response(JSON.stringify({ success: false, code: "INVALID_PIN", message: "Неверный PIN-код" }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (e) {
-    console.error("Verify PIN error:", e);
-    return new Response(JSON.stringify({ success: false, message: "Ошибка сервера" }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
-});
+  const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      <img src={logo} alt="" className="absolute inset-0 w-full h-full object-cover" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
+      <div className="relative z-10 w-full max-w-sm">
+        <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
+          <div className="mb-6">
+            <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
+              <MapPin className="h-4 w-4" />
+              <span>Точка продажи</span>
+            </div>
+            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+              <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                <SelectValue placeholder="Выберите точку" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#1a1a2e] border-white/10">
+                {locations.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id} className="text-white">
+                    {loc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-center gap-3 mb-6">
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+              >
+                {pin[i] ? "•" : ""}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {numbers.map((num, i) => {
+              if (num === "") return <div key={i} />;
+              if (num === "del")
+                return (
+                  <Button
+                    key={i}
+                    variant="ghost"
+                    className="h-16 bg-white/5 text-white"
+                    onClick={handleDelete}
+                    onDoubleClick={handleClear}
+                    disabled={loading}
+                  >
+                    <Delete />
+                  </Button>
+                );
+              return (
+                <Button
+                  key={i}
+                  variant="ghost"
+                  className="h-16 bg-white/5 text-white"
+                  onClick={() => handleNumberClick(num)}
+                  disabled={loading || pin.length >= 4}
+                >
+                  {num}
+                </Button>
+              );
+            })}
+          </div>
+          {loading && <div className="mt-4 text-center text-white/60">Проверка…</div>}
+        </div>
+        <p className="text-center text-white/30 text-xs mt-6">© 2026 Crusty Sandwiches · Касса v1.0</p>
+      </div>
+    </div>
+  );
+}
