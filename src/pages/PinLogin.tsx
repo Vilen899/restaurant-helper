@@ -1,74 +1,94 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export default function PinLogin() {
-  const navigate = useNavigate();
-  const [pin, setPin] = useState("");
-  const [loading, setLoading] = useState(false);
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
-  const location_id = "YOUR_LOCATION_ID"; // или получить из Select
-
-  const handleNumberClick = (num: string) => {
-    if (pin.length < 4) setPin((prev) => prev + num);
-  };
-
-  const handleDelete = () => setPin((prev) => prev.slice(0, -1));
-
-  useEffect(() => {
-    if (pin.length === 4) handleSubmit();
-  }, [pin]);
-
-  const handleSubmit = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/functions/verify-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin, location_id }),
-      });
-
-      const text = await res.text();
-
-      if (text.startsWith("SUCCESS|")) {
-        const parts = text.split("|");
-        const user = { id: parts[1], full_name: parts[2], location_id: parts[3] };
-        toast.success(`Добро пожаловать, ${user.full_name}!`);
-        sessionStorage.setItem("cashier_session", JSON.stringify(user));
-        navigate("/cashier");
-      } else {
-        toast.error(text);
-        setPin("");
-      }
-    } catch (e) {
-      toast.error("Ошибка подключения");
-      setPin("");
-    }
-    setLoading(false);
-  };
-
-  const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
-
-  return (
-    <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center">
-      <div className="grid grid-cols-3 gap-3">
-        {numbers.map((num, i) => {
-          if (num === "") return <div key={i} />;
-          if (num === "del")
-            return (
-              <Button key={i} onClick={handleDelete}>
-                DEL
-              </Button>
-            );
-          return (
-            <Button key={i} onClick={() => handleNumberClick(num)}>
-              {num}
-            </Button>
-          );
-        })}
-      </div>
-      {loading && <p className="text-white mt-4">Проверка...</p>}
-    </div>
-  );
+async function hashPin(pin: string) {
+  const encoder = new TextEncoder();
+  const salt = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) || "default_salt_key";
+  const data = encoder.encode(pin + salt);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+      auth: { persistSession: false },
+    });
+
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {}
+    const { pin, location_id } = body;
+
+    if (!pin || !location_id) {
+      return new Response(JSON.stringify({ success: false, message: "PIN и точка обязательны" }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, pin_hash, location_id")
+      .eq("is_active", true)
+      .not("pin_hash", "is", null);
+
+    const inputHash = await hashPin(pin);
+
+    for (const profile of profiles ?? []) {
+      if (profile.pin_hash !== inputHash) continue;
+      if (profile.location_id && profile.location_id !== location_id) continue;
+
+      // Проверка открытой смены
+      const { data: openShift } = await supabase
+        .from("shifts")
+        .select("location_id, location:locations(name)")
+        .eq("user_id", profile.id)
+        .is("ended_at", null)
+        .maybeSingle();
+
+      if (openShift && openShift.location_id !== location_id) {
+        const locationName = (openShift.location as any)?.name || "другой точке";
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
+            message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      // Успешный вход
+      return new Response(
+        JSON.stringify({
+          success: true,
+          user: { id: profile.id, full_name: profile.full_name, location_id },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    return new Response(JSON.stringify({ success: false, code: "INVALID_PIN", message: "Неверный PIN-код" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (e) {
+    console.error("Verify PIN error:", e);
+    return new Response(JSON.stringify({ success: false, message: "Ошибка сервера" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
