@@ -109,6 +109,7 @@ export default function PinLogin() {
   /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin]);
 
   /* ===== SUBMIT PIN ===== */
@@ -124,13 +125,15 @@ export default function PinLogin() {
         body: { pin, location_id: selectedLocation },
       });
 
-      // Ошибка HTTP (например, 403)
-      if (res.error) {
+      // Если HTTP ошибка или бизнес-ошибка
+      if (res.error || !res.data?.success) {
         playErrorSound();
-        let msg = "Ошибка сервера";
+        let msg = "Ошибка подключения";
 
         try {
-          const errBody = JSON.parse(res.error.message);
+          // Попытка распарсить тело ошибки
+          const errBody = res.error ? JSON.parse(res.error.message) : res.data;
+
           if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
             msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
           } else if (errBody.error === "INVALID_PIN") {
@@ -139,7 +142,7 @@ export default function PinLogin() {
             msg = errBody.message;
           }
         } catch {
-          // если не JSON, оставляем общий msg
+          // если не JSON — оставляем общий msg
         }
 
         toast.error(msg);
@@ -195,7 +198,9 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
