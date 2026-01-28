@@ -120,35 +120,37 @@ export default function PinLogin() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("verify-pin", {
+      const res = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
 
-      if (error) {
+      // Ошибка HTTP (например, 403)
+      if (res.error) {
         playErrorSound();
-        toast.error("Ошибка сервера");
-        setPin("");
-        return;
-      }
+        let msg = "Ошибка сервера";
 
-      if (!data?.success) {
-        playErrorSound();
-        // Если смена открыта в другой точке
-        if (data.code === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-          toast.error(`Смена уже открыта в "${data.location}". Закройте её перед входом`);
-        } else if (data.code === "INVALID_PIN") {
-          toast.error("Неверный PIN-код");
-        } else {
-          toast.error(data?.message || "Ошибка входа");
+        try {
+          const errBody = JSON.parse(res.error.message);
+          if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
+          } else if (errBody.error === "INVALID_PIN") {
+            msg = "Неверный PIN-код";
+          } else if (errBody.message) {
+            msg = errBody.message;
+          }
+        } catch {
+          // если не JSON, оставляем общий msg
         }
+
+        toast.error(msg);
         setPin("");
         return;
       }
 
       // ✅ успех
       playSuccessSound();
-      toast.success(`Добро пожаловать, ${data.user.full_name}!`);
-      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+      toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
+      sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
       navigate("/cashier");
     } catch {
       playErrorSound();
@@ -193,9 +195,7 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
-                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
-                }`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
               >
                 {pin[i] ? "•" : ""}
               </div>
@@ -206,7 +206,7 @@ export default function PinLogin() {
           <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
-              if (num === "del")
+              if (num === "del") {
                 return (
                   <Button
                     key={i}
@@ -219,6 +219,7 @@ export default function PinLogin() {
                     <Delete />
                   </Button>
                 );
+              }
               return (
                 <Button
                   key={i}
