@@ -97,7 +97,6 @@ export default function PinLogin() {
       setPin((prev) => prev + num);
     }
   };
-
   const handleDelete = () => {
     if (!loading) {
       playDeleteSound();
@@ -119,40 +118,31 @@ export default function PinLogin() {
     }
 
     setLoading(true);
+
     try {
       const res = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
 
-      let msg = "";
-
-      // Ошибка сервера или бизнес-логика
-      if (res.error || !res.data?.success) {
+      // Обработка ошибок 403, 400 и других не 2xx
+      if (res.error) {
         playErrorSound();
 
-        if (res.error) {
-          try {
-            const errBody = JSON.parse(res.error.message);
-            if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-              msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
-            } else if (errBody.error === "INVALID_PIN") {
-              msg = "Неверный PIN-код";
-            } else if (errBody.message) {
-              msg = errBody.message;
-            } else {
-              msg = "Ошибка сервера";
-            }
-          } catch {
-            msg = res.error.message || "Ошибка сервера";
-          }
-        } else if (res.data && !res.data.success) {
-          if (res.data.code === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-            msg = `Смена уже открыта в "${res.data.location_name}". Закройте её перед входом`;
-          } else if (res.data.code === "INVALID_PIN") {
+        let msg = "Ошибка сервера";
+
+        try {
+          // Supabase может возвращать JSON в res.error.message
+          const errBody = typeof res.error.message === "string" ? JSON.parse(res.error.message) : res.error.message;
+
+          if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом.`;
+          } else if (errBody.error === "INVALID_PIN") {
             msg = "Неверный PIN-код";
-          } else {
-            msg = res.data.message || "Ошибка входа";
+          } else if (errBody.message) {
+            msg = errBody.message;
           }
+        } catch {
+          // если не JSON, оставить общий msg
         }
 
         toast.error(msg);
@@ -160,12 +150,12 @@ export default function PinLogin() {
         return;
       }
 
-      // ✅ Успех
+      // ✅ успех
       playSuccessSound();
       toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
       sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
       navigate("/cashier");
-    } catch {
+    } catch (err) {
       playErrorSound();
       toast.error("Ошибка подключения");
       setPin("");
@@ -221,7 +211,7 @@ export default function PinLogin() {
           <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
-              if (num === "del") {
+              if (num === "del")
                 return (
                   <Button
                     key={i}
@@ -234,7 +224,6 @@ export default function PinLogin() {
                     <Delete />
                   </Button>
                 );
-              }
               return (
                 <Button
                   key={i}
