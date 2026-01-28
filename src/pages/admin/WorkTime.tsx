@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, differenceInMinutes, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Clock, Download, Users, Calendar, Timer, DollarSign, CalendarRange } from 'lucide-react';
+import { Clock, Download, Users, Calendar, Timer, DollarSign, CalendarRange, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +9,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/admin/PageHeader';
 import { StatCard } from '@/components/admin/StatCard';
+import { CloseShiftAdminDialog } from '@/components/admin/CloseShiftAdminDialog';
 import * as XLSX from 'xlsx';
 
 interface Shift {
@@ -44,6 +46,15 @@ export default function WorkTimePage() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(startOfMonth(new Date()));
   const [dateTo, setDateTo] = useState<Date | undefined>(endOfMonth(new Date()));
   const [useCustomRange, setUseCustomRange] = useState(false);
+  
+  // Close shift dialog state
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [selectedShift, setSelectedShift] = useState<{
+    id: string;
+    userName: string;
+    locationName: string;
+    startedAt: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -104,6 +115,34 @@ export default function WorkTimePage() {
     const minutes = differenceInMinutes(new Date(shift.ended_at), new Date(shift.started_at));
     const breakMinutes = shift.break_minutes || 0;
     return Math.max(0, (minutes - breakMinutes) / 60);
+  };
+
+  const handleOpenCloseDialog = (shift: Shift) => {
+    setSelectedShift({
+      id: shift.id,
+      userName: shift.profile?.full_name || 'Неизвестно',
+      locationName: shift.location?.name || 'Неизвестно',
+      startedAt: shift.started_at,
+    });
+    setCloseDialogOpen(true);
+  };
+
+  const closeShiftByAdmin = async (shiftId: string, notes: string) => {
+    const { error } = await supabase
+      .from('shifts')
+      .update({ 
+        ended_at: new Date().toISOString(),
+        notes: notes
+      })
+      .eq('id', shiftId);
+    
+    if (error) {
+      toast.error('Ошибка закрытия смены');
+      throw error;
+    }
+    
+    toast.success('Смена закрыта');
+    fetchData();
   };
 
   const staffSummaries: StaffSummary[] = shifts.reduce((acc, shift) => {
@@ -317,6 +356,7 @@ export default function WorkTimePage() {
                 <TableHead>Перерыв</TableHead>
                 <TableHead>Часов</TableHead>
                 <TableHead>Начислено</TableHead>
+                <TableHead className="w-16">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -337,6 +377,26 @@ export default function WorkTimePage() {
                     <TableCell>{shift.break_minutes || 0} мин</TableCell>
                     <TableCell>{hours.toFixed(1)} ч</TableCell>
                     <TableCell className="font-semibold">{earnings.toLocaleString()} ֏</TableCell>
+                    <TableCell>
+                      {!shift.ended_at && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="icon"
+                                onClick={() => handleOpenCloseDialog(shift)}
+                              >
+                                <XCircle className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Закрыть смену</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -344,6 +404,13 @@ export default function WorkTimePage() {
           </Table>
         </CardContent>
       </Card>
+
+      <CloseShiftAdminDialog
+        open={closeDialogOpen}
+        onOpenChange={setCloseDialogOpen}
+        shift={selectedShift}
+        onConfirm={closeShiftByAdmin}
+      />
     </div>
   );
 }

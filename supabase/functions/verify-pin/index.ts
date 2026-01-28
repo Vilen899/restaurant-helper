@@ -67,6 +67,28 @@ serve(async (req) => {
       
       // Check if it matches our hash format (simple hash)
       if (inputHash === profile.pin_hash) {
+        // Check if user has open shift at different location
+        const { data: openShift } = await supabaseClient
+          .from('shifts')
+          .select('id, location_id, started_at, location:locations(name)')
+          .eq('user_id', profile.id)
+          .is('ended_at', null)
+          .maybeSingle()
+
+        if (openShift && openShift.location_id !== location_id) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const locationData = openShift.location as any
+          const locationName = locationData?.name || 'другой точке'
+          return new Response(
+            JSON.stringify({ 
+              error: 'SHIFT_OPEN_AT_ANOTHER_LOCATION',
+              location_name: locationName,
+              message: `Смена открыта в "${locationName}". Закройте её перед входом.`
+            }),
+            { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
         // Get user role
         const { data: roleData } = await supabaseClient
           .from('user_roles')
