@@ -97,6 +97,7 @@ export default function PinLogin() {
       setPin((prev) => prev + num);
     }
   };
+
   const handleDelete = () => {
     if (!loading) {
       playDeleteSound();
@@ -118,31 +119,27 @@ export default function PinLogin() {
     }
 
     setLoading(true);
-
     try {
       const res = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
 
-      // Обработка ошибок 403, 400 и других не 2xx
+      // === ОБРАБОТКА ОШИБОК ===
       if (res.error) {
         playErrorSound();
-
         let msg = "Ошибка сервера";
 
         try {
-          // Supabase может возвращать JSON в res.error.message
-          const errBody = typeof res.error.message === "string" ? JSON.parse(res.error.message) : res.error.message;
-
+          const errBody = JSON.parse(res.error.message);
           if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом.`;
+            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
           } else if (errBody.error === "INVALID_PIN") {
             msg = "Неверный PIN-код";
           } else if (errBody.message) {
             msg = errBody.message;
           }
         } catch {
-          // если не JSON, оставить общий msg
+          // если JSON распарсить не удалось — оставляем общий msg
         }
 
         toast.error(msg);
@@ -150,12 +147,12 @@ export default function PinLogin() {
         return;
       }
 
-      // ✅ успех
+      // ✅ Успех
       playSuccessSound();
       toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
       sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
       navigate("/cashier");
-    } catch (err) {
+    } catch {
       playErrorSound();
       toast.error("Ошибка подключения");
       setPin("");
@@ -198,9 +195,7 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
-                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
-                }`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
               >
                 {pin[i] ? "•" : ""}
               </div>
@@ -240,6 +235,7 @@ export default function PinLogin() {
 
           {loading && <div className="mt-4 text-center text-white/60">Проверка…</div>}
         </div>
+
         <p className="text-center text-white/30 text-xs mt-6">© 2026 Crusty Sandwiches · Касса v1.0</p>
       </div>
     </div>
