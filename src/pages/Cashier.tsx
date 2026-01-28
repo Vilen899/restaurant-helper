@@ -32,7 +32,7 @@ import { PaymentDialog } from "@/components/cashier/PaymentDialog";
 import { LockScreen } from "@/components/cashier/LockScreen";
 import { MenuSearch } from "@/components/cashier/MenuSearch";
 import { OfflineQueueDialog } from "@/components/cashier/OfflineQueueDialog";
-import { ShiftTimer } from "@/components/cashier/ShiftTimer";
+// ShiftTimer removed - time shown only in Z-report
 import { useMenuCache } from "@/hooks/useMenuCache";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
@@ -561,9 +561,9 @@ ${cashReceived ? `
   }
 
   return (
-    <div className="flex h-screen w-screen bg-gray-50">
+    <div className="flex h-screen w-screen bg-black">
       {/* Sidebar категории */}
-      <aside className="w-60 border-r border-gray-200 bg-white p-2 flex flex-col">
+      <aside className="w-60 border-r border-gray-700 bg-gray-900 p-2 flex flex-col">
         <ScrollArea className="flex-1">
           {categories.map((cat) => {
             const style = getCategoryStyle(cat.name);
@@ -580,7 +580,7 @@ ${cashReceived ? `
                 onClick={() => setSelectedCategory(cat.id)}
               >
                 <Icon className={style.color} />
-                <span className="font-medium">{cat.name}</span>
+                <span className="font-medium text-white">{cat.name}</span>
               </button>
             );
           })}
@@ -602,14 +602,13 @@ ${cashReceived ? `
             </Button>
           )}
 
-          {/* Таймер смены и заработок */}
+          {/* Статус смены */}
           {session?.shift_id ? (
-            <ShiftTimer 
-              shiftStart={session.shift_start} 
-              hourlyRate={session.hourly_rate || 0} 
-            />
+            <Badge variant="outline" className="justify-center text-green-500 border-green-500">
+              Смена открыта
+            </Badge>
           ) : (
-            <Badge variant="outline" className="justify-center text-amber-600 border-amber-600">
+            <Badge variant="outline" className="justify-center text-amber-500 border-amber-500">
               Смена не открыта
             </Badge>
           )}
@@ -640,16 +639,16 @@ ${cashReceived ? `
       </aside>
 
       {/* Основная часть — товары */}
-      <main className="flex-1 flex flex-col p-2">
+      <main className="flex-1 flex flex-col p-2 bg-black">
         <MenuSearch menuItems={menuItems} categories={categories} onItemSelect={addToCart} />
         <ScrollArea className="flex-1 mt-2">
           <div className="grid grid-cols-4 gap-2">
             {(itemsByCategory.get(selectedCategory || "") || []).map((item) => (
-              <Card key={item.id} className="cursor-pointer hover:shadow-md" onClick={() => addToCart(item)}>
+              <Card key={item.id} className="cursor-pointer hover:shadow-lg bg-gray-800 border-gray-600 hover:bg-gray-700 transition-colors" onClick={() => addToCart(item)}>
                 <CardContent className="flex flex-col items-center justify-center p-2">
                   {item.image_url && <img src={item.image_url} alt={item.name} className="w-full h-20 object-cover mb-1 rounded" />}
-                  <span className="text-sm font-medium text-center">{item.name}</span>
-                  <span className="text-xs text-gray-500">{Number(item.price).toLocaleString()} ֏</span>
+                  <span className="text-sm font-medium text-center text-white">{item.name}</span>
+                  <span className="text-xs text-gray-300">{Number(item.price).toLocaleString()} ֏</span>
                 </CardContent>
               </Card>
             ))}
@@ -658,11 +657,11 @@ ${cashReceived ? `
       </main>
 
       {/* Корзина и действия */}
-      <aside className="w-80 border-l border-gray-200 bg-white flex flex-col p-2">
+      <aside className="w-80 border-l border-gray-700 bg-gray-900 flex flex-col p-2">
         <div className="flex items-center justify-between mb-2">
-          <span className="font-semibold">Корзина</span>
+          <span className="font-semibold text-white">Корзина</span>
           {lastOrder && (
-            <Button variant="ghost" size="sm" onClick={() => {
+            <Button variant="ghost" size="sm" className="text-gray-300 hover:text-white" onClick={() => {
               if (lastOrder.order_number) {
                 printReceipt(lastOrder, lastOrder.cart, lastOrder.method);
               } else {
@@ -677,31 +676,31 @@ ${cashReceived ? `
         
         <ScrollArea className="flex-1">
           {cart.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">Корзина пуста</div>
+            <div className="text-center text-gray-400 py-8">Корзина пуста</div>
           ) : (
             cart.map((ci) => (
-              <div key={ci.menuItem.id} className="flex justify-between items-center p-2 border-b border-gray-200">
+              <div key={ci.menuItem.id} className="flex justify-between items-center p-2 border-b border-gray-700">
                 <div>
-                  <div className="font-medium">{ci.menuItem.name}</div>
-                  <div className="text-xs text-gray-500">{ci.quantity} × {Number(ci.menuItem.price).toLocaleString()} ֏</div>
+                  <div className="font-medium text-white">{ci.menuItem.name}</div>
+                  <div className="text-xs text-gray-400">{ci.quantity} × {Number(ci.menuItem.price).toLocaleString()} ֏</div>
                 </div>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => updateQuantity(ci.menuItem.id, -1)}>−</Button>
-                  <Button size="sm" variant="outline" onClick={() => updateQuantity(ci.menuItem.id, 1)}>+</Button>
+                  <Button size="sm" variant="outline" className="border-gray-600 text-white hover:bg-gray-700" onClick={() => updateQuantity(ci.menuItem.id, -1)}>−</Button>
+                  <Button size="sm" variant="outline" className="border-gray-600 text-white hover:bg-gray-700" onClick={() => updateQuantity(ci.menuItem.id, 1)}>+</Button>
                 </div>
               </div>
             ))
           )}
         </ScrollArea>
 
-        <div className="p-2 border-t border-gray-200 space-y-2">
-          <div className="flex justify-between text-sm"><span>Подытог:</span><span>{subtotal.toLocaleString()} ֏</span></div>
+        <div className="p-2 border-t border-gray-700 space-y-2">
+          <div className="flex justify-between text-sm text-gray-300"><span>Подытог:</span><span>{subtotal.toLocaleString()} ֏</span></div>
           {discountAmount > 0 && (
-            <div className="flex justify-between text-sm text-green-600"><span>Скидка:</span><span>−{discountAmount.toLocaleString()} ֏</span></div>
+            <div className="flex justify-between text-sm text-green-400"><span>Скидка:</span><span>−{discountAmount.toLocaleString()} ֏</span></div>
           )}
-          <div className="flex justify-between font-bold text-lg"><span>Итого:</span><span>{total.toLocaleString()} ֏</span></div>
+          <div className="flex justify-between font-bold text-lg text-white"><span>Итого:</span><span>{total.toLocaleString()} ֏</span></div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" onClick={clearCart} disabled={cart.length === 0}>
+            <Button variant="outline" className="flex-1 border-gray-600 text-white hover:bg-gray-700" onClick={clearCart} disabled={cart.length === 0}>
               <Trash2 className="w-4 h-4 mr-1" />Очистить
             </Button>
             <Button 
@@ -713,7 +712,7 @@ ${cashReceived ? `
             </Button>
           </div>
           {!session?.shift_id && cart.length > 0 && (
-            <p className="text-xs text-amber-600 text-center">Откройте смену для оплаты</p>
+            <p className="text-xs text-amber-400 text-center">Откройте смену для оплаты</p>
           )}
         </div>
       </aside>
