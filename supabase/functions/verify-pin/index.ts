@@ -8,13 +8,11 @@ const corsHeaders = {
 
 async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder();
-  const salt =
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) ||
-    "default_salt_key";
+  const salt = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) || "default_salt_key";
   const data = encoder.encode(pin + salt);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, "0"))
+    .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
@@ -24,11 +22,9 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { persistSession: false } }
-    );
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
+      auth: { persistSession: false },
+    });
 
     const { pin, location_id } = await req.json();
 
@@ -39,7 +35,7 @@ serve(async (req) => {
           code: "INVALID_REQUEST",
           message: "PIN и точка обязательны",
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -56,13 +52,11 @@ serve(async (req) => {
           code: "SERVER_ERROR",
           message: fetchError.message,
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const eligibleProfiles = (profiles || []).filter(
-      p => p.location_id === null || p.location_id === location_id
-    );
+    const eligibleProfiles = (profiles || []).filter((p) => p.location_id === null || p.location_id === location_id);
 
     const inputHash = await hashPin(pin);
 
@@ -77,8 +71,7 @@ serve(async (req) => {
         .maybeSingle();
 
       if (openShift && openShift.location_id !== location_id) {
-        const locationName =
-          (openShift.location as any)?.name || "другой точке";
+        const locationName = (openShift.location as any)?.name || "другой точке";
 
         return new Response(
           JSON.stringify({
@@ -87,7 +80,7 @@ serve(async (req) => {
             location: locationName,
             message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
           }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
@@ -107,7 +100,7 @@ serve(async (req) => {
             location_id,
           },
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
@@ -117,7 +110,7 @@ serve(async (req) => {
         code: "INVALID_PIN",
         message: "Неверный PIN-код",
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
     return new Response(
@@ -126,7 +119,7 @@ serve(async (req) => {
         code: "SERVER_ERROR",
         message: e instanceof Error ? e.message : "Ошибка сервера",
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
