@@ -7,14 +7,13 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function json(body: any) {
+function jsonResponse(body: any) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 }
 
-// SHA-256 hash
 async function hashPin(pin: string) {
   const encoder = new TextEncoder();
   const salt = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) || "default_salt_key";
@@ -36,12 +35,14 @@ serve(async (req) => {
     let body: any = {};
     try {
       body = await req.json();
-    } catch {}
-    const pin = body.pin;
-    const location_id = body.location_id;
+    } catch {
+      return jsonResponse({ success: false, message: "Неверный формат запроса (не JSON)" });
+    }
+
+    const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return json({ success: false, message: "PIN и точка обязательны" });
+      return jsonResponse({ success: false, message: "PIN и точка обязательны" });
     }
 
     // Получаем активные профили
@@ -52,21 +53,20 @@ serve(async (req) => {
       .not("pin_hash", "is", null);
 
     if (profilesError) {
-      console.error("Profiles error:", profilesError);
-      return json({ success: false, message: "Ошибка базы данных" });
+      console.error("Profiles fetch error:", profilesError);
+      return jsonResponse({ success: false, message: "Ошибка базы данных" });
     }
 
     const inputHash = await hashPin(pin);
 
+    // Ищем совпадение
     for (const profile of profiles ?? []) {
       if (profile.pin_hash !== inputHash) continue;
 
-      // Проверка location
-      if (profile.location_id && profile.location_id !== location_id) {
-        continue; // этот пользователь не работает в этой точке
-      }
+      // Проверяем, работает ли этот пользователь в выбранной точке
+      if (profile.location_id && profile.location_id !== location_id) continue;
 
-      // Проверка открытой смены
+      // Проверяем открытые смены
       const { data: openShift } = await supabase
         .from("shifts")
         .select("location_id, location:locations(name)")
@@ -76,23 +76,26 @@ serve(async (req) => {
 
       if (openShift && openShift.location_id !== location_id) {
         const locationName = (openShift.location as any)?.name || "другой точке";
-        return json({
+        return jsonResponse({
           success: false,
           message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
         });
       }
 
       // Успешный вход
-      return json({
+      return jsonResponse({
         success: true,
         user: { id: profile.id, full_name: profile.full_name, location_id },
       });
     }
 
-    // Если не найдено совпадение
-    return json({ success: false, message: "Неверный PIN-код" });
+    // PIN не совпал
+    return jsonResponse({ success: false, message: "Неверный PIN-код" });
   } catch (e) {
-    console.error("Verify PIN error:", e);
-    return json({ success: false, message: e instanceof Error ? e.message : "Неизвестная ошибка" });
+    console.error("Verify PIN unexpected error:", e);
+    return jsonResponse({
+      success: false,
+      message: e instanceof Error ? e.message : "Неизвестная ошибка",
+    });
   }
 });
