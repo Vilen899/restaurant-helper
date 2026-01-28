@@ -109,7 +109,6 @@ export default function PinLogin() {
   /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin]);
 
   /* ===== SUBMIT PIN ===== */
@@ -125,24 +124,35 @@ export default function PinLogin() {
         body: { pin, location_id: selectedLocation },
       });
 
-      // Если HTTP ошибка или бизнес-ошибка
+      let msg = "";
+
+      // Ошибка сервера или бизнес-логика
       if (res.error || !res.data?.success) {
         playErrorSound();
-        let msg = "Ошибка подключения";
 
-        try {
-          // Попытка распарсить тело ошибки
-          const errBody = res.error ? JSON.parse(res.error.message) : res.data;
-
-          if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
-          } else if (errBody.error === "INVALID_PIN") {
-            msg = "Неверный PIN-код";
-          } else if (errBody.message) {
-            msg = errBody.message;
+        if (res.error) {
+          try {
+            const errBody = JSON.parse(res.error.message);
+            if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+              msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
+            } else if (errBody.error === "INVALID_PIN") {
+              msg = "Неверный PIN-код";
+            } else if (errBody.message) {
+              msg = errBody.message;
+            } else {
+              msg = "Ошибка сервера";
+            }
+          } catch {
+            msg = res.error.message || "Ошибка сервера";
           }
-        } catch {
-          // если не JSON — оставляем общий msg
+        } else if (res.data && !res.data.success) {
+          if (res.data.code === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+            msg = `Смена уже открыта в "${res.data.location_name}". Закройте её перед входом`;
+          } else if (res.data.code === "INVALID_PIN") {
+            msg = "Неверный PIN-код";
+          } else {
+            msg = res.data.message || "Ошибка входа";
+          }
         }
 
         toast.error(msg);
@@ -150,7 +160,7 @@ export default function PinLogin() {
         return;
       }
 
-      // ✅ успех
+      // ✅ Успех
       playSuccessSound();
       toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
       sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
