@@ -4,9 +4,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-async function hashPin(pin: string): Promise<string> {
+function json(body: any) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+async function hashPin(pin: string) {
   const encoder = new TextEncoder();
   const salt = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) || "default_salt_key";
   const data = encoder.encode(pin + salt);
@@ -22,23 +33,20 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
       auth: { persistSession: false },
     });
 
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json();
     const pin = body.pin;
     const location_id = body.location_id;
 
     if (!pin || !location_id) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          code: "INVALID_REQUEST",
-          message: "PIN и точка обязательны",
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({
+        success: false,
+        code: "INVALID_REQUEST",
+        message: "PIN и точка обязательны",
+      });
     }
 
     const { data: profiles } = await supabase
@@ -64,46 +72,34 @@ serve(async (req) => {
       if (openShift && openShift.location_id !== location_id) {
         const locationName = (openShift.location as any)?.name || "другой точке";
 
-        return new Response(
-          JSON.stringify({
-            success: false,
-            code: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-            message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
-            location: locationName,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
+        return json({
+          success: false,
+          code: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
+          message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
+          location: locationName,
+        });
       }
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          user: {
-            id: profile.id,
-            full_name: profile.full_name,
-            location_id,
-          },
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return json({
+        success: true,
+        user: {
+          id: profile.id,
+          full_name: profile.full_name,
+          location_id,
+        },
+      });
     }
 
-    return new Response(
-      JSON.stringify({
-        success: false,
-        code: "INVALID_PIN",
-        message: "Неверный PIN-код",
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({
+      success: false,
+      code: "INVALID_PIN",
+      message: "Неверный PIN-код",
+    });
   } catch (e) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        code: "SERVER_ERROR",
-        message: "Ошибка сервера",
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({
+      success: false,
+      code: "SERVER_ERROR",
+      message: "Ошибка сервера",
+    });
   }
 });
