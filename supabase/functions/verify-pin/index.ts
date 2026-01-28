@@ -26,7 +26,9 @@ serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    const { pin, location_id } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const pin = body.pin;
+    const location_id = body.location_id;
 
     if (!pin || !location_id) {
       return new Response(
@@ -39,33 +41,22 @@ serve(async (req) => {
       );
     }
 
-    const { data: profiles, error: fetchError } = await supabase
+    const { data: profiles } = await supabase
       .from("profiles")
       .select("id, full_name, pin_hash, location_id")
       .eq("is_active", true)
       .not("pin_hash", "is", null);
 
-    if (fetchError) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          code: "SERVER_ERROR",
-          message: fetchError.message,
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
-    const eligibleProfiles = (profiles || []).filter((p) => p.location_id === null || p.location_id === location_id);
-
     const inputHash = await hashPin(pin);
 
-    for (const profile of eligibleProfiles) {
-      if (profile.pin_hash !== inputHash) continue;
+    for (const profile of profiles || []) {
+      if (profile.pin_hash !== inputHash || (profile.location_id && profile.location_id !== location_id)) {
+        continue;
+      }
 
       const { data: openShift } = await supabase
         .from("shifts")
-        .select("id, location_id, location:locations(name)")
+        .select("location_id, location:locations(name)")
         .eq("user_id", profile.id)
         .is("ended_at", null)
         .maybeSingle();
@@ -77,18 +68,12 @@ serve(async (req) => {
           JSON.stringify({
             success: false,
             code: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-            location: locationName,
             message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
+            location: locationName,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
-
-      const { data: roleData } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", profile.id)
-        .maybeSingle();
 
       return new Response(
         JSON.stringify({
@@ -96,7 +81,6 @@ serve(async (req) => {
           user: {
             id: profile.id,
             full_name: profile.full_name,
-            role: roleData?.role || "cashier",
             location_id,
           },
         }),
@@ -117,7 +101,7 @@ serve(async (req) => {
       JSON.stringify({
         success: false,
         code: "SERVER_ERROR",
-        message: e instanceof Error ? e.message : "Ошибка сервера",
+        message: "Ошибка сервера",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
