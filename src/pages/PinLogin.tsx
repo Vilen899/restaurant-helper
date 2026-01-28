@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Delete, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import logo from "@/assets/logo.webp";
 
@@ -67,16 +68,17 @@ const playErrorSound = () => {
 /* ================== COMPONENT ================== */
 export default function PinLogin() {
   const navigate = useNavigate();
+
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
 
+  /* ===== LOAD LOCATIONS ===== */
   useEffect(() => {
     const fetchLocations = async () => {
       try {
-        const res = await fetch("/functions/get-locations"); // Функция, возвращающая точки
-        const data = await res.json();
+        const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
         if (data?.length) {
           setLocations(data);
           setSelectedLocation(data[0].id);
@@ -88,12 +90,14 @@ export default function PinLogin() {
     fetchLocations();
   }, []);
 
+  /* ===== PIN INPUT ===== */
   const handleNumberClick = (num: string) => {
     if (pin.length < 4 && !loading) {
       playClickSound();
       setPin((prev) => prev + num);
     }
   };
+
   const handleDelete = () => {
     if (!loading) {
       playDeleteSound();
@@ -102,29 +106,44 @@ export default function PinLogin() {
   };
   const handleClear = () => setPin("");
 
+  /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
   }, [pin]);
 
+  /* ===== SUBMIT PIN ===== */
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
       toast.error("Выберите точку");
       return;
     }
+
     setLoading(true);
     try {
-      const res = await fetch("/functions/verify-pin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pin, location_id: selectedLocation }),
+      const { data, error } = await supabase.functions.invoke("verify-pin", {
+        body: { pin, location_id: selectedLocation },
       });
-      const data = await res.json();
 
-      if (!data.success) {
+      if (error) {
         playErrorSound();
-        toast.error(data.message || "Ошибка входа");
+        toast.error("Ошибка сервера");
         setPin("");
-        setLoading(false);
+        return;
+      }
+
+      if (!data?.success) {
+        playErrorSound();
+        switch (data?.code) {
+          case "SHIFT_OPEN_AT_ANOTHER_LOCATION":
+            toast.error(data.message);
+            break;
+          case "INVALID_PIN":
+            toast.error("Неверный PIN-код");
+            break;
+          default:
+            toast.error(data?.message || "Ошибка входа");
+        }
+        setPin("");
         return;
       }
 
@@ -143,12 +162,14 @@ export default function PinLogin() {
 
   const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
+  /* ================== UI ================== */
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <img src={logo} alt="" className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
       <div className="relative z-10 w-full max-w-sm">
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
+          {/* LOCATION */}
           <div className="mb-6">
             <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
               <MapPin className="h-4 w-4" />
@@ -167,6 +188,8 @@ export default function PinLogin() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* PIN */}
           <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
@@ -177,6 +200,8 @@ export default function PinLogin() {
               </div>
             ))}
           </div>
+
+          {/* KEYPAD */}
           <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
@@ -206,6 +231,7 @@ export default function PinLogin() {
               );
             })}
           </div>
+
           {loading && <div className="mt-4 text-center text-white/60">Проверка…</div>}
         </div>
         <p className="text-center text-white/30 text-xs mt-6">© 2026 Crusty Sandwiches · Касса v1.0</p>
