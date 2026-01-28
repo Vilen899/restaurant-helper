@@ -133,20 +133,19 @@ export default function PinLogin() {
 
       if (!data?.success) {
         playErrorSound();
-        switch (data?.code) {
-          case "SHIFT_OPEN_AT_ANOTHER_LOCATION":
-            toast.error(data.message);
-            break;
-          case "INVALID_PIN":
-            toast.error("Неверный PIN-код");
-            break;
-          default:
-            toast.error(data?.message || "Ошибка входа");
+        // Если смена открыта в другой точке
+        if (data.code === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+          toast.error(`Смена уже открыта в "${data.location}". Закройте её перед входом`);
+        } else if (data.code === "INVALID_PIN") {
+          toast.error("Неверный PIN-код");
+        } else {
+          toast.error(data?.message || "Ошибка входа");
         }
         setPin("");
         return;
       }
 
+      // ✅ успех
       playSuccessSound();
       toast.success(`Добро пожаловать, ${data.user.full_name}!`);
       sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
@@ -194,7 +193,9 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
