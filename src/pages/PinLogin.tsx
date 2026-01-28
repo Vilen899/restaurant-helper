@@ -140,7 +140,11 @@ export default function PinLogin() {
         body: { pin, location_id: selectedLocation },
       });
 
-      if (error || data?.error) {
+      if (data?.error === 'SHIFT_OPEN_AT_ANOTHER_LOCATION') {
+        playErrorSound();
+        toast.error(data.message || 'У вас открыта смена в другой точке');
+        setPin('');
+      } else if (error || data?.error) {
         playErrorSound();
         toast.error('Неверный PIN-код');
         setPin('');
