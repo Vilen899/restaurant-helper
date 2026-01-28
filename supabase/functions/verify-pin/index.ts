@@ -25,16 +25,13 @@ serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    let body: any = {};
-    try {
-      body = await req.json();
-    } catch {}
+    const body = await req.json().catch(() => ({}));
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response("PIN и точка обязательны", {
+      return new Response(JSON.stringify({ success: false, message: "PIN и точка обязательны" }), {
         status: 200,
-        headers: { ...corsHeaders, "Content-Type": "text/plain" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -50,7 +47,6 @@ serve(async (req) => {
       if (profile.pin_hash !== inputHash) continue;
       if (profile.location_id && profile.location_id !== location_id) continue;
 
-      // Проверяем открытые смены
       const { data: openShift } = await supabase
         .from("shifts")
         .select("location_id, location:locations(name)")
@@ -60,22 +56,47 @@ serve(async (req) => {
 
       if (openShift && openShift.location_id !== location_id) {
         const locationName = (openShift.location as any)?.name || "другой точке";
-        return new Response(`Смена открыта в "${locationName}". Закройте её перед входом.`, {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "text/plain" },
-        });
+        return new Response(
+          JSON.stringify({
+            success: false,
+            code: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
+            message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
       }
 
-      // Успешный вход
-      return new Response(`SUCCESS|${profile.id}|${profile.full_name}|${location_id}`, {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "text/plain" },
-      });
+      return new Response(
+        JSON.stringify({
+          success: true,
+          user: { id: profile.id, full_name: profile.full_name, location_id },
+        }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
-    return new Response("Неверный PIN-код", { status: 200, headers: { ...corsHeaders, "Content-Type": "text/plain" } });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        code: "INVALID_PIN",
+        message: "Неверный PIN-код",
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (e) {
     console.error("Verify PIN error:", e);
-    return new Response("Ошибка сервера", { status: 200, headers: { ...corsHeaders, "Content-Type": "text/plain" } });
+    return new Response(JSON.stringify({ success: false, message: "Ошибка сервера" }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
