@@ -105,7 +105,6 @@ export default function InventoryPage() {
           if (!item.ingredient_id || !item.quantity) continue;
           const qty = Number(item.quantity);
 
-          // Ищем, есть ли уже этот товар на этой точке
           const { data: exist } = await supabase
             .from("inventory")
             .select("id, quantity")
@@ -114,13 +113,11 @@ export default function InventoryPage() {
             .maybeSingle();
 
           if (exist) {
-            // Если есть — прибавляем
             await supabase
               .from("inventory")
               .update({ quantity: Number(exist.quantity) + qty })
               .eq("id", exist.id);
           } else {
-            // Если нет — создаем запись
             await supabase.from("inventory").insert({
               location_id: supplyForm.location_id,
               ingredient_id: item.ingredient_id,
@@ -128,16 +125,12 @@ export default function InventoryPage() {
             });
           }
         }
-        toast.success("Поставка успешно зачислена");
+        toast.success("Поставка принята");
         setSupplyDialogOpen(false);
-        setSupplyForm({
-          location_id: "",
-          supplier_name: "",
-          items: [{ ingredient_id: "", quantity: "", cost: "0" }],
-        });
+        setSupplyForm({ location_id: "", supplier_name: "", items: [{ ingredient_id: "", quantity: "", cost: "0" }] });
         fetchData();
       } catch (e) {
-        toast.error("Ошибка при сохранении поставки");
+        toast.error("Ошибка при сохранении");
       }
     };
     try {
