@@ -4,7 +4,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Content-Type": "application/json",
 };
 
 async function hashPin(pin: string): Promise<string> {
@@ -31,66 +30,76 @@ serve(async (req) => {
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response(JSON.stringify({ error: "INVALID_REQUEST", message: "PIN и точка обязательны" }), {
-        status: 400,
-        headers: corsHeaders,
-      });
-    }
-
-    const inputHash = await hashPin(pin);
-
-    // Ищем кассира с таким PIN
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id, full_name, pin_hash, is_active")
-      .eq("is_active", true)
-      .eq("pin_hash", inputHash)
-      .maybeSingle();
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "INVALID_PIN", message: "Неверный PIN-код" }), {
-        status: 401,
-        headers: corsHeaders,
-      });
-    }
-
-    // Проверяем открытую смену
-    const { data: openShift } = await supabase
-      .from("shifts")
-      .select("id, location_id, locations(name)")
-      .eq("user_id", profile.id)
-      .is("ended_at", null)
-      .maybeSingle();
-
-    if (openShift && openShift.location_id !== location_id) {
-      const locationName = (openShift as any)?.locations?.name || "другой точке";
       return new Response(
-        JSON.stringify({
-          error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-          location_name: locationName,
-          message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
-        }),
-        { status: 403, headers: corsHeaders },
+        JSON.stringify({ success: false, error: "INVALID_REQUEST", message: "PIN и точка обязательны" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Всё ок — возвращаем данные пользователя
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name, pin_hash, location_id, is_active")
+      .eq("is_active", true)
+      .not("pin_hash", "is", null);
+
+    const inputHash = await hashPin(pin);
+
+    for (const profile of profiles || []) {
+      if (profile.pin_hash !== inputHash) continue;
+
+      // Проверяем открытую смену
+      const { data: openShift } = await supabase
+        .from("shifts")
+        .select("location_id, location:locations(name)")
+        .eq("user_id", profile.id)
+        .is("ended_at", null)
+        .maybeSingle();
+
+      if (openShift && openShift.location_id !== location_id) {
+        const locationName = (openShift.location as any)?.name || "другой точке";
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
+            location_name: locationName,
+            message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }, // 200, чтобы фронт ловил JSON
+        );
+      }
+
+      // Всё ок — возвращаем данные пользователя
+      return new Response(
+        JSON.stringify({
+          success: true,
+          user: {
+            id: profile.id,
+            full_name: profile.full_name,
+            location_id,
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // Если PIN не найден
     return new Response(
       JSON.stringify({
-        success: true,
-        user: {
-          id: profile.id,
-          full_name: profile.full_name,
-          location_id,
-        },
+        success: false,
+        error: "INVALID_PIN",
+        message: "Неверный PIN-код",
       }),
-      { status: 200, headers: corsHeaders },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
     console.error("verify-pin error:", e);
-    return new Response(JSON.stringify({ error: "SERVER_ERROR", message: "Ошибка сервера" }), {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: "SERVER_ERROR",
+        message: "Ошибка сервера",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 });
