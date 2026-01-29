@@ -323,49 +323,81 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ДИАЛОГ ИНВЕНТАРИЗАЦИИ */}
-      <Dialog open={stocktakingDialogOpen} onOpenChange={setStocktakingDialogOpen}>
-        <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Инвентаризация: {locations.find((l) => l.id === selectedLocation)?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-[400px] overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Товар</TableHead>
-                  <TableHead>Система</TableHead>
-                  <TableHead>Факт</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {stocktakingItems.map((item, idx) => (
-                  <TableRow key={idx} className="border-white/5">
-                    <TableCell>{item.name}</TableCell>
-                    <TableCell className="text-zinc-500">{item.system}</TableCell>
-                    <TableCell>
-                      <Input
-                        type="number"
-                        value={item.actual}
-                        className="w-24 bg-white/5 h-8 border-white/10"
-                        onChange={(e) => {
-                          const n = [...stocktakingItems];
-                          n[idx].actual = e.target.value;
-                          setStocktakingItems(n);
-                        }}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <Button onClick={handleSaveStocktaking} className="bg-indigo-600 h-12 w-full mt-4">
-            Применить фактические остатки
-          </Button>
-        </DialogContent>
-      </Dialog>
+      // 1. Исправленная функция открытия (добавлена поддержка пустых значений)
+  const openStocktaking = () => {
+    if (selectedLocation === "all") {
+      toast.error("Сначала выберите точку в фильтре (справа от поиска)");
+      return;
+    }
+    const items = inventory
+      .filter(i => i.location_id === selectedLocation)
+      .map(i => ({
+        id: i.id, 
+        ingredient_id: i.ingredient_id,
+        name: i.ingredient?.name || "Без названия", 
+        system: i.quantity || 0, 
+        actual: i.quantity.toString() // Работаем со строкой для удобства ввода
+      }));
+    
+    if (items.length === 0) {
+      toast.error("На этой точке еще нет товаров");
+      return;
+    }
+    
+    setStocktakingItems(items);
+    setStocktakingDialogOpen(true);
+  };
 
+  // 2. Исправленный диалог с работающим вводом
+  <Dialog open={stocktakingDialogOpen} onOpenChange={setStocktakingDialogOpen}>
+    <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogHeader>
+        <DialogTitle>Инвентаризация: {locations.find(l => l.id === selectedLocation)?.name}</DialogTitle>
+        <DialogDescription className="text-zinc-400">Введите реальное количество товара на полке</DialogDescription>
+      </DialogHeader>
+      
+      <div className="flex-1 overflow-y-auto my-4 border border-white/5 rounded-lg">
+        <Table>
+          <TableHeader className="bg-white/5 sticky top-0 z-10">
+            <TableRow>
+              <TableHead className="text-zinc-300">Товар</TableHead>
+              <TableHead className="text-zinc-300">Система</TableHead>
+              <TableHead className="text-zinc-300 w-[120px]">Факт</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {stocktakingItems.map((item, idx) => (
+              <TableRow key={item.id} className="border-white/5 hover:bg-white/5">
+                <TableCell className="font-medium">{item.name}</TableCell>
+                <TableCell className="text-zinc-500">{Number(item.system).toFixed(2)}</TableCell>
+                <TableCell>
+                  <Input 
+                    type="number" 
+                    value={item.actual} 
+                    className="bg-zinc-800 border-white/10 h-9 focus:ring-indigo-500"
+                    onChange={(e) => {
+                      const newItems = [...stocktakingItems];
+                      newItems[idx].actual = e.target.value; // Теперь текст будет меняться!
+                      setStocktakingItems(newItems);
+                    }}
+                  />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      
+      <DialogFooter>
+        <Button 
+          onClick={handleSaveStocktaking} 
+          className="bg-indigo-600 hover:bg-indigo-500 w-full h-12 text-lg font-bold"
+        >
+          Применить остатки
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  </Dialog>
       {/* Окна Правки и Обнуления из прошлого кода также остаются здесь... */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="bg-zinc-900 border-white/10 text-white">
