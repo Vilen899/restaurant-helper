@@ -26,80 +26,69 @@ serve(async (req) => {
       auth: { persistSession: false },
     });
 
-    const body = await req.json().catch(() => ({}));
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      // Если тело пустое, оставляем пустой объект
+    }
+
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response(
-        JSON.stringify({ success: false, error: "INVALID_REQUEST", message: "PIN и точка обязательны" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ error: "INVALID_REQUEST", message: "PIN и точка обязательны" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name, pin_hash, location_id, is_active")
+      .select("id, full_name, pin_hash, is_active")
       .eq("is_active", true)
       .not("pin_hash", "is", null);
 
     const inputHash = await hashPin(pin);
 
-    for (const profile of profiles || []) {
-      if (profile.pin_hash !== inputHash) continue;
+    // Находим профиль с совпадающим PIN
+    const profile = profiles?.find((p: any) => p.pin_hash === inputHash);
 
-      // Проверяем открытую смену
-      const { data: openShift } = await supabase
-        .from("shifts")
-        .select("location_id, location:locations(name)")
-        .eq("user_id", profile.id)
-        .is("ended_at", null)
-        .maybeSingle();
+    if (!profile) {
+      return new Response(JSON.stringify({ error: "INVALID_PIN", message: "Неверный PIN-код" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
-      if (openShift && openShift.location_id !== location_id) {
-        const locationName = (openShift.location as any)?.name || "другой точке";
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-            location_name: locationName,
-            message: `Смена открыта в "${locationName}". Закройте её перед входом.`,
-          }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }, // 200, чтобы фронт ловил JSON
-        );
-      }
+    // Проверяем открытую смену
+    const { data: openShift } = await supabase
+      .from("shifts")
+      .select("location_id")
+      .eq("user_id", profile.id)
+      .is("ended_at", null)
+      .maybeSingle();
 
-      // Всё ок — возвращаем данные пользователя
+    if (openShift && openShift.location_id !== location_id) {
       return new Response(
         JSON.stringify({
-          success: true,
-          user: {
-            id: profile.id,
-            full_name: profile.full_name,
-            location_id,
-          },
+          error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
+          location_name: "другая точка",
+          message: `Смена открыта в другой точке. Закройте её перед входом.`,
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Если PIN не найден
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "INVALID_PIN",
-        message: "Неверный PIN-код",
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
-  } catch (e) {
-    console.error("verify-pin error:", e);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: "SERVER_ERROR",
-        message: "Ошибка сервера",
-      }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    // ✅ Всё ок
+    return new Response(JSON.stringify({ success: true, user: { id: profile.id, full_name: profile.full_name } }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (err) {
+    console.error("verify-pin error:", err);
+    return new Response(JSON.stringify({ error: "SERVER_ERROR", message: "Ошибка сервера" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
