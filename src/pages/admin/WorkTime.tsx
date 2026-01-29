@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { format, startOfMonth, endOfMonth, differenceInMinutes, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Clock, Download, Users, Calendar, Timer, DollarSign, CalendarRange, XCircle } from 'lucide-react';
+import { Clock, Download, Users, Calendar, Timer, DollarSign, CalendarRange, XCircle, Trash2 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/admin/PageHeader';
@@ -55,6 +56,11 @@ export default function WorkTimePage() {
     locationName: string;
     startedAt: string;
   } | null>(null);
+  
+  // Delete shift dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -143,6 +149,35 @@ export default function WorkTimePage() {
     
     toast.success('Смена закрыта');
     fetchData();
+  };
+
+  const handleDeleteShift = (shift: Shift) => {
+    setShiftToDelete(shift);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteShift = async () => {
+    if (!shiftToDelete) return;
+    
+    setDeleteLoading(true);
+    try {
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('id', shiftToDelete.id);
+      
+      if (error) throw error;
+      
+      toast.success('Смена удалена');
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting shift:', error);
+      toast.error('Ошибка удаления смены');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+      setShiftToDelete(null);
+    }
   };
 
   const staffSummaries: StaffSummary[] = shifts.reduce((acc, shift) => {
@@ -378,24 +413,42 @@ export default function WorkTimePage() {
                     <TableCell>{hours.toFixed(1)} ч</TableCell>
                     <TableCell className="font-semibold">{earnings.toLocaleString()} ֏</TableCell>
                     <TableCell>
-                      {!shift.ended_at && (
+                      <div className="flex items-center gap-1">
+                        {!shift.ended_at && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={() => handleOpenCloseDialog(shift)}
+                                >
+                                  <XCircle className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Закрыть смену</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button 
                                 variant="ghost" 
                                 size="icon"
-                                onClick={() => handleOpenCloseDialog(shift)}
+                                onClick={() => handleDeleteShift(shift)}
                               >
-                                <XCircle className="h-4 w-4 text-destructive" />
+                                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                               </Button>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Закрыть смену</p>
+                              <p>Удалить смену</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
-                      )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 );
@@ -411,6 +464,44 @@ export default function WorkTimePage() {
         shift={selectedShift}
         onConfirm={closeShiftByAdmin}
       />
+
+      {/* Delete Shift Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Удалить смену
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {shiftToDelete && (
+                <div className="space-y-2">
+                  <p>Вы действительно хотите удалить эту смену?</p>
+                  <div className="bg-muted rounded-lg p-3 space-y-1 text-left">
+                    <p><strong>Сотрудник:</strong> {shiftToDelete.profile?.full_name || 'Неизвестно'}</p>
+                    <p><strong>Точка:</strong> {shiftToDelete.location?.name || 'Неизвестно'}</p>
+                    <p><strong>Дата:</strong> {format(new Date(shiftToDelete.started_at), 'dd.MM.yyyy HH:mm', { locale: ru })}</p>
+                    {!shiftToDelete.ended_at && (
+                      <Badge variant="secondary">Открыта</Badge>
+                    )}
+                  </div>
+                  <p className="text-destructive font-medium">Это действие нельзя отменить!</p>
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteShift}
+              disabled={deleteLoading}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              {deleteLoading ? 'Удаление...' : 'Удалить'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
