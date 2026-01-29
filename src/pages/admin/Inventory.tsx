@@ -11,10 +11,15 @@ import {
   X,
   PlusCircle,
   RotateCcw,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  ArrowUpDown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
+// UI Components
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +30,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 
 export default function InventoryPage() {
+  // --- STATES ---
   const [inventory, setInventory] = useState<any[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLoc, setSelectedLoc] = useState<string>("all");
 
@@ -48,69 +55,96 @@ export default function InventoryPage() {
   });
   const [stockItems, setStockItems] = useState<any[]>([]);
 
+  // --- DATA LOADING ---
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
-    const { data: inv } = await supabase
-      .from("inventory")
-      .select("*, ingredient:ingredients(*, unit:units(*)), location:locations(*)");
-    const { data: ings } = await supabase.from("ingredients").select("*, unit:units(*)").eq("is_active", true);
-    const { data: locs } = await supabase.from("locations").select("*").eq("is_active", true);
-    setInventory(inv || []);
-    setIngredients(ings || []);
-    setLocations(locs || []);
+    setLoading(true);
+    try {
+      const { data: inv, error: invErr } = await supabase
+        .from("inventory")
+        .select("*, ingredient:ingredients(*, unit:units(*)), location:locations(*)");
+
+      const { data: ings, error: ingsErr } = await supabase
+        .from("ingredients")
+        .select("*, unit:units(*)")
+        .eq("is_active", true);
+
+      const { data: locs, error: locsErr } = await supabase.from("locations").select("*").eq("is_active", true);
+
+      if (invErr || ingsErr || locsErr) throw new Error("Fetch error");
+
+      setInventory(inv || []);
+      setIngredients(ings || []);
+      setLocations(locs || []);
+    } catch (e) {
+      toast.error("Ошибка при загрузке данных");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // --- ПОСТАВКА (Армения ИНН 8 цифр) ---
+  // --- SUPPLY LOGIC (ПРИХОД) ---
   const handleSupply = async () => {
-    if (supplyForm.inn.length !== 8) return toast.error("ИНН в Армении должен быть 8 цифр");
-    if (!supplyForm.loc_id) return toast.error("Выбери склад");
+    // Валидация ИНН Армении
+    if (supplyForm.inn.length !== 8) {
+      return toast.error("Ошибка: ИНН Армении должен состоять из 8 цифр");
+    }
+    if (!supplyForm.loc_id) return toast.error("Выберите склад для поставки");
 
     try {
       for (const item of supplyForm.items) {
         if (!item.id || !item.qty) continue;
-        const { data: ex } = await supabase
+
+        const qtyNum = parseFloat(item.qty);
+
+        const { data: exist } = await supabase
           .from("inventory")
           .select("id, quantity")
           .eq("location_id", supplyForm.loc_id)
           .eq("ingredient_id", item.id)
           .maybeSingle();
-        if (ex) {
+
+        if (exist) {
           await supabase
             .from("inventory")
-            .update({ quantity: Number(ex.quantity) + Number(item.qty) })
-            .eq("id", ex.id);
+            .update({ quantity: Number(exist.quantity) + qtyNum })
+            .eq("id", exist.id);
         } else {
-          await supabase
-            .from("inventory")
-            .insert({ location_id: supplyForm.loc_id, ingredient_id: item.id, quantity: Number(item.qty) });
+          await supabase.from("inventory").insert({
+            location_id: supplyForm.loc_id,
+            ingredient_id: item.id,
+            quantity: qtyNum,
+          });
         }
       }
-      toast.success(`Документ ${supplyForm.series}-${supplyForm.num} проведен`);
+      toast.success(`Документ ${supplyForm.series} №${supplyForm.num} успешно проведен`);
       setSupplyOpen(false);
       setSupplyForm({ loc_id: "", inn: "", series: "", num: "", total: "", items: [{ id: "", qty: "" }] });
       fetchData();
     } catch (e) {
-      toast.error("Ошибка поставки");
+      toast.error("Критическая ошибка при проведении накладной");
     }
   };
 
-  // --- ИНВЕНТАРИЗАЦИЯ (ПЛЮС / МИНУС) ---
+  // --- STOCKTAKING LOGIC (ИНВЕНТАРИЗАЦИЯ) ---
   const startStock = () => {
-    if (selectedLoc === "all") return toast.error("Сначала выбери склад в фильтре!");
-    const current = inventory
+    if (selectedLoc === "all") return toast.error("Для инвентаризации выберите конкретный склад в фильтре");
+
+    const currentItems = inventory
       .filter((i) => i.location_id === selectedLoc)
       .map((i) => ({
         inv_id: i.id,
         ing_id: i.ingredient_id,
         name: i.ingredient?.name,
-        sys: i.quantity,
-        act: i.quantity.toString(),
+        sys: i.quantity || 0,
+        act: (i.quantity || 0).toString(),
         isNew: false,
       }));
-    setStockItems(current);
+
+    setStockItems(currentItems);
     setStockOpen(true);
   };
 
@@ -118,72 +152,83 @@ export default function InventoryPage() {
     try {
       for (const it of stockItems) {
         if (!it.ing_id) continue;
+        const finalQty = parseFloat(it.act) || 0;
+
         if (it.inv_id) {
-          await supabase
-            .from("inventory")
-            .update({ quantity: Number(it.act) })
-            .eq("id", it.inv_id);
+          await supabase.from("inventory").update({ quantity: finalQty }).eq("id", it.inv_id);
         } else {
-          await supabase
-            .from("inventory")
-            .insert({ location_id: selectedLoc, ingredient_id: it.ing_id, quantity: Number(it.act) });
+          await supabase.from("inventory").insert({
+            location_id: selectedLoc,
+            ingredient_id: it.ing_id,
+            quantity: finalQty,
+          });
         }
       }
-      toast.success("Данные склада синхронизированы");
+      toast.success("Результаты инвентаризации сохранены");
       setStockOpen(false);
       fetchData();
     } catch (e) {
-      toast.error("Ошибка сохранения");
+      toast.error("Ошибка сохранения данных инвентаризации");
     }
   };
 
-  // Исправленная фильтрация (используем состояние ingredients)
+  // --- FILTRATION ---
   const filtered = useMemo(() => {
     return inventory.filter((i) => {
-      const matchSearch = i.ingredient?.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchName = i.ingredient?.name?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchLoc = selectedLoc === "all" || i.location_id === selectedLoc;
-      return matchSearch && matchLoc;
+      return matchName && matchLoc;
     });
   }, [inventory, searchTerm, selectedLoc]);
 
   return (
-    <div className="p-6 bg-zinc-950 min-h-screen text-zinc-100 font-sans">
-      {/* HEADER */}
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-4 md:p-10 bg-[#09090b] min-h-screen text-zinc-100 font-sans">
+      {/* HEADER SECTION */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
         <div>
-          <h1 className="text-3xl font-black text-indigo-500 uppercase italic">Warehouse Master</h1>
-          <p className="text-zinc-500 text-xs tracking-widest">SYSTEM VERSION 4.0 | ARMENIA REGION</p>
+          <h1 className="text-5xl font-black text-indigo-500 uppercase italic tracking-tighter flex items-center gap-4">
+            <Package className="w-12 h-12" /> WAREHOUSE
+          </h1>
+          <div className="flex items-center gap-2 mt-2">
+            <Badge className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20">ARM REGION</Badge>
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">Inventory & Supply Management</p>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={startStock} variant="outline" className="h-12 rounded-xl border-white/10 hover:bg-white/10">
-            <Calculator className="w-4 h-4 mr-2" /> Инвентарь
+
+        <div className="flex flex-wrap gap-4">
+          <Button
+            onClick={startStock}
+            variant="outline"
+            className="h-14 rounded-2xl border-white/10 bg-white/5 hover:bg-white/10 px-6"
+          >
+            <Calculator className="w-5 h-5 mr-3 text-indigo-400" /> Сверка склада
           </Button>
           <Button
             onClick={() => setSupplyOpen(true)}
-            className="h-12 rounded-xl bg-indigo-600 px-6 font-bold hover:bg-indigo-500 shadow-lg shadow-indigo-500/20"
+            className="h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-500 px-8 font-black text-lg shadow-xl shadow-indigo-500/20 transition-all active:scale-95"
           >
-            <Plus className="w-4 h-4 mr-2" /> Поставка
+            <Plus className="w-6 h-6 mr-2" /> ПОСТАВКА
           </Button>
         </div>
       </div>
 
-      {/* FILTERS */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="relative col-span-3">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 w-5 h-5" />
+      {/* FILTER BAR */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="relative md:col-span-3">
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-zinc-600 w-6 h-6" />
           <Input
-            placeholder="Быстрый поиск по остаткам..."
-            className="h-12 pl-12 bg-zinc-900 border-white/10 rounded-xl"
+            placeholder="Поиск по названию товара..."
+            className="h-16 pl-14 bg-zinc-900/50 border-white/5 rounded-2xl text-xl focus:ring-2 focus:ring-indigo-500 transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <Select value={selectedLoc} onValueChange={setSelectedLoc}>
-          <SelectTrigger className="h-12 bg-zinc-900 border-white/10 rounded-xl">
-            <SelectValue placeholder="Склад" />
+          <SelectTrigger className="h-16 bg-zinc-900/50 border-white/5 rounded-2xl text-lg">
+            <SelectValue placeholder="Все склады" />
           </SelectTrigger>
-          <SelectContent className="bg-zinc-900 text-white border-white/10">
-            <SelectItem value="all">Все склады</SelectItem>
+          <SelectContent className="bg-zinc-900 border-white/10 text-white">
+            <SelectItem value="all">Все локации</SelectItem>
             {locations.map((l) => (
               <SelectItem key={l.id} value={l.id}>
                 {l.name}
@@ -193,131 +238,170 @@ export default function InventoryPage() {
         </Select>
       </div>
 
-      {/* TABLE */}
-      <Card className="bg-zinc-900/50 border-white/5 rounded-2xl overflow-hidden backdrop-blur-md">
+      {/* MAIN DATA TABLE */}
+      <Card className="bg-zinc-900/30 border-white/5 rounded-[2.5rem] overflow-hidden backdrop-blur-xl">
         <Table>
-          <TableHeader className="bg-white/5">
-            <TableRow className="border-white/5 text-[10px] uppercase font-bold text-zinc-500">
-              <TableHead className="pl-6">Товар / Ингредиент</TableHead>
-              <TableHead className="text-center">Текущий Остаток</TableHead>
-              <TableHead className="text-center">Склад</TableHead>
-              <TableHead className="text-right pr-6">Действие</TableHead>
+          <TableHeader className="bg-white/5 h-16">
+            <TableRow className="border-white/5">
+              <TableHead className="pl-10 text-zinc-400 font-bold uppercase text-xs tracking-widest">
+                Ингредиент
+              </TableHead>
+              <TableHead className="text-center text-zinc-400 font-bold uppercase text-xs tracking-widest">
+                Остаток на складе
+              </TableHead>
+              <TableHead className="text-center text-zinc-400 font-bold uppercase text-xs tracking-widest">
+                Локация
+              </TableHead>
+              <TableHead className="text-right pr-10 text-zinc-400 font-bold uppercase text-xs tracking-widest">
+                Действия
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((item) => (
-              <TableRow key={item.id} className="border-white/5 hover:bg-white/5 transition-all">
-                <TableCell className="pl-6 font-bold text-lg">{item.ingredient?.name}</TableCell>
-                <TableCell className="text-center">
-                  <div className="flex flex-col">
-                    <span
-                      className={`text-2xl font-mono font-black ${item.quantity <= 0 ? "text-red-500" : "text-emerald-400"}`}
-                    >
-                      {Number(item.quantity).toFixed(2)}
-                    </span>
-                    <span className="text-[10px] text-zinc-600">{item.ingredient?.unit?.abbreviation}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <Badge variant="outline" className="border-indigo-500/20 text-indigo-400">
-                    {item.location?.name}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-right pr-6">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setEditItem(item);
-                      setEditOpen(true);
-                    }}
-                    className="hover:bg-indigo-500/10"
-                  >
-                    <Edit3 className="w-4 h-4 text-indigo-400" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={async () => {
-                      if (confirm("Удалить позицию из базы склада?")) {
-                        await supabase.from("inventory").delete().eq("id", item.id);
-                        fetchData();
-                      }
-                    }}
-                    className="hover:bg-red-500/10"
-                  >
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </Button>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="h-40 text-center text-zinc-600 italic text-lg">
+                  Данные не найдены...
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filtered.map((item) => (
+                <TableRow key={item.id} className="border-white/5 hover:bg-white/5 transition-colors group">
+                  <TableCell className="pl-10 py-6">
+                    <div className="flex flex-col">
+                      <span className="text-2xl font-black group-hover:text-indigo-400 transition-colors">
+                        {item.ingredient?.name}
+                      </span>
+                      <span className="text-[10px] text-zinc-600 font-mono mt-1 uppercase tracking-tighter">
+                        REF: {item.id.split("-")[0]}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className="inline-flex flex-col items-center">
+                      <span
+                        className={`text-3xl font-mono font-black ${item.quantity <= 0 ? "text-red-500" : "text-emerald-400"}`}
+                      >
+                        {Number(item.quantity).toFixed(2)}
+                      </span>
+                      <Badge variant="outline" className="mt-1 border-white/10 text-zinc-500 font-bold">
+                        {item.ingredient?.unit?.abbreviation || "ед"}
+                      </Badge>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 py-1.5 px-4 rounded-full font-bold">
+                      {item.location?.name}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right pr-10">
+                    <div className="flex justify-end gap-3 opacity-50 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditItem(item);
+                          setEditOpen(true);
+                        }}
+                        className="w-12 h-12 rounded-xl hover:bg-indigo-500/20 hover:text-indigo-400"
+                      >
+                        <Edit3 className="w-6 h-6" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          if (confirm("Вы действительно хотите полностью удалить этот товар со склада?")) {
+                            await supabase.from("inventory").delete().eq("id", item.id);
+                            fetchData();
+                            toast.success("Товар удален");
+                          }
+                        }}
+                        className="w-12 h-12 rounded-xl hover:bg-red-500/20 hover:text-red-500"
+                      >
+                        <Trash2 className="w-6 h-6" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
       </Card>
 
-      {/* MODAL: ПОСТАВКА */}
+      {/* --- DIALOGS --- */}
+
+      {/* MODAL: SUPPLY (ПРИХОД) */}
       <Dialog open={supplyOpen} onOpenChange={setSupplyOpen}>
-        <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-2xl rounded-3xl p-8">
+        <DialogContent className="bg-[#0c0c0e] border-white/10 text-white max-w-3xl rounded-[2.5rem] p-10">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black italic uppercase text-emerald-500">
-              Приходная накладная
+            <DialogTitle className="text-3xl font-black italic uppercase text-emerald-500 flex items-center gap-3">
+              <FileText className="w-8 h-8" /> Приходная накладная
             </DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 mt-6">
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-zinc-500">ИНН Поставщика (8 цифр)</Label>
-              <Input
-                maxLength={8}
-                className="bg-black border-white/10 h-12"
-                value={supplyForm.inn}
-                onChange={(e) => setSupplyForm({ ...supplyForm, inn: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-zinc-500">Склад назначения</Label>
-              <Select onValueChange={(v) => setSupplyForm({ ...supplyForm, loc_id: v })}>
-                <SelectTrigger className="bg-black border-white/10 h-12">
-                  <SelectValue placeholder="Выбрать склад" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 text-white border-white/10">
-                  {locations.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-zinc-500">Серия и Номер</Label>
-              <div className="flex gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
+            <div className="space-y-4">
+              <div>
+                <Label className="text-[10px] uppercase font-bold text-zinc-500 ml-1">ИНН Поставщика (8 цифр)</Label>
                 <Input
-                  placeholder="Сер"
-                  className="w-16 bg-black border-white/10 h-12"
-                  value={supplyForm.series}
-                  onChange={(e) => setSupplyForm({ ...supplyForm, series: e.target.value })}
+                  maxLength={8}
+                  className="bg-black border-white/10 h-14 rounded-xl text-lg font-mono"
+                  value={supplyForm.inn}
+                  onChange={(e) => setSupplyForm({ ...supplyForm, inn: e.target.value })}
+                  placeholder="00000000"
                 />
+              </div>
+              <div>
+                <Label className="text-[10px] uppercase font-bold text-zinc-500 ml-1">Серия и Номер</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="АА"
+                    className="w-20 bg-black border-white/10 h-14 rounded-xl text-center font-bold"
+                    value={supplyForm.series}
+                    onChange={(e) => setSupplyForm({ ...supplyForm, series: e.target.value })}
+                  />
+                  <Input
+                    placeholder="000123"
+                    className="flex-1 bg-black border-white/10 h-14 rounded-xl font-bold"
+                    value={supplyForm.num}
+                    onChange={(e) => setSupplyForm({ ...supplyForm, num: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-[10px] uppercase font-bold text-zinc-500 ml-1">Склад прихода</Label>
+                <Select onValueChange={(v) => setSupplyForm({ ...supplyForm, loc_id: v })}>
+                  <SelectTrigger className="bg-black border-white/10 h-14 rounded-xl">
+                    <SelectValue placeholder="Выбрать склад" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 text-white border-white/10">
+                    {locations.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[10px] uppercase font-bold text-zinc-500 ml-1">Сумма документа</Label>
                 <Input
-                  placeholder="000000"
-                  className="flex-1 bg-black border-white/10 h-12"
-                  value={supplyForm.num}
-                  onChange={(e) => setSupplyForm({ ...supplyForm, num: e.target.value })}
+                  placeholder="0.00"
+                  className="bg-black border-white/10 h-14 rounded-xl text-emerald-400 font-black text-xl"
+                  value={supplyForm.total}
+                  onChange={(e) => setSupplyForm({ ...supplyForm, total: e.target.value })}
                 />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase text-zinc-500">Сумма документа</Label>
-              <Input
-                placeholder="0.00"
-                className="bg-black border-white/10 h-12 text-emerald-400 font-bold"
-                value={supplyForm.total}
-                onChange={(e) => setSupplyForm({ ...supplyForm, total: e.target.value })}
-              />
-            </div>
           </div>
-          <div className="mt-6 space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+
+          <div className="mt-8 space-y-3 max-h-52 overflow-y-auto pr-2 custom-scrollbar border-t border-white/5 pt-6">
+            <Label className="text-[10px] uppercase font-bold text-zinc-500">Товары</Label>
             {supplyForm.items.map((it, idx) => (
-              <div key={idx} className="flex gap-2 bg-black/40 p-3 rounded-xl border border-white/5">
+              <div key={idx} className="flex gap-3 items-center bg-white/5 p-4 rounded-2xl border border-white/5">
                 <Select
                   onValueChange={(v) => {
                     const n = [...supplyForm.items];
@@ -325,10 +409,10 @@ export default function InventoryPage() {
                     setSupplyForm({ ...supplyForm, items: n });
                   }}
                 >
-                  <SelectTrigger className="flex-1 h-10 bg-transparent border-none">
-                    <SelectValue placeholder="Выберите товар" />
+                  <SelectTrigger className="flex-1 bg-zinc-950 border-none h-10">
+                    <SelectValue placeholder="Товар" />
                   </SelectTrigger>
-                  <SelectContent className="bg-zinc-800 text-white border-white/10">
+                  <SelectContent className="bg-zinc-800 text-white">
                     {ingredients.map((ing) => (
                       <SelectItem key={ing.id} value={ing.id}>
                         {ing.name}
@@ -338,57 +422,70 @@ export default function InventoryPage() {
                 </Select>
                 <Input
                   type="number"
-                  placeholder="Кол-во"
-                  className="w-24 h-10 bg-zinc-800 border-none text-center"
+                  placeholder="Кол"
+                  className="w-24 bg-zinc-950 border-none h-10 text-center font-bold"
                   onChange={(e) => {
                     const n = [...supplyForm.items];
                     n[idx].qty = e.target.value;
                     setSupplyForm({ ...supplyForm, items: n });
                   }}
                 />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    const n = supplyForm.items.filter((_, i) => i !== idx);
+                    setSupplyForm({ ...supplyForm, items: n });
+                  }}
+                  className="text-red-500"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
               </div>
             ))}
+            <Button
+              variant="outline"
+              className="w-full h-12 border-dashed border-white/20 rounded-xl"
+              onClick={() => setSupplyForm({ ...supplyForm, items: [...supplyForm.items, { id: "", qty: "" }] })}
+            >
+              + Добавить строку
+            </Button>
           </div>
           <Button
-            variant="ghost"
-            onClick={() => setSupplyForm({ ...supplyForm, items: [...supplyForm.items, { id: "", qty: "" }] })}
-            className="w-full text-zinc-500 mt-2 hover:text-white hover:bg-white/5"
-          >
-            + Добавить позицию
-          </Button>
-          <Button
             onClick={handleSupply}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 h-14 mt-6 font-black rounded-xl uppercase tracking-widest transition-all"
+            className="w-full h-16 bg-emerald-600 hover:bg-emerald-500 mt-8 rounded-2xl text-xl font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 transition-all"
           >
-            Провести документ
+            Провести приход
           </Button>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL: ИНВЕНТАРИЗАЦИЯ */}
+      {/* MODAL: STOCKTAKING (ИНВЕНТАРИЗАЦИЯ С РАСЧЕТОМ) */}
       <Dialog open={stockOpen} onOpenChange={setStockOpen}>
-        <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-4xl h-[85vh] flex flex-col rounded-[2rem] p-8">
+        <DialogContent className="bg-[#09090b] border-white/10 text-white max-w-5xl h-[85vh] flex flex-col rounded-[2.5rem] p-10">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-black italic uppercase">
+            <DialogTitle className="text-4xl font-black italic flex items-center gap-4">
+              <Calculator className="w-10 h-10 text-indigo-500" />
               Сверка: {locations.find((l) => l.id === selectedLoc)?.name}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 overflow-y-auto my-4 rounded-2xl border border-white/5 bg-black/40 custom-scrollbar">
+
+          <div className="flex-1 overflow-y-auto my-6 border border-white/5 rounded-[2rem] bg-black/40">
             <Table>
-              <TableHeader className="sticky top-0 bg-zinc-950 z-10">
-                <TableRow className="border-white/10 h-12">
-                  <TableHead className="pl-6">Товар</TableHead>
-                  <TableHead className="text-center">По учету</TableHead>
-                  <TableHead className="text-center">Факт</TableHead>
-                  <TableHead className="text-right pr-6">Разница</TableHead>
+              <TableHeader className="sticky top-0 bg-zinc-950 z-20 h-14">
+                <TableRow className="border-white/10">
+                  <TableHead className="pl-8 font-bold text-zinc-400">Товар</TableHead>
+                  <TableHead className="text-center font-bold text-zinc-400">Система</TableHead>
+                  <TableHead className="text-center font-bold text-zinc-400">Факт</TableHead>
+                  <TableHead className="text-right pr-8 font-bold text-zinc-400">Разница</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {stockItems.map((it, idx) => {
                   const diff = Number(it.act) - Number(it.sys);
                   return (
-                    <TableRow key={idx} className="border-white/5 h-14">
-                      <TableCell className="pl-6 font-bold">
+                    <TableRow key={idx} className="border-white/5 h-16">
+                      <TableCell className="pl-8">
                         {it.isNew ? (
                           <Select
                             onValueChange={(v) => {
@@ -398,10 +495,10 @@ export default function InventoryPage() {
                               setStockItems(n);
                             }}
                           >
-                            <SelectTrigger className="h-9 bg-zinc-800 border-none w-48">
-                              <SelectValue placeholder="Товар" />
+                            <SelectTrigger className="h-10 bg-zinc-900 border-indigo-500/30 w-64 rounded-xl">
+                              <SelectValue placeholder="Выбрать товар" />
                             </SelectTrigger>
-                            <SelectContent className="bg-zinc-800 text-white border-white/10">
+                            <SelectContent className="bg-zinc-900 text-white border-white/10">
                               {ingredients.map((i) => (
                                 <SelectItem key={i.id} value={i.id}>
                                   {i.name}
@@ -410,10 +507,10 @@ export default function InventoryPage() {
                             </SelectContent>
                           </Select>
                         ) : (
-                          it.name
+                          <span className="text-lg font-bold">{it.name}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-center text-zinc-500 font-mono text-lg">
+                      <TableCell className="text-center font-mono text-zinc-500 text-xl">
                         {Number(it.sys).toFixed(2)}
                       </TableCell>
                       <TableCell className="text-center">
@@ -425,11 +522,11 @@ export default function InventoryPage() {
                             n[idx].act = e.target.value;
                             setStockItems(n);
                           }}
-                          className="w-24 h-10 mx-auto text-center bg-zinc-900 border-white/10 font-black text-indigo-400 text-xl rounded-lg"
+                          className="w-28 h-12 mx-auto text-center bg-zinc-900 border-white/10 font-black text-2xl text-indigo-400 rounded-xl"
                         />
                       </TableCell>
                       <TableCell
-                        className={`text-right pr-6 font-black text-lg ${diff > 0 ? "text-emerald-500" : diff < 0 ? "text-red-500" : "text-zinc-700"}`}
+                        className={`text-right pr-8 font-black text-2xl ${diff > 0 ? "text-emerald-500" : diff < 0 ? "text-red-500" : "text-zinc-700"}`}
                       >
                         {diff > 0 ? `+${diff.toFixed(2)}` : diff.toFixed(2)}
                       </TableCell>
@@ -439,52 +536,53 @@ export default function InventoryPage() {
               </TableBody>
             </Table>
           </div>
-          <div className="flex gap-3">
+
+          <div className="flex gap-4">
             <Button
               variant="outline"
+              className="flex-1 h-16 border-dashed border-white/20 rounded-2xl text-zinc-500 text-lg hover:text-white"
               onClick={() =>
                 setStockItems([...stockItems, { inv_id: null, ing_id: "", name: "", sys: 0, act: "0", isNew: true }])
               }
-              className="flex-1 border-dashed h-14 rounded-xl text-zinc-500 hover:text-white"
             >
-              + Найти товар на складе
+              <PlusCircle className="mr-3 w-6 h-6" /> Добавить отсутствующий товар
             </Button>
             <Button
               onClick={saveStock}
-              className="flex-[2] bg-indigo-600 hover:bg-indigo-500 font-black h-14 rounded-xl uppercase"
+              className="flex-[2] bg-indigo-600 hover:bg-indigo-500 h-16 rounded-2xl text-xl font-black uppercase tracking-widest shadow-xl shadow-indigo-500/30"
             >
-              Сохранить инвентаризацию
+              Синхронизировать остатки
             </Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL: КОРРЕКТИРОВКА / ОБНУЛЕНИЕ */}
+      {/* MODAL: EDIT / RESET (КОРРЕКТИРОВКА) */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="bg-zinc-900 border-white/10 text-white rounded-3xl p-8 max-w-sm">
+        <DialogContent className="bg-zinc-900 border-white/10 text-white rounded-[2rem] p-10 max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-xl font-black italic uppercase">Корректировка</DialogTitle>
+            <DialogTitle className="text-2xl font-black italic uppercase text-center">Корректировка</DialogTitle>
           </DialogHeader>
-          <div className="py-6 space-y-6">
-            <div className="text-center">
-              <p className="text-zinc-500 text-xs uppercase mb-1">{editItem?.ingredient?.name}</p>
+          <div className="py-8 space-y-8">
+            <div className="text-center space-y-2">
+              <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest">{editItem?.ingredient?.name}</p>
               <Input
                 type="number"
-                className="bg-black border-white/10 h-20 text-center text-4xl font-black text-indigo-400 rounded-2xl"
+                className="bg-black border-white/10 h-24 text-center text-6xl font-black text-indigo-400 rounded-3xl"
                 value={editItem?.quantity}
                 onChange={(e) => setEditItem({ ...editItem, quantity: e.target.value })}
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <Button
                 variant="outline"
-                className="flex-1 border-red-500/30 text-red-500 hover:bg-red-500/10 h-12"
+                className="flex-1 border-red-500/30 text-red-500 hover:bg-red-500/10 h-14 rounded-2xl font-bold"
                 onClick={() => setEditItem({ ...editItem, quantity: 0 })}
               >
-                <RotateCcw className="w-4 h-4 mr-2" /> Обнулить
+                <RotateCcw className="w-5 h-5 mr-2" /> ОБНУЛИТЬ
               </Button>
               <Button
-                className="flex-1 bg-indigo-600 h-12 font-bold"
+                className="flex-[1.5] bg-indigo-600 h-14 rounded-2xl font-black text-lg"
                 onClick={async () => {
                   await supabase
                     .from("inventory")
@@ -492,10 +590,10 @@ export default function InventoryPage() {
                     .eq("id", editItem.id);
                   setEditOpen(false);
                   fetchData();
-                  toast.success("Данные изменены");
+                  toast.success("Данные успешно обновлены");
                 }}
               >
-                Сохранить
+                СОХРАНИТЬ
               </Button>
             </div>
           </div>
