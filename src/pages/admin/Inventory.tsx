@@ -1,84 +1,78 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Package, History, ExternalLink, TrendingUp } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Box, ArrowDownToLine, ArrowRightLeft, Calculator, History } from "lucide-react";
 
-export default function InventoryDashboard() {
-  const [stock, setStock] = useState<any[]>([]);
-  const navigate = useNavigate();
+// ИМПОРТИРУЕМ ТВОИ ФАЙЛЫ (убедись, что названия файлов совпадают)
+import StockOverview from "./StockOverview";
+import GoodsReceipt from "./GoodsReceipt";
+import StockTransfer from "./StockTransfer";
+import PhysicalInventory from "./PhysicalInventory";
+import MovementJournal from "./MovementJournal";
 
-  useEffect(() => {
-    fetchStock();
-  }, []);
-
-  const fetchStock = async () => {
-    const { data } = await supabase.from("inventory").select(`
-        quantity,
-        location:locations(name),
-        ingredient:ingredients(name, unit)
-      `);
-    setStock(data || []);
-  };
+export default function Inventory() {
+  const [activeTab, setActiveTab] = useState("mmbe");
 
   return (
-    <div className="p-6 bg-black min-h-screen text-white uppercase font-sans">
-      <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
-        <h1 className="text-xl font-black italic flex items-center gap-3">
-          <Package className="text-blue-500" /> ТЕКУЩИЕ ОСТАТКИ (MMBE)
-        </h1>
-        <Button
-          onClick={() => navigate("/admin/material-docs")}
-          className="bg-zinc-900 border border-white/10 hover:bg-white/5 text-[10px] font-black"
-        >
-          <History className="mr-2" size={14} /> ВЕСЬ АРХИВ ДОКУМЕНТОВ
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        {/* Карточки быстрой статистики */}
-        <div className="bg-zinc-900/50 p-4 border border-white/5">
-          <p className="text-[9px] text-zinc-500 font-black">ВСЕГО ПОЗИЦИЙ</p>
-          <p className="text-2xl font-black italic text-white">{stock.length}</p>
+    <div className="flex h-screen bg-black text-white font-sans">
+      {/* ЛЕВОЕ МЕНЮ (SIDEBAR) */}
+      <div className="w-64 border-r border-white/10 bg-[#0a0a0a] flex flex-col p-2 gap-1">
+        <div className="p-6 mb-4 border-b border-white/5">
+          <h1 className="text-xl font-black text-indigo-500 italic">SAP SYSTEM</h1>
         </div>
+
+        <NavBtn
+          act={activeTab === "mmbe"}
+          icon={<Box size={18} />}
+          label="MMBE: Остатки"
+          onClick={() => setActiveTab("mmbe")}
+        />
+        <NavBtn
+          act={activeTab === "migo"}
+          icon={<ArrowDownToLine size={18} />}
+          label="MIGO: Приход"
+          onClick={() => setActiveTab("migo")}
+        />
+        <NavBtn
+          act={activeTab === "mb1b"}
+          icon={<ArrowRightLeft size={18} />}
+          label="MB1B: Перенос"
+          onClick={() => setActiveTab("mb1b")}
+        />
+        <NavBtn
+          act={activeTab === "mi01"}
+          icon={<Calculator size={18} />}
+          label="MI01: Подсчет"
+          onClick={() => setActiveTab("mi01")}
+        />
+        <NavBtn
+          act={activeTab === "mb51"}
+          icon={<History size={18} />}
+          label="MB51: Журнал"
+          onClick={() => setActiveTab("mb51")}
+        />
       </div>
 
-      <div className="border border-white/10">
-        <Table>
-          <TableHeader className="bg-zinc-900">
-            <TableRow>
-              <TableHead className="text-[10px] font-black">СКЛАД</TableHead>
-              <TableHead className="text-[10px] font-black">МАТЕРИАЛ</TableHead>
-              <TableHead className="text-right text-[10px] font-black">ОСТАТОК</TableHead>
-              <TableHead className="text-right text-[10px] font-black">ДЕЙСТВИЯ</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {stock.map((item, idx) => (
-              <TableRow key={idx} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                <TableCell className="text-[10px] font-bold text-zinc-400">{item.location?.name}</TableCell>
-                <TableCell className="text-xs font-black text-white">{item.ingredient?.name}</TableCell>
-                <TableCell
-                  className={`text-right font-mono font-black ${item.quantity <= 0 ? "text-red-500" : "text-emerald-400"}`}
-                >
-                  {item.quantity} {item.ingredient?.unit}
-                </TableCell>
-                <TableCell className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => navigate("/admin/material-log")}
-                    className="h-7 text-[9px] font-black hover:text-blue-400"
-                  >
-                    ИСТОРИЯ <ExternalLink size={10} className="ml-1" />
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      {/* ОБЛАСТЬ КОНТЕНТА - ЗДЕСЬ ПОЯВЛЯЮТСЯ ТВОИ СТРАНИЦЫ */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === "mmbe" && <StockOverview />}
+        {activeTab === "migo" && <GoodsReceipt />}
+        {activeTab === "mb1b" && <StockTransfer />}
+        {activeTab === "mi01" && <PhysicalInventory />}
+        {activeTab === "mb51" && <MovementJournal />}
       </div>
     </div>
+  );
+}
+
+// Компонент кнопки
+function NavBtn({ act, icon, label, onClick }: any) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-3 px-4 h-12 text-[11px] font-bold uppercase transition-all ${
+        act ? "bg-indigo-600 text-white rounded-md" : "text-zinc-500 hover:text-zinc-300"
+      }`}
+    >
+      {icon} {label}
+    </button>
   );
 }
