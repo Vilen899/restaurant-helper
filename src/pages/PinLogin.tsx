@@ -73,6 +73,7 @@ export default function PinLogin() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
+  const [frontError, setFrontError] = useState(""); // фронт-сообщение об ошибке
 
   /* ===== LOAD LOCATIONS ===== */
   useEffect(() => {
@@ -95,6 +96,7 @@ export default function PinLogin() {
     if (pin.length < 4 && !loading) {
       playClickSound();
       setPin((prev) => prev + num);
+      setFrontError(""); // очищаем сообщение при наборе
     }
   };
 
@@ -106,6 +108,11 @@ export default function PinLogin() {
   };
   const handleClear = () => setPin("");
 
+  const setSelectedLocationAndClearError = (value: string) => {
+    setSelectedLocation(value);
+    setFrontError(""); // очищаем сообщение при смене точки
+  };
+
   /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
@@ -114,7 +121,7 @@ export default function PinLogin() {
   /* ===== SUBMIT PIN ===== */
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
-      toast.error("Выберите точку");
+      setFrontError("Выберите точку");
       return;
     }
 
@@ -142,7 +149,7 @@ export default function PinLogin() {
           // если JSON распарсить не удалось — оставляем общий msg
         }
 
-        toast.error(msg);
+        setFrontError(msg); // показываем на фронте
         setPin("");
         return;
       }
@@ -154,7 +161,7 @@ export default function PinLogin() {
       navigate("/cashier");
     } catch {
       playErrorSound();
-      toast.error("Ошибка подключения");
+      setFrontError("Ошибка подключения");
       setPin("");
     } finally {
       setLoading(false);
@@ -176,7 +183,7 @@ export default function PinLogin() {
               <MapPin className="h-4 w-4" />
               <span>Точка продажи</span>
             </div>
-            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+            <Select value={selectedLocation} onValueChange={setSelectedLocationAndClearError}>
               <SelectTrigger className="bg-white/5 border-white/10 text-white">
                 <SelectValue placeholder="Выберите точку" />
               </SelectTrigger>
@@ -201,6 +208,9 @@ export default function PinLogin() {
               </div>
             ))}
           </div>
+
+          {/* FRONT ERROR MESSAGE */}
+          {frontError && <div className="mb-4 text-center text-red-500 font-semibold">{frontError}</div>}
 
           {/* KEYPAD */}
           <div className="grid grid-cols-3 gap-3">
