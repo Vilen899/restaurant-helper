@@ -8,8 +8,8 @@ import { toast } from "sonner";
 import logo from "@/assets/logo.webp";
 
 /* ================== SOUNDS ================== */
-const playClick = () => {
-  const ctx = new AudioContext();
+const playClickSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -20,8 +20,9 @@ const playClick = () => {
   osc.start();
   osc.stop(ctx.currentTime + 0.1);
 };
-const playDelete = () => {
-  const ctx = new AudioContext();
+
+const playDeleteSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -32,116 +33,138 @@ const playDelete = () => {
   osc.start();
   osc.stop(ctx.currentTime + 0.1);
 };
-const playSuccess = () => {
-  const ctx = new AudioContext();
+
+const playSuccessSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-  [523, 659, 784].forEach((f, i) => {
-    const o = new OscillatorNode(ctx);
-    o.connect(gain);
-    o.frequency.value = f;
-    o.start(ctx.currentTime + i * 0.1);
-    o.stop(ctx.currentTime + i * 0.1 + 0.15);
+  [523, 659, 784].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.connect(gain);
+    osc.frequency.value = freq;
+    osc.start(ctx.currentTime + i * 0.1);
+    osc.stop(ctx.currentTime + i * 0.1 + 0.15);
   });
 };
-const playError = () => {
-  const ctx = new AudioContext();
+
+const playErrorSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-  [400, 350].forEach((f, i) => {
-    const o = new OscillatorNode(ctx);
-    o.connect(gain);
-    o.frequency.value = f;
-    o.type = "square";
-    o.start(ctx.currentTime + i * 0.15);
-    o.stop(ctx.currentTime + i * 0.15 + 0.15);
+  [400, 350].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.connect(gain);
+    osc.frequency.value = freq;
+    osc.type = "square";
+    osc.start(ctx.currentTime + i * 0.15);
+    osc.stop(ctx.currentTime + i * 0.15 + 0.15);
   });
 };
-const playWarning = () => {
-  const ctx = new AudioContext();
+
+const playWarningSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-  [500, 400].forEach((f, i) => {
-    const o = new OscillatorNode(ctx);
-    o.connect(gain);
-    o.frequency.value = f;
-    o.type = "sawtooth";
-    o.start(ctx.currentTime + i * 0.15);
-    o.stop(ctx.currentTime + i * 0.15 + 0.15);
+  [500, 400].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.connect(gain);
+    osc.frequency.value = freq;
+    osc.type = "sawtooth";
+    osc.start(ctx.currentTime + i * 0.15);
+    osc.stop(ctx.currentTime + i * 0.15 + 0.15);
   });
 };
 
 /* ================== COMPONENT ================== */
 export default function PinLogin() {
   const navigate = useNavigate();
+
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
-  const [message, setMessage] = useState(""); // <-- Текст ошибки над PIN
 
+  /* ===== LOAD LOCATIONS ===== */
   useEffect(() => {
     const fetchLocations = async () => {
-      const { data } = await supabase.from("locations").select("id,name").eq("is_active", true);
-      if (data?.length) {
-        setLocations(data);
-        setSelectedLocation(data[0].id);
+      try {
+        const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
+        if (data?.length) {
+          setLocations(data);
+          setSelectedLocation(data[0].id);
+        }
+      } catch {
+        toast.error("Не удалось загрузить точки");
       }
     };
     fetchLocations();
   }, []);
 
+  /* ===== PIN INPUT ===== */
   const handleNumberClick = (num: string) => {
     if (pin.length < 4 && !loading) {
-      playClick();
-      setPin((p) => p + num);
-      setMessage("");
+      playClickSound();
+      setPin((prev) => prev + num);
     }
-  };
-  const handleDelete = () => {
-    if (!loading) {
-      playDelete();
-      setPin((p) => p.slice(0, -1));
-      setMessage("");
-    }
-  };
-  const handleClear = () => {
-    setPin("");
-    setMessage("");
   };
 
+  const handleDelete = () => {
+    if (!loading) {
+      playDeleteSound();
+      setPin((prev) => prev.slice(0, -1));
+    }
+  };
+  const handleClear = () => setPin("");
+
+  /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
   }, [pin]);
 
+  /* ===== SUBMIT PIN ===== */
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
-      setMessage("Выберите точку");
+      toast.error("Выберите точку");
       return;
     }
+
     setLoading(true);
     try {
-      const res = await supabase.functions.invoke("verify-pin", { body: { pin, location_id: selectedLocation } });
-      const data = res.data;
-      if (!data?.success) {
-        setMessage(data?.message || "Ошибка сервера");
-        playError();
+      const res = await supabase.functions.invoke("verify-pin", {
+        body: { pin, location_id: selectedLocation },
+      });
+
+      if (res.error) {
         setPin("");
+
+        // === ОБРАБОТКА ОШИБОК БЕЗ JSON ===
+        if (res.error.message.includes("SHIFT_OPEN_AT_ANOTHER_LOCATION")) {
+          playWarningSound();
+          toast.error("Смена уже открыта в другой локации. Закройте её перед входом");
+        } else if (res.error.message.includes("INVALID_PIN")) {
+          playErrorSound();
+          toast.error("Неверный PIN-код");
+        } else {
+          playErrorSound();
+          toast.error(res.error.message || "Ошибка сервера");
+        }
         return;
       }
-      playSuccess();
-      setMessage("");
-      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+
+      // ✅ Успех
+      playSuccessSound();
+      toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
+      sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
       navigate("/cashier");
-    } catch (e) {
-      playError();
-      setMessage("Ошибка подключения");
+    } catch {
+      playErrorSound();
+      toast.error("Ошибка подключения");
       setPin("");
     } finally {
       setLoading(false);
@@ -150,17 +173,18 @@ export default function PinLogin() {
 
   const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
+  /* ================== UI ================== */
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <img src={logo} alt="" className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
-
       <div className="relative z-10 w-full max-w-sm">
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
-          <div className="mb-2 text-center text-red-400 font-medium">{message}</div> {/* <-- Текст ошибки */}
+          {/* LOCATION */}
           <div className="mb-6">
             <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
-              <MapPin className="h-4 w-4" /> <span>Точка продажи</span>
+              <MapPin className="h-4 w-4" />
+              <span>Точка продажи</span>
             </div>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
               <SelectTrigger className="bg-white/5 border-white/10 text-white">
@@ -175,16 +199,22 @@ export default function PinLogin() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* PIN */}
           <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
             ))}
           </div>
+
+          {/* KEYPAD */}
           <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
@@ -214,6 +244,7 @@ export default function PinLogin() {
               );
             })}
           </div>
+
           {loading && <div className="mt-4 text-center text-white/60">Проверка…</div>}
         </div>
 
@@ -222,3 +253,56 @@ export default function PinLogin() {
     </div>
   );
 }
+// Внутри handlePinSubmit
+const handlePinSubmit = async () => {
+  if (!selectedLocation) {
+    setMessage("Выберите точку");
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const res = await supabase.functions.invoke("verify-pin", { body: { pin, location_id: selectedLocation } });
+    const data = res.data;
+
+    if (!data) {
+      playError();
+      setMessage("Нет ответа от сервера");
+      setPin("");
+      return;
+    }
+
+    // Разбираем код ошибки
+    switch (data.code) {
+      case "SUCCESS":
+        playSuccess();
+        setMessage(data.message);
+        sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+        navigate("/cashier");
+        break;
+      case "INVALID_PIN":
+        playError();
+        setMessage(data.message); // "Неверный PIN-код"
+        setPin("");
+        break;
+      case "SHIFT_OPEN_OTHER_LOCATION":
+        playWarning();
+        setMessage(data.message); // "Смена открыта в другой локации..."
+        setPin("");
+        break;
+      case "MISSING_DATA":
+      case "SERVER_ERROR":
+      default:
+        playError();
+        setMessage(data.message || "Ошибка сервера");
+        setPin("");
+        break;
+    }
+  } catch (e) {
+    playError();
+    setMessage("Ошибка подключения");
+    setPin("");
+  } finally {
+    setLoading(false);
+  }
+};
