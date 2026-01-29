@@ -65,15 +65,6 @@ const playErrorSound = () => {
   });
 };
 
-/* ================== UTILS ================== */
-const tryParseJSON = (jsonString: string) => {
-  try {
-    return JSON.parse(jsonString);
-  } catch {
-    return null;
-  }
-};
-
 /* ================== COMPONENT ================== */
 export default function PinLogin() {
   const navigate = useNavigate();
@@ -133,12 +124,16 @@ export default function PinLogin() {
         body: { pin, location_id: selectedLocation },
       });
 
-      // ========= ОБРАБОТКА ОШИБОК =========
+      // === ОБРАБОТКА ОШИБОК ===
       let msg = "Неизвестная ошибка сервера";
       let errBody: any = null;
 
       if (res.error) {
-        errBody = tryParseJSON(res.error.message);
+        try {
+          errBody = JSON.parse(res.error.message);
+        } catch {
+          errBody = null;
+        }
       } else if (res.data && (res.data.error || res.data.message)) {
         errBody = res.data;
       }
@@ -158,7 +153,7 @@ export default function PinLogin() {
         return;
       }
 
-      // ========= УСПЕХ =========
+      // ✅ Успех
       if (res.data && res.data.user) {
         playSuccessSound();
         toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
@@ -212,7 +207,9 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
