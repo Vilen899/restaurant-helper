@@ -29,10 +29,13 @@ serve(async (req) => {
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response(JSON.stringify({ success: false, message: "PIN и точка обязательны" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, code: "MISSING_DATA", message: "Введите PIN и выберите точку" }),
+        {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const { data: profiles } = await supabase
@@ -46,7 +49,7 @@ serve(async (req) => {
     for (const profile of profiles || []) {
       if (profile.pin_hash !== inputHash) continue;
 
-      // Проверяем открытую смену
+      // Проверка открытой смены
       const { data: openShift } = await supabase
         .from("shifts")
         .select("location_id")
@@ -58,16 +61,19 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({
             success: false,
-            message: `Смена открыта в другой локации. Закройте её перед входом`,
+            code: "SHIFT_OPEN_OTHER_LOCATION",
+            message: `Смена уже открыта в другой локации. Закройте её перед входом`,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      // ✅ Всё ок — возвращаем данные пользователя
+      // ✅ Успешный вход
       return new Response(
         JSON.stringify({
           success: true,
+          code: "SUCCESS",
+          message: `Добро пожаловать, ${profile.full_name}!`,
           user: { id: profile.id, full_name: profile.full_name, location_id },
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -75,15 +81,23 @@ serve(async (req) => {
     }
 
     // PIN не найден
-    return new Response(JSON.stringify({ success: false, message: "Неверный PIN-код" }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        code: "INVALID_PIN",
+        message: "Неверный PIN-код",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
     console.error(e);
-    return new Response(JSON.stringify({ success: false, message: "Ошибка сервера" }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        success: false,
+        code: "SERVER_ERROR",
+        message: "Ошибка сервера",
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 });
