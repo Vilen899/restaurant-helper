@@ -16,6 +16,7 @@ import {
   ArrowDownToLine,
   CheckCircle2,
   AlertCircle,
+  PlusCircle,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -138,7 +139,7 @@ export default function InventoryPage() {
           .maybeSingle();
 
         if (!src || Number(src.quantity) < transferQty) {
-          toast.error(`Недостаточно товара ${item.id} на складе`);
+          toast.error(`Недостаточно товара на складе`);
           continue;
         }
 
@@ -357,7 +358,7 @@ export default function InventoryPage() {
                         size="icon"
                         className="h-8 w-8 hover:bg-red-500/20"
                         onClick={async () => {
-                          if (confirm("Confirm deletion of material from this location?")) {
+                          if (confirm("Confirm deletion?")) {
                             await supabase.from("inventory").delete().eq("id", item.id);
                             fetchData();
                           }
@@ -636,7 +637,7 @@ export default function InventoryPage() {
                               <SelectTrigger className="h-8 bg-zinc-800 border-none text-[10px] w-full">
                                 <SelectValue placeholder="Add Item" />
                               </SelectTrigger>
-                              <SelectContent className="bg-zinc-900 text-white">
+                              <SelectContent className="bg-zinc-900 text-white border-white/10">
                                 {ingredients.map((i) => (
                                   <SelectItem key={i.id} value={i.id}>
                                     {i.name}
@@ -696,11 +697,11 @@ export default function InventoryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* --- MM02: MATERIAL CORRECTION (Direct) --- */}
+      {/* --- MM02: MATERIAL CORRECTION --- */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="bg-zinc-950 border-white/10 text-zinc-300 font-mono max-w-xs rounded-none p-0 overflow-hidden">
           <div className="bg-zinc-800 p-3 text-[10px] font-bold uppercase tracking-widest text-center">
-            MM02 - Manual Master Adjustment
+            MM02 - Adjustment
           </div>
           <div className="p-8 text-center space-y-6">
             <div className="space-y-2">
@@ -709,11 +710,10 @@ export default function InventoryPage() {
               </p>
               <Input
                 type="number"
-                className="h-20 bg-black border-white/10 text-center text-5xl font-black text-indigo-500 rounded-none shadow-inner"
+                className="h-16 bg-black border-white/10 text-center text-4xl font-black text-indigo-500 rounded-none shadow-inner"
                 value={editItem?.quantity}
                 onChange={(e) => setEditItem({ ...editItem, quantity: e.target.value })}
               />
-              <p className="text-[9px] text-zinc-600 italic">Adjust stock level manually (Bypass MIGO)</p>
             </div>
             <div className="flex flex-col gap-2">
               <Button
@@ -725,7 +725,7 @@ export default function InventoryPage() {
                     .eq("id", editItem.id);
                   setEditOpen(false);
                   fetchData();
-                  toast.success("Stock Master Updated");
+                  toast.success("Updated");
                 }}
               >
                 Update Balance
@@ -735,7 +735,7 @@ export default function InventoryPage() {
                 className="w-full border-red-900/50 text-red-500 hover:bg-red-950 h-10 rounded-none text-[9px] uppercase font-bold"
                 onClick={() => setEditItem({ ...editItem, quantity: 0 })}
               >
-                <RotateCcw className="w-3 h-3 mr-2" /> Full Reset to 0.000
+                <RotateCcw className="w-3 h-3 mr-2" /> Full Reset
               </Button>
             </div>
           </div>
