@@ -30,7 +30,7 @@ serve(async (req) => {
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response(JSON.stringify({ error: "INVALID_REQUEST", message: "Введите PIN и выберите точку" }), {
+      return new Response(JSON.stringify({ error: "INVALID_REQUEST", message: "Укажите PIN и точку продажи" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -45,14 +45,17 @@ serve(async (req) => {
     const inputHash = await hashPin(pin);
     const profile = profiles?.find((p) => p.pin_hash === inputHash);
 
+    // СООБЩЕНИЕ: НЕВЕРНЫЙ КОД
     if (!profile) {
-      return new Response(JSON.stringify({ error: "INVALID_PIN", message: "Неверный PIN-код" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "INVALID_PIN",
+          message: "Доступ отклонен: проверьте код",
+        }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    // Проверка смены
     const { data: openShift } = await supabase
       .from("shifts")
       .select("location_id, location:locations(name)")
@@ -60,12 +63,13 @@ serve(async (req) => {
       .is("ended_at", null)
       .maybeSingle();
 
+    // СООБЩЕНИЕ: ОТКРЫТАЯ СМЕНА
     if (openShift && openShift.location_id !== location_id) {
       const locationName = (openShift.location as any)?.name || "другой точке";
       return new Response(
         JSON.stringify({
           error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-          message: `Смена уже открыта в "${locationName}".`,
+          message: `Внимание: ваша смена не закрыта в "${locationName}"`,
         }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
@@ -79,7 +83,7 @@ serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    return new Response(JSON.stringify({ error: "SERVER_ERROR", message: "Внутренняя ошибка сервера" }), {
+    return new Response(JSON.stringify({ error: "SERVER_ERROR", message: "Ошибка системы. Попробуйте позже" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
