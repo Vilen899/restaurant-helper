@@ -8,8 +8,8 @@ import { toast } from "sonner";
 import logo from "@/assets/logo.webp";
 
 /* ================== SOUNDS ================== */
-const playClickSound = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+const playClick = () => {
+  const ctx = new AudioContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -17,12 +17,11 @@ const playClickSound = () => {
   osc.frequency.value = 800;
   gain.gain.setValueAtTime(0.1, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-  osc.start(ctx.currentTime);
+  osc.start();
   osc.stop(ctx.currentTime + 0.1);
 };
-
-const playDeleteSound = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+const playDelete = () => {
+  const ctx = new AudioContext();
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
@@ -30,54 +29,51 @@ const playDeleteSound = () => {
   osc.frequency.value = 400;
   gain.gain.setValueAtTime(0.1, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-  osc.start(ctx.currentTime);
+  osc.start();
   osc.stop(ctx.currentTime + 0.1);
 };
-
-const playSuccessSound = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+const playSuccess = () => {
+  const ctx = new AudioContext();
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
   [523, 659, 784].forEach((f, i) => {
-    const osc = ctx.createOscillator();
-    osc.connect(gain);
-    osc.frequency.value = f;
-    osc.start(ctx.currentTime + i * 0.1);
-    osc.stop(ctx.currentTime + i * 0.1 + 0.15);
+    const o = new OscillatorNode(ctx);
+    o.connect(gain);
+    o.frequency.value = f;
+    o.start(ctx.currentTime + i * 0.1);
+    o.stop(ctx.currentTime + i * 0.1 + 0.15);
   });
 };
-
-const playErrorSound = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+const playError = () => {
+  const ctx = new AudioContext();
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
   [400, 350].forEach((f, i) => {
-    const osc = ctx.createOscillator();
-    osc.connect(gain);
-    osc.frequency.value = f;
-    osc.type = "square";
-    osc.start(ctx.currentTime + i * 0.15);
-    osc.stop(ctx.currentTime + i * 0.15 + 0.15);
+    const o = new OscillatorNode(ctx);
+    o.connect(gain);
+    o.frequency.value = f;
+    o.type = "square";
+    o.start(ctx.currentTime + i * 0.15);
+    o.stop(ctx.currentTime + i * 0.15 + 0.15);
   });
 };
-
-const playWarningSound = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+const playWarning = () => {
+  const ctx = new AudioContext();
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
   [500, 400].forEach((f, i) => {
-    const osc = ctx.createOscillator();
-    osc.connect(gain);
-    osc.frequency.value = f;
-    osc.type = "sawtooth";
-    osc.start(ctx.currentTime + i * 0.15);
-    osc.stop(ctx.currentTime + i * 0.15 + 0.15);
+    const o = new OscillatorNode(ctx);
+    o.connect(gain);
+    o.frequency.value = f;
+    o.type = "sawtooth";
+    o.start(ctx.currentTime + i * 0.15);
+    o.stop(ctx.currentTime + i * 0.15 + 0.15);
   });
 };
 
@@ -88,6 +84,7 @@ export default function PinLogin() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
+  const [message, setMessage] = useState(""); // <-- Текст ошибки над PIN
 
   useEffect(() => {
     const fetchLocations = async () => {
@@ -101,59 +98,50 @@ export default function PinLogin() {
   }, []);
 
   const handleNumberClick = (num: string) => {
-    if (!loading && pin.length < 4) {
-      playClickSound();
+    if (pin.length < 4 && !loading) {
+      playClick();
       setPin((p) => p + num);
+      setMessage("");
     }
   };
-
   const handleDelete = () => {
     if (!loading) {
-      playDeleteSound();
+      playDelete();
       setPin((p) => p.slice(0, -1));
+      setMessage("");
     }
   };
-
-  const handleClear = () => setPin("");
+  const handleClear = () => {
+    setPin("");
+    setMessage("");
+  };
 
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
   }, [pin]);
 
   const handlePinSubmit = async () => {
-    if (!selectedLocation) return toast.error("Выберите точку");
-
+    if (!selectedLocation) {
+      setMessage("Выберите точку");
+      return;
+    }
     setLoading(true);
     try {
-      const res = await supabase.functions.invoke("verify-pin", {
-        body: { pin, location_id: selectedLocation },
-      });
-
-      setPin("");
-
-      if (res.error) {
-        const msg = res.error.message;
-        if (msg.includes("INVALID_PIN")) {
-          playErrorSound();
-          toast.error("Неверный PIN-код");
-        } else if (msg.includes("SHIFT_OPEN_AT_ANOTHER_LOCATION")) {
-          playWarningSound();
-          toast.error("Смена уже открыта в другой локации. Закройте её перед входом");
-        } else {
-          playErrorSound();
-          toast.error(msg || "Ошибка сервера");
-        }
+      const res = await supabase.functions.invoke("verify-pin", { body: { pin, location_id: selectedLocation } });
+      const data = res.data;
+      if (!data?.success) {
+        setMessage(data?.message || "Ошибка сервера");
+        playError();
+        setPin("");
         return;
       }
-
-      // Успех
-      playSuccessSound();
-      toast.success(`Добро пожаловать, ${res.data.full_name}!`);
-      sessionStorage.setItem("cashier_session", JSON.stringify(res.data));
+      playSuccess();
+      setMessage("");
+      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
       navigate("/cashier");
     } catch (e) {
-      playErrorSound();
-      toast.error((e as Error).message || "Ошибка подключения");
+      playError();
+      setMessage("Ошибка подключения");
       setPin("");
     } finally {
       setLoading(false);
@@ -166,13 +154,13 @@ export default function PinLogin() {
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <img src={logo} alt="" className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
+
       <div className="relative z-10 w-full max-w-sm">
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
-          {/* Location */}
+          <div className="mb-2 text-center text-red-400 font-medium">{message}</div> {/* <-- Текст ошибки */}
           <div className="mb-6">
             <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
-              <MapPin className="h-4 w-4" />
-              <span>Точка продажи</span>
+              <MapPin className="h-4 w-4" /> <span>Точка продажи</span>
             </div>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
               <SelectTrigger className="bg-white/5 border-white/10 text-white">
@@ -187,8 +175,6 @@ export default function PinLogin() {
               </SelectContent>
             </Select>
           </div>
-
-          {/* PIN display */}
           <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
@@ -199,8 +185,6 @@ export default function PinLogin() {
               </div>
             ))}
           </div>
-
-          {/* Keypad */}
           <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
@@ -212,8 +196,9 @@ export default function PinLogin() {
                     className="h-16 bg-white/5 text-white"
                     onClick={handleDelete}
                     onDoubleClick={handleClear}
+                    disabled={loading}
                   >
-                    {<Delete />}
+                    <Delete />
                   </Button>
                 );
               return (
@@ -229,9 +214,9 @@ export default function PinLogin() {
               );
             })}
           </div>
-
           {loading && <div className="mt-4 text-center text-white/60">Проверка…</div>}
         </div>
+
         <p className="text-center text-white/30 text-xs mt-6">© 2026 Crusty Sandwiches · Касса v1.0</p>
       </div>
     </div>
