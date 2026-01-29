@@ -4,7 +4,6 @@ import { Delete, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import logo from "@/assets/logo.webp";
 
 /* ================== SOUNDS ================== */
@@ -17,7 +16,7 @@ const playClickSound = () => {
   osc.frequency.value = 800;
   gain.gain.setValueAtTime(0.1, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-  osc.start();
+  osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.1);
 };
 
@@ -30,7 +29,7 @@ const playDeleteSound = () => {
   osc.frequency.value = 400;
   gain.gain.setValueAtTime(0.1, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-  osc.start();
+  osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.1);
 };
 
@@ -65,22 +64,6 @@ const playErrorSound = () => {
   });
 };
 
-const playWarningSound = () => {
-  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  const gain = ctx.createGain();
-  gain.connect(ctx.destination);
-  gain.gain.setValueAtTime(0.15, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-  [500, 400].forEach((freq, i) => {
-    const osc = ctx.createOscillator();
-    osc.connect(gain);
-    osc.frequency.value = freq;
-    osc.type = "sawtooth";
-    osc.start(ctx.currentTime + i * 0.15);
-    osc.stop(ctx.currentTime + i * 0.15 + 0.15);
-  });
-};
-
 /* ================== COMPONENT ================== */
 export default function PinLogin() {
   const navigate = useNavigate();
@@ -88,17 +71,14 @@ export default function PinLogin() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
+  const [message, setMessage] = useState(""); // <-- Сообщение сверху
 
   useEffect(() => {
     const fetchLocations = async () => {
-      try {
-        const { data } = await supabase.from("locations").select("id,name").eq("is_active", true);
-        if (data?.length) {
-          setLocations(data);
-          setSelectedLocation(data[0].id);
-        }
-      } catch {
-        toast.error("Не удалось загрузить точки");
+      const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
+      if (data && data.length) {
+        setLocations(data);
+        setSelectedLocation(data[0].id);
       }
     };
     fetchLocations();
@@ -107,15 +87,17 @@ export default function PinLogin() {
   const handleNumberClick = (num: string) => {
     if (pin.length < 4 && !loading) {
       playClickSound();
-      setPin((prev) => prev + num);
+      setPin((p) => p + num);
     }
   };
+
   const handleDelete = () => {
     if (!loading) {
       playDeleteSound();
-      setPin((prev) => prev.slice(0, -1));
+      setPin((p) => p.slice(0, -1));
     }
   };
+
   const handleClear = () => setPin("");
 
   useEffect(() => {
@@ -124,40 +106,41 @@ export default function PinLogin() {
 
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
-      toast.error("Выберите точку");
+      setMessage("Выберите точку");
       return;
     }
+
     setLoading(true);
+    setMessage(""); // очистить предыдущее сообщение
 
     try {
-      const res = await supabase.functions.invoke("verify-pin", { body: { pin, location_id: selectedLocation } });
+      const res = await supabase.functions.invoke("verify-pin", {
+        body: { pin, location_id: selectedLocation },
+      });
 
-      const data = res.data;
-      if (!data) throw new Error("Нет ответа от сервера");
-
-      if (!data.success) {
+      if (res.error) {
         setPin("");
-        if (data.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-          playWarningSound();
-          toast.error(`Смена открыта в "${data.location_name}". Закройте её перед входом.`);
-        } else if (data.error === "INVALID_PIN") {
-          playErrorSound();
-          toast.error("Неверный PIN");
+        // Просто показываем текстовое сообщение без JSON
+        if (res.error.message.includes("SHIFT_OPEN_AT_ANOTHER_LOCATION")) {
+          setMessage("Смена уже открыта в другой локации. Закройте её перед входом");
+        } else if (res.error.message.includes("INVALID_PIN")) {
+          setMessage("Неверный PIN-код");
         } else {
-          playErrorSound();
-          toast.error(data.message || "Ошибка сервера");
+          setMessage("Ошибка сервера");
         }
+        playErrorSound();
         return;
       }
 
+      // Успешный вход
+      setMessage("");
       playSuccessSound();
-      toast.success(`Добро пожаловать, ${data.user.full_name}!`);
-      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+      sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
       navigate("/cashier");
-    } catch (err) {
-      playErrorSound();
-      toast.error((err as Error).message || "Ошибка подключения");
+    } catch {
       setPin("");
+      setMessage("Ошибка подключения");
+      playErrorSound();
     } finally {
       setLoading(false);
     }
@@ -172,8 +155,8 @@ export default function PinLogin() {
       <div className="relative z-10 w-full max-w-sm">
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
           {/* LOCATION */}
-          <div className="mb-6">
-            <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
+          <div className="mb-3">
+            <div className="flex items-center gap-2 text-sm text-white/60 mb-1">
               <MapPin className="h-4 w-4" />
               <span>Точка продажи</span>
             </div>
@@ -191,12 +174,17 @@ export default function PinLogin() {
             </Select>
           </div>
 
-          {/* PIN */}
+          {/* Message */}
+          {message && <div className="text-center text-yellow-400 mb-3 font-medium">{message}</div>}
+
+          {/* PIN display */}
           <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
