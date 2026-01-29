@@ -40,11 +40,10 @@ const playSuccessSound = () => {
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-  [523, 659, 784].forEach((f, i) => {
+  [523, 659, 784].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     osc.connect(gain);
-    osc.frequency.value = f;
-    osc.type = "sine";
+    osc.frequency.value = freq;
     osc.start(ctx.currentTime + i * 0.1);
     osc.stop(ctx.currentTime + i * 0.1 + 0.15);
   });
@@ -56,10 +55,10 @@ const playErrorSound = () => {
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-  [400, 350].forEach((f, i) => {
+  [400, 350].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     osc.connect(gain);
-    osc.frequency.value = f;
+    osc.frequency.value = freq;
     osc.type = "square";
     osc.start(ctx.currentTime + i * 0.15);
     osc.stop(ctx.currentTime + i * 0.15 + 0.15);
@@ -72,10 +71,10 @@ const playWarningSound = () => {
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-  [500, 400].forEach((f, i) => {
+  [500, 400].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     osc.connect(gain);
-    osc.frequency.value = f;
+    osc.frequency.value = freq;
     osc.type = "sawtooth";
     osc.start(ctx.currentTime + i * 0.15);
     osc.stop(ctx.currentTime + i * 0.15 + 0.15);
@@ -89,13 +88,11 @@ export default function PinLogin() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
-  const [errorState, setErrorState] = useState<"none" | "pin" | "shift">("none");
 
-  /* ===== LOAD LOCATIONS ===== */
   useEffect(() => {
     const fetchLocations = async () => {
       try {
-        const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
+        const { data } = await supabase.from("locations").select("id,name").eq("is_active", true);
         if (data?.length) {
           setLocations(data);
           setSelectedLocation(data[0].id);
@@ -107,71 +104,59 @@ export default function PinLogin() {
     fetchLocations();
   }, []);
 
-  /* ===== PIN INPUT ===== */
   const handleNumberClick = (num: string) => {
     if (pin.length < 4 && !loading) {
       playClickSound();
       setPin((prev) => prev + num);
-      setErrorState("none"); // сброс подсветки ошибок при вводе
     }
   };
-
   const handleDelete = () => {
     if (!loading) {
       playDeleteSound();
       setPin((prev) => prev.slice(0, -1));
-      setErrorState("none");
     }
   };
   const handleClear = () => setPin("");
 
-  /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
     if (pin.length === 4) handlePinSubmit();
   }, [pin]);
 
-  /* ===== SUBMIT PIN ===== */
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
       toast.error("Выберите точку");
       return;
     }
-
     setLoading(true);
+
     try {
-      const res = await supabase.functions.invoke("verify-pin", {
-        body: { pin, location_id: selectedLocation },
-      });
+      const res = await supabase.functions.invoke("verify-pin", { body: { pin, location_id: selectedLocation } });
 
-      if (res.error) {
+      const data = res.data;
+      if (!data) throw new Error("Нет ответа от сервера");
+
+      if (!data.success) {
         setPin("");
-
-        // === ОБРАБОТКА ОШИБОК БЕЗ JSON ===
-        if (res.error.message.includes("SHIFT_OPEN_AT_ANOTHER_LOCATION")) {
+        if (data.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
           playWarningSound();
-          setErrorState("shift");
-          toast.error("Смена уже открыта в другой локации. Закройте её перед входом");
-        } else if (res.error.message.includes("INVALID_PIN")) {
+          toast.error(`Смена открыта в "${data.location_name}". Закройте её перед входом.`);
+        } else if (data.error === "INVALID_PIN") {
           playErrorSound();
-          setErrorState("pin");
-          toast.error("Неверный PIN-код");
+          toast.error("Неверный PIN");
         } else {
           playErrorSound();
-          setErrorState("pin");
-          toast.error(res.error.message || "Ошибка сервера");
+          toast.error(data.message || "Ошибка сервера");
         }
         return;
       }
 
-      // ✅ Успех
       playSuccessSound();
-      toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
-      sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
+      toast.success(`Добро пожаловать, ${data.user.full_name}!`);
+      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
       navigate("/cashier");
-    } catch {
+    } catch (err) {
       playErrorSound();
-      setErrorState("pin");
-      toast.error("Ошибка подключения");
+      toast.error((err as Error).message || "Ошибка подключения");
       setPin("");
     } finally {
       setLoading(false);
@@ -180,7 +165,6 @@ export default function PinLogin() {
 
   const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
-  /* ================== UI ================== */
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
       <img src={logo} alt="" className="absolute inset-0 w-full h-full object-cover" />
@@ -212,15 +196,7 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${
-                  pin.length > i
-                    ? errorState === "pin"
-                      ? "border-red-500 bg-red-500/20 text-red-400"
-                      : errorState === "shift"
-                        ? "border-yellow-500 bg-yellow-500/20 text-yellow-400"
-                        : "border-green-500 bg-green-500/20 text-green-400"
-                    : "border-white/20 bg-white/5"
-                }`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
               >
                 {pin[i] ? "•" : ""}
               </div>
