@@ -133,13 +133,11 @@ export default function InventoryPage() {
             .update({ quantity: Number(exist.quantity) + Number(item.quantity) })
             .eq("id", exist.id);
         } else {
-          await supabase
-            .from("inventory")
-            .insert({
-              location_id: supplyForm.location_id,
-              ingredient_id: item.ingredient_id,
-              quantity: Number(item.quantity),
-            });
+          await supabase.from("inventory").insert({
+            location_id: supplyForm.location_id,
+            ingredient_id: item.ingredient_id,
+            quantity: Number(item.quantity),
+          });
         }
       }
       toast.success("Поставка принята");
@@ -348,3 +346,72 @@ export default function InventoryPage() {
     </div>
   );
 }
+{
+  /* ОКНО ПЕРЕМЕЩЕНИЯ */
+}
+<Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+  <DialogContent className="max-w-2xl bg-zinc-900 border-white/10 text-white rounded-[2rem]">
+    <DialogHeader>
+      <DialogTitle>Межскладское перемещение</DialogTitle>
+    </DialogHeader>
+    <div className="grid grid-cols-2 gap-4 py-4">
+      <div className="space-y-2">
+        <Label>Откуда</Label>
+        <Select onValueChange={(v) => setTransferForm({ ...transferForm, from_location_id: v })}>
+          <SelectTrigger className="bg-white/5 border-white/10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {locations.map((l) => (
+              <SelectItem key={l.id} value={l.id}>
+                {l.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Куда</Label>
+        <Select onValueChange={(v) => setTransferForm({ ...transferForm, to_location_id: v })}>
+          <SelectTrigger className="bg-white/5 border-white/10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {locations.map((l) => (
+              <SelectItem key={l.id} value={l.id}>
+                {l.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+    <Button onClick={handleCreateTransfer} className="bg-indigo-600">
+      Подтвердить перемещение
+    </Button>
+  </DialogContent>
+</Dialog>;
+
+{
+  /* ОКНО ОБНУЛЕНИЯ */
+}
+<Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+  <DialogContent className="bg-zinc-950 border-red-500/20 text-white rounded-[2.5rem]">
+    <DialogHeader className="items-center">
+      <AlertTriangle className="text-red-500 h-12 w-12 mb-2" />
+      <DialogTitle className="text-xl font-bold">Полное обнуление!</DialogTitle>
+      <DialogDescription className="text-center text-zinc-400">
+        Вы уверены, что хотите сбросить остатки на точке{" "}
+        <b className="text-white">"{locations.find((l) => l.id === selectedLocation)?.name}"</b> до нуля?
+      </DialogDescription>
+    </DialogHeader>
+    <DialogFooter className="flex gap-2">
+      <Button variant="ghost" onClick={() => setResetDialogOpen(false)}>
+        Отмена
+      </Button>
+      <Button variant="destructive" onClick={handleResetStock}>
+        Да, всё обнулить
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>;
