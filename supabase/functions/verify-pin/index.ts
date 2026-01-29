@@ -17,78 +17,54 @@ async function hashPin(pin: string): Promise<string> {
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
       auth: { persistSession: false },
     });
 
-    let body: any = {};
-    try {
-      body = await req.json();
-    } catch {
-      // Если тело пустое, оставляем пустой объект
-    }
-
+    const body = await req.json().catch(() => ({}));
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response(JSON.stringify({ error: "INVALID_REQUEST", message: "PIN и точка обязательны" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response("PIN и точка обязательны", { status: 400, headers: corsHeaders });
     }
 
+    // Получаем активные профили
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name, pin_hash, is_active")
-      .eq("is_active", true)
+      .select("id, full_name, pin_hash")
       .not("pin_hash", "is", null);
 
     const inputHash = await hashPin(pin);
 
-    // Находим профиль с совпадающим PIN
-    const profile = profiles?.find((p: any) => p.pin_hash === inputHash);
-
-    if (!profile) {
-      return new Response(JSON.stringify({ error: "INVALID_PIN", message: "Неверный PIN-код" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const profile = profiles?.find((p) => p.pin_hash === inputHash);
+    if (!profile) return new Response("Неверный PIN-код", { status: 401, headers: corsHeaders });
 
     // Проверяем открытую смену
     const { data: openShift } = await supabase
       .from("shifts")
-      .select("location_id")
+      .select("location_id, location:locations(name)")
       .eq("user_id", profile.id)
       .is("ended_at", null)
       .maybeSingle();
 
     if (openShift && openShift.location_id !== location_id) {
-      return new Response(
-        JSON.stringify({
-          error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-          location_name: "другая точка",
-          message: `Смена открыта в другой точке. Закройте её перед входом.`,
-        }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      const locationName = (openShift.location as any)?.name || "другой точке";
+      return new Response(`Смена открыта в "${locationName}". Закройте её перед входом.`, {
+        status: 403,
+        headers: corsHeaders,
+      });
     }
 
-    // ✅ Всё ок
-    return new Response(JSON.stringify({ success: true, user: { id: profile.id, full_name: profile.full_name } }), {
+    // Всё ок
+    return new Response(JSON.stringify({ full_name: profile.full_name }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (err) {
-    console.error("verify-pin error:", err);
-    return new Response(JSON.stringify({ error: "SERVER_ERROR", message: "Ошибка сервера" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (e) {
+    console.error(e);
+    return new Response("Ошибка сервера", { status: 500, headers: corsHeaders });
   }
 });
