@@ -65,6 +65,21 @@ const playErrorSound = () => {
   });
 };
 
+const playWarningSound = () => {
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.15, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+  [440, 554, 440].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    osc.connect(gain);
+    osc.frequency.value = freq;
+    osc.start(ctx.currentTime + i * 0.1);
+    osc.stop(ctx.currentTime + i * 0.1 + 0.2);
+  });
+};
+
 /* ================== COMPONENT ================== */
 export default function PinLogin() {
   const navigate = useNavigate();
@@ -124,46 +139,35 @@ export default function PinLogin() {
         body: { pin, location_id: selectedLocation },
       });
 
-      // === ОБРАБОТКА ОШИБОК ===
-      let msg = "Неизвестная ошибка сервера";
-      let errBody: any = null;
-
+      // === ОБРАБОТКА ПРЕДУПРЕЖДЕНИЙ И ОШИБОК ===
       if (res.error) {
-        try {
-          errBody = JSON.parse(res.error.message);
-        } catch {
-          errBody = null;
-        }
-      } else if (res.data && (res.data.error || res.data.message)) {
-        errBody = res.data;
-      }
-
-      if (errBody) {
-        if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-          msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
-        } else if (errBody.error === "INVALID_PIN") {
-          msg = "Неверный PIN-код";
-        } else if (errBody.message) {
-          msg = errBody.message;
-        }
-
         playErrorSound();
+        let msg = "Ошибка сервера";
+
+        try {
+          const errBody = JSON.parse(res.error.message);
+          if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
+            playWarningSound();
+          } else if (errBody.error === "INVALID_PIN") {
+            msg = "Неверный PIN-код";
+          } else if (errBody.message) {
+            msg = errBody.message;
+          }
+        } catch {
+          // если JSON распарсить не удалось — оставляем общий msg
+        }
+
         toast.error(msg);
         setPin("");
         return;
       }
 
       // ✅ Успех
-      if (res.data && res.data.user) {
-        playSuccessSound();
-        toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
-        sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
-        navigate("/cashier");
-      } else {
-        playErrorSound();
-        toast.error(msg);
-        setPin("");
-      }
+      playSuccessSound();
+      toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
+      sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
+      navigate("/cashier");
     } catch {
       playErrorSound();
       toast.error("Ошибка подключения");
@@ -207,9 +211,7 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
-                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
-                }`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
               >
                 {pin[i] ? "•" : ""}
               </div>
