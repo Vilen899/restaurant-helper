@@ -20,51 +20,47 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
-      auth: { persistSession: false },
-    });
+    const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
 
     const body = await req.json().catch(() => ({}));
     const { pin, location_id } = body;
 
     if (!pin || !location_id) {
-      return new Response("PIN и точка обязательны", { status: 400, headers: corsHeaders });
+      return new Response("INVALID_REQUEST: PIN и точка обязательны", { status: 400, headers: corsHeaders });
     }
 
-    // Получаем активные профили
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, full_name, pin_hash")
+      .eq("is_active", true)
       .not("pin_hash", "is", null);
 
     const inputHash = await hashPin(pin);
+    const profile = (profiles || []).find((p: any) => p.pin_hash === inputHash);
 
-    const profile = profiles?.find((p) => p.pin_hash === inputHash);
-    if (!profile) return new Response("Неверный PIN-код", { status: 401, headers: corsHeaders });
+    if (!profile) {
+      return new Response("INVALID_PIN", { status: 401, headers: corsHeaders });
+    }
 
     // Проверяем открытую смену
     const { data: openShift } = await supabase
       .from("shifts")
-      .select("location_id, location:locations(name)")
+      .select("location_id")
       .eq("user_id", profile.id)
       .is("ended_at", null)
       .maybeSingle();
 
     if (openShift && openShift.location_id !== location_id) {
-      const locationName = (openShift.location as any)?.name || "другой точке";
-      return new Response(`Смена открыта в "${locationName}". Закройте её перед входом.`, {
-        status: 403,
-        headers: corsHeaders,
-      });
+      return new Response("SHIFT_OPEN_AT_ANOTHER_LOCATION", { status: 403, headers: corsHeaders });
     }
 
-    // Всё ок
-    return new Response(JSON.stringify({ full_name: profile.full_name }), {
+    // Успешный вход
+    return new Response(JSON.stringify({ full_name: profile.full_name, id: profile.id }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
-    console.error(e);
-    return new Response("Ошибка сервера", { status: 500, headers: corsHeaders });
+    console.error("verify-pin error:", e);
+    return new Response("SERVER_ERROR", { status: 500, headers: corsHeaders });
   }
 });
