@@ -3,12 +3,14 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import PinLogin from "./pages/PinLogin";
-import Auth from "./pages/Auth";
-import Cashier from "./pages/Cashier";
-import CustomerDisplay from "./pages/CustomerDisplay";
-import NotFound from "./pages/NotFound";
+// Вместо этого: import Index from "./pages/Index";
+// Пиши вот так (если файл в той же папке):
+import Index from "./Index";
+import PinLogin from "./PinLogin";
+import Auth from "./Auth";
+import Cashier from "./Cashier";
+import CustomerDisplay from "./CustomerDisplay";
+import NotFound from "./NotFound";
 
 const queryClient = new QueryClient();
 
