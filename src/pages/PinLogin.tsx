@@ -70,13 +70,14 @@ const playWarningSound = () => {
   const gain = ctx.createGain();
   gain.connect(ctx.destination);
   gain.gain.setValueAtTime(0.15, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-  [440, 554, 440].forEach((freq, i) => {
+  gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+  [500, 400].forEach((freq, i) => {
     const osc = ctx.createOscillator();
     osc.connect(gain);
     osc.frequency.value = freq;
-    osc.start(ctx.currentTime + i * 0.1);
-    osc.stop(ctx.currentTime + i * 0.1 + 0.2);
+    osc.type = "sawtooth";
+    osc.start(ctx.currentTime + i * 0.15);
+    osc.stop(ctx.currentTime + i * 0.15 + 0.15);
   });
 };
 
@@ -139,27 +140,20 @@ export default function PinLogin() {
         body: { pin, location_id: selectedLocation },
       });
 
-      // === ОБРАБОТКА ПРЕДУПРЕЖДЕНИЙ И ОШИБОК ===
       if (res.error) {
-        playErrorSound();
-        let msg = "Ошибка сервера";
-
-        try {
-          const errBody = JSON.parse(res.error.message);
-          if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
-            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
-            playWarningSound();
-          } else if (errBody.error === "INVALID_PIN") {
-            msg = "Неверный PIN-код";
-          } else if (errBody.message) {
-            msg = errBody.message;
-          }
-        } catch {
-          // если JSON распарсить не удалось — оставляем общий msg
-        }
-
-        toast.error(msg);
         setPin("");
+
+        // === ОБРАБОТКА ОШИБОК БЕЗ JSON ===
+        if (res.error.message.includes("SHIFT_OPEN_AT_ANOTHER_LOCATION")) {
+          playWarningSound();
+          toast.error("Смена уже открыта в другой локации. Закройте её перед входом");
+        } else if (res.error.message.includes("INVALID_PIN")) {
+          playErrorSound();
+          toast.error("Неверный PIN-код");
+        } else {
+          playErrorSound();
+          toast.error(res.error.message || "Ошибка сервера");
+        }
         return;
       }
 
@@ -211,7 +205,9 @@ export default function PinLogin() {
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
