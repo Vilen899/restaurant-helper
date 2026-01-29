@@ -1,185 +1,255 @@
 
-# План: Закрытие смены кассира из админки и блокировка входа в другую точку
+# План: Расширенное управление данными и отчётность
 
 ## Обзор изменений
-1. **Закрытие смены кассира из админ-панели** — добавить возможность администратору принудительно закрыть смену любого кассира
-2. **Блокировка входа в другую точку** — если у кассира есть открытая смена в одной точке, он не сможет войти в другую, пока не закроет смену
+
+1. **Скрыть "Центральный" из выбора в кассе** — точка "Crusty Центральный" не будет отображаться в выпадающем списке на странице PIN-логина (только в админке)
+
+2. **Добавить удаление везде в админке** — возможность удаления:
+   - Поставок
+   - Перемещений  
+   - Инвентаризаций
+   - Заказов/продаж
+   - Остатков на складе
+
+3. **Просмотр содержимого чека** — функционал уже реализован в Documents.tsx, можно нажать на иконку "глаз" и увидеть все позиции чека
+
+4. **Отчёт движения товаров** — новая страница для просмотра всех операций с товарами (поставки, продажи, перемещения, корректировки)
 
 ---
 
-## 1. Модификация verify-pin Edge Function
-
-**Файл:** `supabase/functions/verify-pin/index.ts`
-
-**Изменения:**
-Добавить проверку открытой смены перед авторизацией:
-
-```typescript
-// После успешной проверки PIN, перед возвратом успеха:
-// Проверяем, есть ли у пользователя открытая смена в ДРУГОЙ точке
-const { data: openShift } = await supabaseClient
-  .from('shifts')
-  .select('id, location_id, locations(name)')
-  .eq('user_id', profile.id)
-  .is('ended_at', null)
-  .maybeSingle();
-
-if (openShift && openShift.location_id !== location_id) {
-  return new Response(
-    JSON.stringify({ 
-      error: 'SHIFT_OPEN_AT_ANOTHER_LOCATION',
-      message: `У вас открыта смена в точке "${openShift.locations?.name}". Закройте смену перед входом в другую точку.`
-    }),
-    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-```
-
----
-
-## 2. Обновление PinLogin для обработки ошибки
+## 1. Скрытие "Центральный" из выбора точки в кассе
 
 **Файл:** `src/pages/PinLogin.tsx`
 
 **Изменения:**
-- Обработать новый тип ошибки `SHIFT_OPEN_AT_ANOTHER_LOCATION`
-- Показать понятное сообщение пользователю с названием точки, где открыта смена
+Фильтровать точки, исключая те, которые содержат слово "Центральный" или "центральный":
 
 ```typescript
-// В handlePinSubmit:
-if (data?.error === 'SHIFT_OPEN_AT_ANOTHER_LOCATION') {
-  playErrorSound();
-  toast.error(data.message);
-  setPin('');
-  return;
+// В useEffect при загрузке локаций (строка 81):
+const { data } = await supabase
+  .from("locations")
+  .select("id, name")
+  .eq("is_active", true);
+
+if (data?.length) {
+  // Фильтруем — исключаем "Центральный"
+  const filtered = data.filter(loc => 
+    !loc.name.toLowerCase().includes('центральный')
+  );
+  setLocations(filtered);
+  if (filtered.length > 0) {
+    setSelectedLocation(filtered[0].id);
+  }
 }
 ```
 
 ---
 
-## 3. Добавление функции закрытия смены в админ-панель
+## 2. Добавление удаления в админке
 
-**Файл:** `src/pages/admin/WorkTime.tsx`
+### 2.1 Миграция БД — политики удаления
 
-**Изменения:**
-- Добавить кнопку "Закрыть смену" рядом с каждой открытой сменой в таблице
-- Создать диалог подтверждения закрытия с возможностью указать причину
-- Реализовать функцию `closeShiftByAdmin`:
+Добавить RLS политики для удаления данных администраторами:
+
+```sql
+-- Удаление поставок
+CREATE POLICY "Admins can delete supplies"
+ON public.supplies FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций поставок
+CREATE POLICY "Admins can delete supply_items"
+ON public.supply_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление перемещений
+CREATE POLICY "Admins can delete transfers"
+ON public.transfers FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций перемещений
+CREATE POLICY "Admins can delete transfer_items"
+ON public.transfer_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление инвентаризаций
+CREATE POLICY "Admins can delete stocktakings"
+ON public.stocktakings FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций инвентаризаций
+CREATE POLICY "Admins can delete stocktaking_items"
+ON public.stocktaking_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление заказов
+CREATE POLICY "Admins can delete orders"
+ON public.orders FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций заказов
+CREATE POLICY "Admins can delete order_items"
+ON public.order_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление остатков
+CREATE POLICY "Admins can delete inventory"
+ON public.inventory FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление движений
+CREATE POLICY "Admins can delete inventory_movements"
+ON public.inventory_movements FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+```
+
+### 2.2 Обновление Inventory.tsx
+
+**Добавить в каждую таблицу колонку "Действия" с кнопкой удаления:**
+
+- Таблица остатков — кнопка удаления записи
+- Таблица поставок — кнопка удаления (удалит и supply_items)
+- Таблица перемещений — кнопка удаления (удалит и transfer_items)
+- Таблица инвентаризаций — кнопка удаления (удалит и stocktaking_items)
+
+**Функции удаления:**
 
 ```typescript
-const closeShiftByAdmin = async (shiftId: string) => {
-  const { error } = await supabase
-    .from('shifts')
-    .update({ 
-      ended_at: new Date().toISOString(),
-      notes: 'Закрыто администратором'
-    })
-    .eq('id', shiftId);
-  
-  if (error) throw error;
-  toast.success('Смена закрыта');
+const handleDeleteSupply = async (id: string) => {
+  if (!confirm('Удалить поставку? Это действие необратимо.')) return;
+  await supabase.from('supply_items').delete().eq('supply_id', id);
+  await supabase.from('supplies').delete().eq('id', id);
+  toast.success('Поставка удалена');
+  fetchData();
+};
+
+const handleDeleteTransfer = async (id: string) => {
+  if (!confirm('Удалить перемещение?')) return;
+  await supabase.from('transfer_items').delete().eq('transfer_id', id);
+  await supabase.from('transfers').delete().eq('id', id);
+  toast.success('Перемещение удалено');
+  fetchData();
+};
+
+const handleDeleteStocktaking = async (id: string) => {
+  if (!confirm('Удалить инвентаризацию?')) return;
+  await supabase.from('stocktaking_items').delete().eq('stocktaking_id', id);
+  await supabase.from('stocktakings').delete().eq('id', id);
+  toast.success('Инвентаризация удалена');
+  fetchData();
+};
+
+const handleDeleteInventory = async (id: string) => {
+  if (!confirm('Удалить остаток?')) return;
+  await supabase.from('inventory').delete().eq('id', id);
+  toast.success('Запись удалена');
   fetchData();
 };
 ```
 
-**UI изменения:**
-- Добавить колонку "Действия" в таблицу смен
-- Для открытых смен показывать кнопку с иконкой `XCircle` и подсказкой "Закрыть смену"
-- Добавить AlertDialog для подтверждения закрытия
+### 2.3 Обновление Documents.tsx
+
+**Добавить кнопки удаления в таблицу чеков:**
+
+```typescript
+const handleDeleteOrder = async (id: string) => {
+  if (!confirm('Удалить заказ? Это действие необратимо.')) return;
+  await supabase.from('order_items').delete().eq('order_id', id);
+  await supabase.from('orders').delete().eq('id', id);
+  toast.success('Заказ удалён');
+  fetchDocuments();
+};
+```
 
 ---
 
-## 4. Создание компонента CloseShiftAdminDialog
+## 3. Отчёт движения товаров
 
-**Файл:** `src/components/admin/CloseShiftAdminDialog.tsx`
+**Новый файл:** `src/pages/admin/InventoryMovements.tsx`
 
-Новый компонент для закрытия смены:
+Страница для просмотра всех движений товаров:
+- Фильтры: точка, период, тип операции (sale, supply, transfer_in, transfer_out, adjustment)
+- Таблица со всеми записями inventory_movements
+- Колонки: Дата, Ингредиент, Точка, Тип операции, Количество, Цена, Примечание
+
+**Структура:**
 
 ```typescript
-interface CloseShiftAdminDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  shift: {
-    id: string;
-    userName: string;
-    locationName: string;
-    startedAt: string;
-  } | null;
-  onConfirm: (shiftId: string) => Promise<void>;
+export default function InventoryMovementsPage() {
+  const [movements, setMovements] = useState([]);
+  const [filters, setFilters] = useState({
+    location_id: 'all',
+    movement_type: 'all',
+    dateFrom: undefined,
+    dateTo: undefined,
+  });
+
+  const fetchMovements = async () => {
+    let query = supabase
+      .from('inventory_movements')
+      .select('*, ingredient:ingredients(name, unit:units(*)), location:locations(name)')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    // Применяем фильтры...
+    
+    const { data } = await query;
+    setMovements(data || []);
+  };
+
+  // UI с таблицей и фильтрами
 }
 ```
 
-Функционал:
-- Показывает информацию о смене (кассир, точка, время начала, продолжительность)
-- Поле для примечания (опционально)
-- Кнопка "Закрыть смену"
+**Типы операций для отображения:**
+- `sale` → "Продажа" (красный)
+- `supply` → "Поставка" (зелёный)
+- `transfer_in` → "Приход (перемещение)" (синий)
+- `transfer_out` → "Расход (перемещение)" (оранжевый)
+- `adjustment` → "Корректировка" (серый)
+- `refund` → "Возврат" (фиолетовый)
 
----
+### Добавление маршрута
 
-## Техническая реализация
-
-### Edge Function: verify-pin
+**Файл:** `src/App.tsx`
 
 ```typescript
-// После строки 69 (после успешной проверки PIN):
+import InventoryMovementsPage from './pages/admin/InventoryMovements';
 
-// Check if user has open shift at different location
-const { data: openShift } = await supabaseClient
-  .from('shifts')
-  .select('id, location_id, started_at, location:locations(name)')
-  .eq('user_id', profile.id)
-  .is('ended_at', null)
-  .maybeSingle();
-
-if (openShift && openShift.location_id !== location_id) {
-  return new Response(
-    JSON.stringify({ 
-      error: 'SHIFT_OPEN_AT_ANOTHER_LOCATION',
-      location_name: openShift.location?.name,
-      message: `Смена открыта в "${openShift.location?.name}". Закройте её перед входом.`
-    }),
-    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
+// В роутах админки:
+<Route path="inventory-movements" element={<InventoryMovementsPage />} />
 ```
 
-### WorkTime.tsx — изменения в таблице
+### Добавление в меню
 
-```tsx
-// Добавить колонку действий
-<TableHead className="w-20">Действия</TableHead>
+**Файл:** `src/components/layout/AdminLayout.tsx`
 
-// В строке для каждой смены:
-<TableCell>
-  {!shift.ended_at && (
-    <Button 
-      variant="ghost" 
-      size="icon"
-      onClick={() => handleOpenCloseDialog(shift)}
-      title="Закрыть смену"
-    >
-      <XCircle className="h-4 w-4 text-destructive" />
-    </Button>
-  )}
-</TableCell>
-```
+Добавить ссылку в раздел "Отчёты":
+- "Движение товаров" → `/admin/inventory-movements`
 
 ---
 
-## Файлы для редактирования
+## Файлы для редактирования/создания
 
 | Файл | Действие |
 |------|----------|
-| `supabase/functions/verify-pin/index.ts` | Добавить проверку открытой смены в другой точке |
-| `src/pages/PinLogin.tsx` | Обработка ошибки SHIFT_OPEN_AT_ANOTHER_LOCATION |
-| `src/pages/admin/WorkTime.tsx` | Добавить кнопку и диалог закрытия смены |
-| `src/components/admin/CloseShiftAdminDialog.tsx` | Создать новый компонент |
+| Миграция SQL | Создать политики удаления |
+| `src/pages/PinLogin.tsx` | Фильтровать "Центральный" |
+| `src/pages/admin/Inventory.tsx` | Добавить кнопки удаления |
+| `src/pages/admin/Documents.tsx` | Добавить удаление заказов |
+| `src/pages/admin/InventoryMovements.tsx` | Создать новую страницу |
+| `src/App.tsx` | Добавить маршрут |
+| `src/components/layout/AdminLayout.tsx` | Добавить пункт меню |
 
 ---
 
 ## Проверка после изменений
 
-1. ✅ Администратор может закрыть любую открытую смену из страницы "Учёт рабочего времени"
-2. ✅ Кассир не может войти в точку B, если у него открыта смена в точке A
-3. ✅ При попытке входа показывается сообщение с названием точки, где открыта смена
-4. ✅ После закрытия смены администратором, кассир может войти в любую точку
+1. В кассе при выборе точки НЕ видно "Центральный"
+2. В админке "Центральный" виден и доступен для выбора
+3. Можно удалять поставки, перемещения, инвентаризации
+4. Можно удалять заказы из раздела "Документы"
+5. Можно удалять остатки со склада
+6. Новая страница "Движение товаров" показывает все операции с фильтрами
+7. Просмотр содержимого чека работает (иконка "глаз" в Documents)
