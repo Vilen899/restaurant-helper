@@ -73,7 +73,7 @@ export default function PinLogin() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
-  const [frontError, setFrontError] = useState(""); // фронт-сообщение об ошибке
+  const [frontError, setFrontError] = useState(""); // для отображения ошибки на фронте
 
   /* ===== LOAD LOCATIONS ===== */
   useEffect(() => {
@@ -96,7 +96,6 @@ export default function PinLogin() {
     if (pin.length < 4 && !loading) {
       playClickSound();
       setPin((prev) => prev + num);
-      setFrontError(""); // очищаем сообщение при наборе
     }
   };
 
@@ -107,11 +106,6 @@ export default function PinLogin() {
     }
   };
   const handleClear = () => setPin("");
-
-  const setSelectedLocationAndClearError = (value: string) => {
-    setSelectedLocation(value);
-    setFrontError(""); // очищаем сообщение при смене точки
-  };
 
   /* ===== AUTO SUBMIT ===== */
   useEffect(() => {
@@ -126,30 +120,33 @@ export default function PinLogin() {
     }
 
     setLoading(true);
+    setFrontError(""); // сбрасываем старую ошибку
     try {
       const res = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
 
-      // === ОБРАБОТКА ОШИБОК ===
       if (res.error) {
         playErrorSound();
-        let msg = "Ошибка сервера";
+        let msg = "";
 
         try {
           const errBody = JSON.parse(res.error.message);
+
           if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
             msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
           } else if (errBody.error === "INVALID_PIN") {
             msg = "Неверный PIN-код";
           } else if (errBody.message) {
             msg = errBody.message;
+          } else {
+            msg = "Неизвестная ошибка сервера";
           }
         } catch {
-          // если JSON распарсить не удалось — оставляем общий msg
+          msg = "Неизвестная ошибка сервера";
         }
 
-        setFrontError(msg); // показываем на фронте
+        setFrontError(msg);
         setPin("");
         return;
       }
@@ -183,7 +180,7 @@ export default function PinLogin() {
               <MapPin className="h-4 w-4" />
               <span>Точка продажи</span>
             </div>
-            <Select value={selectedLocation} onValueChange={setSelectedLocationAndClearError}>
+            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
               <SelectTrigger className="bg-white/5 border-white/10 text-white">
                 <SelectValue placeholder="Выберите точку" />
               </SelectTrigger>
@@ -198,22 +195,24 @@ export default function PinLogin() {
           </div>
 
           {/* PIN */}
-          <div className="flex justify-center gap-3 mb-6">
+          <div className="flex justify-center gap-3 mb-2">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${
+                  pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"
+                }`}
               >
                 {pin[i] ? "•" : ""}
               </div>
             ))}
           </div>
 
-          {/* FRONT ERROR MESSAGE */}
-          {frontError && <div className="mb-4 text-center text-red-500 font-semibold">{frontError}</div>}
+          {/* ERROR MESSAGE */}
+          {frontError && <div className="text-center text-red-400 mb-4">{frontError}</div>}
 
           {/* KEYPAD */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
               if (num === "del")
