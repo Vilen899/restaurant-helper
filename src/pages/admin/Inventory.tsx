@@ -142,36 +142,93 @@ export default function InventoryPage() {
     }
   };
 
-  // --- ИНВЕНТАРИЗАЦИЯ ---
-  const openStocktaking = () => {
-    if (selectedLocation === "all") return toast.error("Выберите конкретную точку в фильтре");
-    const items = inventory
-      .filter((i) => i.location_id === selectedLocation)
-      .map((i) => ({
-        id: i.id,
-        name: i.ingredient?.name || "Без названия",
-        system: i.quantity || 0,
-        actual: (i.quantity || 0).toString(),
-      }));
-    setStocktakingItems(items);
-    setStocktakingDialogOpen(true);
-  };
+  {
+    /* ДИАЛОГ ПОСТАВКИ */
+  }
+  <Dialog open={supplyDialogOpen} onOpenChange={setSupplyDialogOpen}>
+    <DialogContent className="bg-zinc-900 border-white/10 text-white max-w-xl rounded-3xl">
+      <DialogHeader>
+        <DialogTitle>Новая поставка</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-4 py-4">
+        <div className="space-y-2">
+          <Label>Выберите точку прихода</Label>
+          <Select onValueChange={(v) => setSupplyForm({ ...supplyForm, location_id: v })}>
+            <SelectTrigger className="bg-white/5 border-white/10">
+              <SelectValue placeholder="Точка" />
+            </SelectTrigger>
+            <SelectContent>
+              {locations.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-  const handleSaveStocktaking = async () => {
-    try {
-      for (const item of stocktakingItems) {
-        await supabase
-          .from("inventory")
-          .update({ quantity: parseFloat(item.actual) || 0 })
-          .eq("id", item.id);
-      }
-      toast.success("Данные инвентаризации сохранены");
-      setStocktakingDialogOpen(false);
-      fetchData();
-    } catch (e) {
-      toast.error("Ошибка сохранения");
-    }
-  };
+        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2">
+          {supplyForm.items.map((it, idx) => (
+            <div key={idx} className="flex gap-2 items-end border-b border-white/5 pb-3">
+              <div className="flex-1 space-y-1">
+                <Label className="text-[10px] uppercase text-zinc-500">Товар</Label>
+                <Select
+                  onValueChange={(v) => {
+                    const n = [...supplyForm.items];
+                    n[idx].ingredient_id = v;
+                    setSupplyForm({ ...supplyForm, items: n });
+                  }}
+                >
+                  <SelectTrigger className="bg-white/5 border-white/10">
+                    <SelectValue placeholder="Выбрать" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ingredients.map((ing) => (
+                      <SelectItem key={ing.id} value={ing.id}>
+                        {ing.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-24 space-y-1">
+                <Label className="text-[10px] uppercase text-zinc-500">Кол-во</Label>
+                <Input
+                  type="number"
+                  className="bg-white/5 border-white/10"
+                  onChange={(e) => {
+                    const n = [...supplyForm.items];
+                    n[idx].quantity = e.target.value;
+                    setSupplyForm({ ...supplyForm, items: n });
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <Button
+          variant="outline"
+          className="w-full border-dashed border-white/10"
+          onClick={() =>
+            setSupplyForm({
+              ...supplyForm,
+              items: [...supplyForm.items, { ingredient_id: "", quantity: "", cost: "0" }],
+            })
+          }
+        >
+          + Добавить строку
+        </Button>
+
+        <Button
+          onClick={handleCreateSupply}
+          className="w-full bg-emerald-600 hover:bg-emerald-500 h-12 text-lg font-bold"
+        >
+          Провести поставку
+        </Button>
+      </div>
+    </DialogContent>
+  </Dialog>;
 
   // --- ПРАВКА И УДАЛЕНИЕ ---
   const handleSingleUpdate = async () => {
