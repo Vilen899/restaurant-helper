@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import logo from "@/assets/logo.webp";
 
-// Звуки
+/* ================== Звуки ================== */
 const playClickSound = () => {
   const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   const osc = audioCtx.createOscillator();
@@ -70,6 +70,7 @@ const playErrorSound = () => {
   });
 };
 
+/* ================== Компонент ================== */
 export default function PinLogin() {
   const navigate = useNavigate();
   const [pin, setPin] = useState("");
@@ -77,28 +78,35 @@ export default function PinLogin() {
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
 
-  // Получаем активные точки
+  // Загружаем активные точки
   useEffect(() => {
     const fetchLocations = async () => {
-      const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
-      if (data && data.length > 0) {
-        setLocations(data);
-        setSelectedLocation(data[0].id);
+      try {
+        const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
+        if (data && data.length > 0) {
+          setLocations(data);
+          setSelectedLocation(data[0].id);
+        }
+      } catch {
+        toast.error("Не удалось загрузить точки");
       }
     };
     fetchLocations();
   }, []);
 
+  /* ===== Ввод PIN ===== */
   const handleNumberClick = (num: string) => {
-    if (pin.length < 4) {
+    if (pin.length < 4 && !loading) {
       playClickSound();
       setPin((p) => p + num);
     }
   };
 
   const handleDelete = () => {
-    playDeleteSound();
-    setPin((p) => p.slice(0, -1));
+    if (!loading) {
+      playDeleteSound();
+      setPin((p) => p.slice(0, -1));
+    }
   };
 
   const handleClear = () => setPin("");
@@ -108,6 +116,7 @@ export default function PinLogin() {
     if (pin.length === 4) handlePinSubmit();
   }, [pin]);
 
+  /* ===== Отправка PIN ===== */
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
       toast.error("Выберите точку");
@@ -116,23 +125,41 @@ export default function PinLogin() {
     setLoading(true);
 
     try {
-      const { data } = await supabase.functions.invoke("verify-pin", {
+      const res = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
 
-      if (!data) throw new Error("Нет ответа от сервера");
-
-      if (!data.success) {
+      if (res.error) {
         playErrorSound();
-        toast.error(data.message || "Ошибка авторизации");
+
+        let msg = "Неизвестная ошибка сервера";
+        try {
+          const errBody = JSON.parse(res.error.message);
+          if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
+            msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
+          } else if (errBody.error === "INVALID_PIN") {
+            msg = "Неверный PIN-код";
+          } else if (errBody.message) {
+            msg = errBody.message;
+          }
+        } catch {}
+
+        toast.error(msg);
         setPin("");
         return;
       }
 
-      // Успешный вход
+      if (!res.data || !res.data.success) {
+        playErrorSound();
+        toast.error(res.data?.message || "Ошибка авторизации");
+        setPin("");
+        return;
+      }
+
+      // ✅ Успех
       playSuccessSound();
-      toast.success(`Добро пожаловать, ${data.user.full_name}!`);
-      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+      toast.success(`Добро пожаловать, ${res.data.user.full_name}!`);
+      sessionStorage.setItem("cashier_session", JSON.stringify(res.data.user));
       navigate("/cashier");
     } catch (e) {
       playErrorSound();
@@ -145,31 +172,26 @@ export default function PinLogin() {
 
   const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
+  /* ================== UI ================== */
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      <img
-        src={logo}
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{ imageRendering: "crisp-edges" }}
-      />
+      <img src={logo} alt="" className="absolute inset-0 w-full h-full object-cover" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/30" />
-
-      <div className="relative z-10 w-full max-w-sm animate-scale-in">
+      <div className="relative z-10 w-full max-w-sm">
         <div className="backdrop-blur-xl bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl">
-          {/* Location */}
+          {/* Точка */}
           <div className="mb-6">
             <div className="flex items-center gap-2 text-sm text-white/60 mb-2">
               <MapPin className="h-4 w-4" />
               <span>Точка продажи</span>
             </div>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-              <SelectTrigger className="bg-white/5 border-white/10 text-white hover:bg-white/10">
+              <SelectTrigger className="bg-white/5 border-white/10 text-white">
                 <SelectValue placeholder="Выберите точку" />
               </SelectTrigger>
               <SelectContent className="bg-[#1a1a2e] border-white/10">
                 {locations.map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id} className="text-white hover:bg-white/10 focus:bg-white/10">
+                  <SelectItem key={loc.id} value={loc.id} className="text-white">
                     {loc.name}
                   </SelectItem>
                 ))}
@@ -177,19 +199,19 @@ export default function PinLogin() {
             </Select>
           </div>
 
-          {/* PIN display */}
+          {/* PIN */}
           <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold transition-all ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
+                className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center text-2xl font-bold ${pin.length > i ? "border-green-500 bg-green-500/20 text-green-400" : "border-white/20 bg-white/5"}`}
               >
                 {pin[i] ? "•" : ""}
               </div>
             ))}
           </div>
 
-          {/* Number pad */}
+          {/* Клавиатура */}
           <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, idx) => {
               if (num === "") return <div key={idx} />;
@@ -198,19 +220,19 @@ export default function PinLogin() {
                   <Button
                     key={idx}
                     variant="ghost"
-                    className="h-16 text-xl bg-white/5 hover:bg-red-500/20 border border-white/10 text-white transition-all duration-150 active:scale-90 active:bg-red-500/30"
+                    className="h-16 bg-white/5 text-white"
                     onClick={handleDelete}
                     onDoubleClick={handleClear}
                     disabled={loading}
                   >
-                    <Delete className="h-6 w-6" />
+                    <Delete />
                   </Button>
                 );
               return (
                 <Button
                   key={idx}
                   variant="ghost"
-                  className="h-16 text-2xl font-semibold bg-white/5 hover:bg-white/15 border border-white/10 text-white transition-all duration-150 active:scale-90 active:bg-green-500/20 active:border-green-500/50"
+                  className="h-16 text-2xl bg-white/5 text-white"
                   onClick={() => handleNumberClick(num)}
                   disabled={loading || pin.length >= 4}
                 >
@@ -220,17 +242,10 @@ export default function PinLogin() {
             })}
           </div>
 
-          {loading && (
-            <div className="mt-4 text-center text-white/60">
-              <div className="inline-flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
-                <span>Проверка...</span>
-              </div>
-            </div>
-          )}
+          {loading && <div className="mt-4 text-center text-white/60">Проверка…</div>}
         </div>
 
-        <p className="text-center text-white/30 text-xs mt-6">© 2026 Crusty Sandwiches. Касса v1.0</p>
+        <p className="text-center text-white/30 text-xs mt-6">© 2026 Crusty Sandwiches · Касса v1.0</p>
       </div>
     </div>
   );
