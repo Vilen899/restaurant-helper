@@ -13,7 +13,7 @@ const playModernSound = (type: "click" | "success" | "error" | "warning" | "dele
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const masterGain = ctx.createGain();
     masterGain.connect(ctx.destination);
-    masterGain.gain.setValueAtTime(0.1, ctx.currentTime);
+    masterGain.gain.setValueAtTime(0.05, ctx.currentTime);
 
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -24,26 +24,26 @@ const playModernSound = (type: "click" | "success" | "error" | "warning" | "dele
       case "click":
         osc.frequency.setValueAtTime(800, ctx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(200, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
         gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
         osc.start();
         osc.stop(ctx.currentTime + 0.1);
         break;
       case "delete":
-        osc.frequency.setValueAtTime(250, ctx.currentTime);
+        osc.frequency.setValueAtTime(200, ctx.currentTime);
         gain.gain.setValueAtTime(0.1, ctx.currentTime);
         gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
         osc.start();
         osc.stop(ctx.currentTime + 0.1);
         break;
       case "success":
-        [523.25, 659.25, 783.99].forEach((f, i) => {
+        [523, 659, 783].forEach((f, i) => {
           const o = ctx.createOscillator();
           const g = ctx.createGain();
           o.connect(g);
           g.connect(masterGain);
           o.frequency.value = f;
-          g.gain.setValueAtTime(0.08, ctx.currentTime + i * 0.08);
+          g.gain.setValueAtTime(0.05, ctx.currentTime + i * 0.08);
           g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.08 + 0.4);
           o.start(ctx.currentTime + i * 0.08);
           o.stop(ctx.currentTime + i * 0.08 + 0.4);
@@ -51,23 +51,21 @@ const playModernSound = (type: "click" | "success" | "error" | "warning" | "dele
         break;
       case "error":
         osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(120, ctx.currentTime);
+        osc.frequency.setValueAtTime(100, ctx.currentTime);
         gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.25);
         osc.start();
-        osc.stop(ctx.currentTime + 0.25);
+        osc.stop(ctx.currentTime + 0.2);
         break;
       case "warning":
         osc.type = "triangle";
-        osc.frequency.setValueAtTime(350, ctx.currentTime);
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
         gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.4);
         osc.start();
-        osc.stop(ctx.currentTime + 0.4);
+        osc.stop(ctx.currentTime + 0.3);
         break;
     }
   } catch (e) {
-    console.warn("Audio bypass", e);
+    console.warn("Audio bypass");
   }
 };
 
@@ -83,19 +81,27 @@ export default function PinLogin() {
 
   const numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "del"];
 
-  /* ===== ПОЛУЧЕНИЕ ЛОКАЦИЙ С ЖЕСТКОЙ ФИЛЬТРАЦИЕЙ ===== */
+  /* ===== УМНАЯ ФИЛЬТРАЦИЯ ЛОКАЦИЙ ===== */
   useEffect(() => {
     const fetchLocations = async () => {
       const { data, error } = await supabase.from("locations").select("id, name").eq("is_active", true);
 
       if (error) {
-        toast.error("Ошибка загрузки точек");
+        toast.error("Ошибка сети");
         return;
       }
 
       if (data) {
-        // Фильтруем "Центральный", убирая пробелы и игнорируя регистр
-        const filtered = data.filter((loc) => loc.name.toLowerCase().trim() !== "центральный");
+        // Логируем для отладки
+        console.log("Локации из БД:", data);
+
+        // Скрываем всё, что содержит "центр" или "centr"
+        const filtered = data.filter((loc) => {
+          const name = loc.name.toLowerCase().trim();
+          const isCentral = name.includes("центр") || name.includes("centr");
+          return !isCentral;
+        });
+
         setLocations(filtered);
         if (filtered.length > 0) setSelectedLocation(filtered[0].id);
       }
@@ -133,7 +139,7 @@ export default function PinLogin() {
 
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
-      showError("Выберите точку продажи", "error");
+      showError("Выберите точку продажи");
       return;
     }
     setLoading(true);
@@ -144,17 +150,19 @@ export default function PinLogin() {
 
       if (funcError) {
         const details = await funcError.context?.json().catch(() => ({}));
-        const isShiftError = details.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION";
-        showError(details.message || "Доступ отклонен", isShiftError ? "warning" : "error");
+        showError(
+          details.message || "Ошибка входа",
+          details.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION" ? "warning" : "error",
+        );
         return;
       }
 
       playModernSound("success");
-      toast.success(`Добро пожаловать, ${data.user.full_name}!`);
+      toast.success(`Привет, ${data.user.full_name}!`);
       sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
       navigate("/cashier");
     } catch (e) {
-      showError("Ошибка соединения", "error");
+      showError("Ошибка соединения");
     } finally {
       setLoading(false);
     }
@@ -162,40 +170,40 @@ export default function PinLogin() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#020205]">
-      {/* Background Decor */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600/20 blur-[120px] rounded-full animate-pulse" />
+      {/* ФОНОВЫЙ ГРАДИЕНТ */}
+      <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[120px] rounded-full animate-pulse" />
       <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 blur-[120px] rounded-full" />
+
       <div className="absolute inset-0 opacity-[0.05] grayscale pointer-events-none">
         <img src={logo} alt="" className="w-full h-full object-cover" />
       </div>
 
       <div className={`relative z-10 w-full max-w-sm transition-all duration-500 ${isShaking ? "animate-shake" : ""}`}>
-        {/* LOGO SECTION */}
+        {/* ЛОГОТИП */}
         <div className="flex flex-col items-center mb-8">
-          <div className="relative mb-4">
-            <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full" />
+          <div className="relative mb-4 group">
+            <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full transition-all group-hover:bg-indigo-500/40" />
             <div className="relative w-20 h-20 bg-white/[0.03] backdrop-blur-3xl rounded-[2.2rem] border border-white/10 flex items-center justify-center shadow-2xl">
               <LockKeyhole className="text-indigo-400 h-9 w-9 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]" />
             </div>
           </div>
           <h1 className="text-white font-black text-2xl tracking-tighter uppercase">
-            CRUSTY <span className="text-indigo-400 font-light italic">TERMINAL</span>
+            CRUSTY <span className="text-indigo-400 font-light italic">POS</span>
           </h1>
           <div className="flex items-center gap-2 mt-2 bg-white/5 px-4 py-1 rounded-full border border-white/5">
             <Sparkles className="h-3 w-3 text-indigo-400" />
-            <span className="text-white/40 text-[9px] uppercase tracking-[0.3em] font-bold">Secure Access v2.1</span>
+            <span className="text-white/40 text-[9px] uppercase tracking-[0.3em] font-bold tracking-[0.2em]">
+              Secure Terminal
+            </span>
           </div>
         </div>
 
-        {/* ERROR BOX */}
+        {/* БЛОК ОШИБКИ */}
         <div
           className={`transition-all duration-500 ease-in-out overflow-hidden ${errorMsg ? "max-h-28 mb-6 opacity-100 scale-100" : "max-h-0 opacity-0 scale-95"}`}
         >
           <div
-            className={`
-            backdrop-blur-3xl px-6 py-4 rounded-[2.2rem] flex items-center gap-4 border shadow-2xl
-            ${errorType === "error" ? "bg-red-500/10 border-red-500/30 text-red-50" : "bg-orange-500/10 border-orange-500/30 text-orange-50"}
-          `}
+            className={`backdrop-blur-3xl px-6 py-4 rounded-[2.2rem] flex items-center gap-4 border shadow-2xl ${errorType === "error" ? "bg-red-500/10 border-red-500/30 text-red-50" : "bg-orange-500/10 border-orange-500/30 text-orange-50"}`}
           >
             <div className={`p-3 rounded-2xl ${errorType === "error" ? "bg-red-500/20" : "bg-orange-500/20"}`}>
               {errorType === "error" ? (
@@ -205,13 +213,13 @@ export default function PinLogin() {
               )}
             </div>
             <div className="flex flex-col text-left">
-              <span className="text-[9px] uppercase tracking-widest opacity-40 font-black">Внимание кассира</span>
+              <span className="text-[9px] uppercase tracking-widest opacity-40 font-black">Система</span>
               <span className="text-sm font-bold leading-tight">{errorMsg}</span>
             </div>
           </div>
         </div>
 
-        {/* INPUT CARD */}
+        {/* КАРТОЧКА ВВОДА */}
         <div className="backdrop-blur-[80px] bg-white/[0.02] border border-white/10 rounded-[3.5rem] p-8 shadow-[0_40px_100px_-20px_rgba(0,0,0,0.7)] text-center">
           <div className="mb-8">
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
@@ -231,16 +239,11 @@ export default function PinLogin() {
             </Select>
           </div>
 
-          {/* DOTS */}
           <div className="flex justify-center gap-5 mb-10">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
-                className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all duration-500 ${
-                  pin.length > i
-                    ? "border-indigo-500 bg-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.3)] scale-110"
-                    : "border-white/5 bg-white/5"
-                }`}
+                className={`w-14 h-14 rounded-2xl border-2 flex items-center justify-center transition-all duration-500 ${pin.length > i ? "border-indigo-500 bg-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.3)] scale-110" : "border-white/5 bg-white/5"}`}
               >
                 <div
                   className={`w-3.5 h-3.5 rounded-full transition-all duration-300 ${pin.length > i ? "bg-indigo-400 shadow-[0_0_10px_#818cf8]" : "bg-white/5 scale-50"}`}
@@ -249,17 +252,12 @@ export default function PinLogin() {
             ))}
           </div>
 
-          {/* KEYS */}
           <div className="grid grid-cols-3 gap-5">
             {numbers.map((num, i) => (
               <Button
                 key={i}
                 variant="ghost"
-                className={`h-16 text-3xl font-light rounded-[1.8rem] transition-all duration-75 active:scale-90 ${
-                  num === ""
-                    ? "invisible pointer-events-none"
-                    : "bg-white/[0.03] hover:bg-white/[0.08] text-white border border-white/[0.05]"
-                } ${num === "del" ? "hover:text-red-400" : "hover:text-indigo-300"}`}
+                className={`h-16 text-3xl font-light rounded-[1.8rem] transition-all duration-75 active:scale-90 ${num === "" ? "invisible pointer-events-none" : "bg-white/[0.03] hover:bg-white/[0.08] text-white border border-white/[0.05] shadow-sm"} ${num === "del" ? "hover:text-red-400" : "hover:text-indigo-300"}`}
                 onClick={() => (num === "del" ? handleDelete() : handleNumberClick(num))}
                 disabled={loading}
               >
