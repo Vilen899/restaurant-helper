@@ -73,7 +73,6 @@ export default function PinLogin() {
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<Array<{ id: string; name: string }>>([]);
   const [selectedLocation, setSelectedLocation] = useState("");
-  const [frontError, setFrontError] = useState(""); // для отображения ошибки на фронте
 
   /* ===== LOAD LOCATIONS ===== */
   useEffect(() => {
@@ -105,6 +104,7 @@ export default function PinLogin() {
       setPin((prev) => prev.slice(0, -1));
     }
   };
+
   const handleClear = () => setPin("");
 
   /* ===== AUTO SUBMIT ===== */
@@ -112,41 +112,46 @@ export default function PinLogin() {
     if (pin.length === 4) handlePinSubmit();
   }, [pin]);
 
+  /* ===== SAFE JSON PARSER ===== */
+  const tryParseJSON = (jsonString: string) => {
+    try {
+      return JSON.parse(jsonString);
+    } catch {
+      return null;
+    }
+  };
+
   /* ===== SUBMIT PIN ===== */
   const handlePinSubmit = async () => {
     if (!selectedLocation) {
-      setFrontError("Выберите точку");
+      toast.error("Выберите точку");
       return;
     }
 
     setLoading(true);
-    setFrontError(""); // сбрасываем старую ошибку
     try {
       const res = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
 
-      if (res.error) {
+      // === ОБРАБОТКА ОШИБОК ===
+      if (res.error || (res.data && res.data.error)) {
         playErrorSound();
-        let msg = "";
+        let msg = "Неизвестная ошибка сервера";
 
-        try {
-          const errBody = JSON.parse(res.error.message);
+        const errBody = res.data || (res.error ? tryParseJSON(res.error.message) : null);
 
+        if (errBody) {
           if (errBody.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION") {
             msg = `Смена уже открыта в "${errBody.location_name}". Закройте её перед входом`;
           } else if (errBody.error === "INVALID_PIN") {
             msg = "Неверный PIN-код";
           } else if (errBody.message) {
             msg = errBody.message;
-          } else {
-            msg = "Неизвестная ошибка сервера";
           }
-        } catch {
-          msg = "Неизвестная ошибка сервера";
         }
 
-        setFrontError(msg);
+        toast.error(msg);
         setPin("");
         return;
       }
@@ -158,7 +163,7 @@ export default function PinLogin() {
       navigate("/cashier");
     } catch {
       playErrorSound();
-      setFrontError("Ошибка подключения");
+      toast.error("Ошибка подключения");
       setPin("");
     } finally {
       setLoading(false);
@@ -195,7 +200,7 @@ export default function PinLogin() {
           </div>
 
           {/* PIN */}
-          <div className="flex justify-center gap-3 mb-2">
+          <div className="flex justify-center gap-3 mb-6">
             {[0, 1, 2, 3].map((i) => (
               <div
                 key={i}
@@ -208,11 +213,8 @@ export default function PinLogin() {
             ))}
           </div>
 
-          {/* ERROR MESSAGE */}
-          {frontError && <div className="text-center text-red-400 mb-4">{frontError}</div>}
-
           {/* KEYPAD */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3">
             {numbers.map((num, i) => {
               if (num === "") return <div key={i} />;
               if (num === "del")
