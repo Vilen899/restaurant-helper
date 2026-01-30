@@ -36,10 +36,14 @@ export default function InventoryDashboard() {
   }, []);
 
   const loadInitialData = async () => {
-    const { data: locs } = await supabase.from("locations").select("id, name");
-    const { data: ings } = await (supabase.from("ingredients").select("id, name, unit") as any);
-    setLocations(locs || []);
-    setAllIngredients(ings || []);
+    try {
+      const { data: locs } = await supabase.from("locations").select("id, name");
+      const { data: ings } = await (supabase.from("ingredients").select("id, name, unit") as any);
+      setLocations(locs || []);
+      setAllIngredients(ings || []);
+    } catch (e) {
+      console.error("Ошибка загрузки справочников:", e);
+    }
   };
 
   // Загрузка текущих остатков при выборе склада
@@ -107,7 +111,7 @@ export default function InventoryDashboard() {
     setStockData((prev) => prev.filter((i) => i.id !== id));
   };
 
-  // ФУНКЦИЯ ПРОВЕДЕНИЯ MI07 И ОЧИСТКИ
+  // ФУНКЦИЯ ПРОВЕДЕНИЯ MI07 И ОЧИСТКИ (С ИСПРАВЛЕНИЕМ ОШИБКИ TS)
   const handlePostDifferences = async () => {
     if (!selectedLocation || stockData.length === 0) {
       toast.error("НЕЧЕГО ПРОВОДИТЬ");
@@ -116,15 +120,14 @@ export default function InventoryDashboard() {
 
     setLoading(true);
     try {
-      // 1. Создаем запись в журнале документов инвентаризации
-      const { data: doc, error: docError } = await supabase
-        .from("stocktaking_docs")
+      // 1. Создаем запись в журнале (MI07)
+      const { data: doc, error: docError } = await (supabase.from("stocktaking_docs") as any)
         .insert([
           {
             location_id: selectedLocation,
             status: "completed",
             total_items: stockData.length,
-            total_difference: stockData.reduce((acc, item) => acc + (item.factQty - item.systemQty), 0),
+            total_difference: stockData.reduce((acc: number, item: any) => acc + (item.factQty - item.systemQty), 0),
             created_at: new Date().toISOString(),
           },
         ])
@@ -136,7 +139,7 @@ export default function InventoryDashboard() {
       // 2. Обновляем остатки в таблице inventory (UPSERT)
       for (const item of stockData) {
         if (item.factQty !== item.systemQty) {
-          const { error: invError } = await supabase.from("inventory").upsert(
+          const { error: invError } = await (supabase.from("inventory") as any).upsert(
             {
               location_id: selectedLocation,
               ingredient_id: item.id,
@@ -154,11 +157,11 @@ export default function InventoryDashboard() {
 
       // 3. УСПЕХ: Очищаем экран
       toast.success("ИНВЕНТАРИЗАЦИЯ ПРОВЕДЕНА. ДАННЫЕ СОХРАНЕНЫ.");
-      setStockData([]); // Очистить таблицу
-      setSelectedLocation(""); // Сбросить склад
+      setStockData([]); // Полная очистка таблицы
+      setSelectedLocation(""); // Сброс выбранного склада
     } catch (e: any) {
-      console.error(e);
-      toast.error("КРИТИЧЕСКАЯ ОШИБКА: " + e.message);
+      console.error("Критическая ошибка:", e);
+      toast.error("ОШИБКА ПРОВЕДЕНИЯ: " + e.message);
     } finally {
       setLoading(false);
     }
@@ -166,7 +169,7 @@ export default function InventoryDashboard() {
 
   return (
     <div className="p-6 bg-black min-h-screen text-white uppercase font-sans">
-      {/* ПАНЕЛЬ УПРАВЛЕНИЯ */}
+      {/* ПАНЕЛЬ КНОПОК */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Button
           onClick={() => navigate("/admin/migo")}
@@ -184,7 +187,7 @@ export default function InventoryDashboard() {
           onClick={() => navigate("/admin/material-docs")}
           className="bg-zinc-800 hover:bg-zinc-700 h-16 rounded-none font-black border-b-4 border-zinc-950 italic"
         >
-          <History className="mr-2" /> ЖУРНАЛ
+          <History className="mr-2" /> ЖУРНАЛ (MB51)
         </Button>
         <Button
           onClick={() => navigate("/admin/reports/inventory")}
@@ -200,9 +203,7 @@ export default function InventoryDashboard() {
             <h1 className="text-3xl font-black italic tracking-tighter flex items-center gap-3 mb-4 text-white">
               <ClipboardCheck className="text-amber-500" size={32} /> MI01: ИНВЕНТАРИЗАЦИЯ
             </h1>
-            <label className="text-[10px] font-black mb-1 block text-zinc-400 uppercase">
-              1. Выбор площадки (Склада):
-            </label>
+            <label className="text-[10px] font-black mb-1 block text-zinc-400">1. ВЫБЕРИТЕ СКЛАД:</label>
             <Select value={selectedLocation} onValueChange={loadStockForLocation}>
               <SelectTrigger className="bg-white text-black font-black rounded-none h-12">
                 <SelectValue placeholder="ВЫБРАТЬ ЛОКАЦИЮ..." />
@@ -219,11 +220,11 @@ export default function InventoryDashboard() {
 
           <div className="w-full lg:w-1/3">
             <label className="text-[10px] font-black mb-1 block text-amber-500 italic underline">
-              2. Найти и добавить материал:
+              2. ДОБАВИТЬ ТОВАР (ИЗЛИШКИ):
             </label>
             <Select onValueChange={addNewItemToList}>
               <SelectTrigger className="bg-zinc-800 border-amber-500/50 text-white font-black rounded-none h-12 focus:ring-0">
-                <SelectValue placeholder="ДОБАВИТЬ ПОЗИЦИЮ..." />
+                <SelectValue placeholder="ПОИСК МАТЕРИАЛА..." />
               </SelectTrigger>
               <SelectContent>
                 {allIngredients.map((ing) => (
@@ -236,10 +237,10 @@ export default function InventoryDashboard() {
           </div>
         </div>
 
-        <div className="border border-white/20 shadow-inner">
+        <div className="border border-white/20">
           <Table>
             <TableHeader className="bg-white">
-              <TableRow className="h-12 border-none">
+              <TableRow className="h-12 border-none hover:bg-white">
                 <TableHead className="text-black font-black pl-4">МАТЕРИАЛ</TableHead>
                 <TableHead className="text-black font-black text-right">КНИЖНЫЙ ОСТАТОК</TableHead>
                 <TableHead className="text-black font-black text-right">ФАКТ. НАЛИЧИЕ</TableHead>
@@ -250,8 +251,8 @@ export default function InventoryDashboard() {
             <TableBody>
               {stockData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-40 text-center text-zinc-600 italic font-black text-sm uppercase">
-                    Документ пуст. Выберите склад или добавьте материалы вручную.
+                  <TableCell colSpan={5} className="h-40 text-center text-zinc-600 italic font-black uppercase">
+                    Документ пуст. Выберите склад или добавьте товары.
                   </TableCell>
                 </TableRow>
               ) : (
