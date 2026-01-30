@@ -23,11 +23,9 @@ export default function InventoryDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  // Справочные данные
   const [locations, setLocations] = useState<any[]>([]);
   const [allIngredients, setAllIngredients] = useState<any[]>([]);
 
-  // Состояние текущей работы
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [stockData, setStockData] = useState<any[]>([]);
 
@@ -42,20 +40,18 @@ export default function InventoryDashboard() {
       setLocations(locs || []);
       setAllIngredients(ings || []);
     } catch (e) {
-      console.error("Ошибка загрузки справочников:", e);
+      console.error("Ошибка загрузки:", e);
     }
   };
 
-  // Загрузка текущих остатков при выборе склада
   const loadStockForLocation = async (locId: string) => {
     if (!locId) return;
     setSelectedLocation(locId);
     setLoading(true);
     try {
-      const { data, error } = await (supabase
-        .from("inventory")
+      const { data, error } = await (supabase.from("inventory" as any) as any)
         .select(`quantity, ingredient_id, ingredient:ingredients(name, unit)`)
-        .eq("location_id", locId) as any);
+        .eq("location_id", locId);
 
       if (error) throw error;
 
@@ -74,7 +70,6 @@ export default function InventoryDashboard() {
     }
   };
 
-  // Добавление товара вручную (для фиксации излишков)
   const addNewItemToList = (ingredientId: string) => {
     if (!selectedLocation) {
       toast.error("СНАЧАЛА ВЫБЕРИТЕ СКЛАД!");
@@ -111,7 +106,6 @@ export default function InventoryDashboard() {
     setStockData((prev) => prev.filter((i) => i.id !== id));
   };
 
-  // ФУНКЦИЯ ПРОВЕДЕНИЯ MI07 И ОЧИСТКИ (С ИСПРАВЛЕНИЕМ ОШИБКИ TS)
   const handlePostDifferences = async () => {
     if (!selectedLocation || stockData.length === 0) {
       toast.error("НЕЧЕГО ПРОВОДИТЬ");
@@ -120,8 +114,7 @@ export default function InventoryDashboard() {
 
     setLoading(true);
     try {
-      // 1. Создаем запись в журнале (MI07)
-      const { data: doc, error: docError } = await (supabase.from("stocktaking_docs") as any)
+      const { data: doc, error: docError } = await (supabase.from("stocktaking_docs" as any) as any)
         .insert([
           {
             location_id: selectedLocation,
@@ -136,10 +129,9 @@ export default function InventoryDashboard() {
 
       if (docError) throw docError;
 
-      // 2. Обновляем остатки в таблице inventory (UPSERT)
       for (const item of stockData) {
         if (item.factQty !== item.systemQty) {
-          const { error: invError } = await (supabase.from("inventory") as any).upsert(
+          const { error: invError } = await (supabase.from("inventory" as any) as any).upsert(
             {
               location_id: selectedLocation,
               ingredient_id: item.id,
@@ -155,12 +147,11 @@ export default function InventoryDashboard() {
         }
       }
 
-      // 3. УСПЕХ: Очищаем экран
       toast.success("ИНВЕНТАРИЗАЦИЯ ПРОВЕДЕНА. ДАННЫЕ СОХРАНЕНЫ.");
-      setStockData([]); // Полная очистка таблицы
-      setSelectedLocation(""); // Сброс выбранного склада
+      setStockData([]);
+      setSelectedLocation("");
     } catch (e: any) {
-      console.error("Критическая ошибка:", e);
+      console.error(e);
       toast.error("ОШИБКА ПРОВЕДЕНИЯ: " + e.message);
     } finally {
       setLoading(false);
@@ -169,29 +160,28 @@ export default function InventoryDashboard() {
 
   return (
     <div className="p-6 bg-black min-h-screen text-white uppercase font-sans">
-      {/* ПАНЕЛЬ КНОПОК */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Button
           onClick={() => navigate("/admin/migo")}
-          className="bg-emerald-600 hover:bg-emerald-500 h-16 rounded-none font-black border-b-4 border-emerald-900 italic"
+          className="bg-emerald-600 hover:bg-emerald-500 h-16 rounded-none font-black border-b-4 border-emerald-900 italic transition-all"
         >
           <PackagePlus className="mr-2" /> ПРИХОД (MIGO)
         </Button>
         <Button
           onClick={() => navigate("/admin/transfer")}
-          className="bg-blue-600 hover:bg-blue-500 h-16 rounded-none font-black border-b-4 border-blue-900 italic"
+          className="bg-blue-600 hover:bg-blue-500 h-16 rounded-none font-black border-b-4 border-blue-900 italic transition-all"
         >
           <ArrowLeftRight className="mr-2" /> ПЕРЕМЕЩЕНИЕ
         </Button>
         <Button
           onClick={() => navigate("/admin/material-docs")}
-          className="bg-zinc-800 hover:bg-zinc-700 h-16 rounded-none font-black border-b-4 border-zinc-950 italic"
+          className="bg-zinc-800 hover:bg-zinc-700 h-16 rounded-none font-black border-b-4 border-zinc-950 italic transition-all"
         >
           <History className="mr-2" /> ЖУРНАЛ (MB51)
         </Button>
         <Button
           onClick={() => navigate("/admin/reports/inventory")}
-          className="bg-zinc-900 hover:bg-zinc-800 h-16 rounded-none font-black border-b-4 border-black italic"
+          className="bg-zinc-900 hover:bg-zinc-800 h-16 rounded-none font-black border-b-4 border-black italic transition-all"
         >
           <Calculator className="mr-2" /> ОТЧЕТЫ (MI07)
         </Button>
@@ -223,7 +213,7 @@ export default function InventoryDashboard() {
               2. ДОБАВИТЬ ТОВАР (ИЗЛИШКИ):
             </label>
             <Select onValueChange={addNewItemToList}>
-              <SelectTrigger className="bg-zinc-800 border-amber-500/50 text-white font-black rounded-none h-12 focus:ring-0">
+              <SelectTrigger className="bg-zinc-800 border-amber-500/50 text-white font-black rounded-none h-12">
                 <SelectValue placeholder="ПОИСК МАТЕРИАЛА..." />
               </SelectTrigger>
               <SelectContent>
@@ -237,7 +227,7 @@ export default function InventoryDashboard() {
           </div>
         </div>
 
-        <div className="border border-white/20">
+        <div className="border border-white/20 shadow-inner">
           <Table>
             <TableHeader className="bg-white">
               <TableRow className="h-12 border-none hover:bg-white">
@@ -252,7 +242,7 @@ export default function InventoryDashboard() {
               {stockData.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="h-40 text-center text-zinc-600 italic font-black uppercase">
-                    Документ пуст. Выберите склад или добавьте товары.
+                    Документ пуст. Выберите склад или добавьте материалы вручную.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -285,7 +275,7 @@ export default function InventoryDashboard() {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeItem(item.id)}
-                          className="text-zinc-700 hover:text-red-500 transition-colors"
+                          className="text-zinc-700 hover:text-red-500"
                         >
                           <Trash2 size={18} />
                         </Button>
