@@ -18,13 +18,13 @@ import CashierPage from "./pages/Cashier";
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
 import MenuPage from "./pages/admin/Menu";
+import CategoriesPage from "./pages/admin/Categories";
 import RecipesPage from "./pages/admin/Recipes";
 import SemiFinishedPage from "./pages/admin/SemiFinished";
 import IngredientsPage from "./pages/admin/Ingredients";
 import InventoryPage from "./pages/admin/Inventory";
 import LocationsPage from "./pages/admin/Locations";
 import StaffPage from "./pages/admin/Staff";
-import CategoriesPage from "./pages/admin/Categories";
 import ReportsPage from "./pages/admin/Reports";
 import InventoryReportPage from "./pages/admin/InventoryReport";
 import PaymentMethodsPage from "./pages/admin/PaymentMethods";
@@ -50,7 +50,7 @@ const queryClient = new QueryClient();
 // Wrapper component to use hooks inside BrowserRouter
 function AppRoutes() {
   useManifest();
-  
+
   return (
     <Routes>
       {/* Cashier routes */}
@@ -58,16 +58,19 @@ function AppRoutes() {
       <Route path="/pin" element={<PinLogin />} />
       <Route path="/cashier" element={<CashierPage />} />
       <Route path="/customer-display" element={<CustomerDisplayPage />} />
-      
+
       {/* Admin auth */}
       <Route path="/admin/login" element={<Auth />} />
-      
+
       {/* Admin routes */}
-      <Route path="/admin" element={
-        <ProtectedRoute allowedRoles={['admin', 'manager']}>
-          <AdminLayout />
-        </ProtectedRoute>
-      }>
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute allowedRoles={["admin", "manager"]}>
+            <AdminLayout />
+          </ProtectedRoute>
+        }
+      >
         <Route index element={<AdminDashboard />} />
         <Route path="menu" element={<MenuPage />} />
         <Route path="categories" element={<CategoriesPage />} />
@@ -87,10 +90,12 @@ function AppRoutes() {
         <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
         <Route path="cashier-settings" element={<CashierSettingsPage />} />
         <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
-        {/* Warehouse documents */}
+        {/* Warehouse documents - ИСПРАВЛЕННЫЕ ПУТИ */}
         <Route path="goods-receipt" element={<GoodsReceiptPage />} />
+        <Route path="migo" element={<GoodsReceiptPage />} /> {/* Добавили алиас для кнопок MIGO */}
         <Route path="material-docs" element={<MaterialDocsPage />} />
         <Route path="stock-transfer" element={<StockTransferPage />} />
+        <Route path="transfer" element={<StockTransferPage />} /> {/* Добавили алиас для кнопок TRANSFER */}
         <Route path="supply-docs" element={<SupplyDocsPage />} />
         <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
         <Route path="transfer-docs" element={<TransferDocsPage />} />
