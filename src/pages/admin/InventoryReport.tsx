@@ -1,316 +1,270 @@
-import { useState, useEffect } from 'react';
-import { Search, Package, AlertTriangle, CheckCircle, XCircle, Download, TrendingDown } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { Tables } from '@/integrations/supabase/types';
+import { useState, useEffect } from "react";
+import { Search, Package, AlertTriangle, CheckCircle, XCircle, Download, TrendingDown, RefreshCcw } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
-type Inventory = Tables<'inventory'>;
-type Ingredient = Tables<'ingredients'>;
-type Location = Tables<'locations'>;
-type Unit = Tables<'units'>;
-
-interface InventoryItem extends Inventory {
-  ingredient?: Ingredient & { unit?: Unit };
-  location?: Location;
-}
-
-type StockStatus = 'ok' | 'low' | 'out' | 'negative';
-
-interface InventoryReportItem {
-  id: string;
-  ingredient_id: string;
-  ingredient_name: string;
-  unit_abbr: string;
-  location_id: string;
-  location_name: string;
-  quantity: number;
-  min_stock: number;
-  status: StockStatus;
-}
+type StockStatus = "ok" | "low" | "out" | "negative";
 
 export default function InventoryReportPage() {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [locations, setLocations] = useState<any[]>([]);
+  const [reportItems, setReportItems] = useState<any[]>([]);
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      const [{ data: inv }, { data: locs }] = await Promise.all([
-        supabase.from('inventory').select('*, ingredient:ingredients(*, unit:units(*)), location:locations(*)'),
-        supabase.from('locations').select('*').eq('is_active', true).order('name'),
-      ]);
-
-      setInventory((inv as InventoryItem[]) || []);
+      // Загружаем локации
+      const { data: locs } = await supabase.from("locations").select("*").order("name");
       setLocations(locs || []);
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Ошибка загрузки данных');
+
+      // Загружаем остатки с вложенными данными ингредиентов
+      const { data: inv, error } = await (supabase.from("inventory").select(`
+          id,
+          quantity,
+          location_id,
+          location:locations(name),
+          ingredient:ingredients(id, name, unit, min_stock)
+        `) as any);
+
+      if (error) throw error;
+
+      // Трансформируем данные для удобного отображения
+      const formatted = (inv || []).map((item: any) => {
+        const qty = Number(item.quantity) || 0;
+        const min = Number(item.ingredient?.min_stock) || 0;
+
+        let status: StockStatus = "ok";
+        if (qty < 0) status = "negative";
+        else if (qty === 0) status = "out";
+        else if (min > 0 && qty < min) status = "low";
+
+        return {
+          id: item.id,
+          ingredient_name: item.ingredient?.name || "БЕЗ ИМЕНИ",
+          unit: item.ingredient?.unit || "шт",
+          location_id: item.location_id,
+          location_name: item.location?.name || "—",
+          quantity: qty,
+          min_stock: min,
+          status: status,
+        };
+      });
+
+      setReportItems(formatted);
+    } catch (error: any) {
+      console.error("Error:", error);
+      toast.error("ОШИБКА ЗАГРУЗКИ: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatus = (quantity: number, minStock: number): StockStatus => {
-    if (quantity < 0) return 'negative';
-    if (quantity <= 0) return 'out';
-    if (minStock > 0 && quantity < minStock) return 'low';
-    return 'ok';
-  };
+  // Фильтрация
+  const filteredItems = reportItems.filter((item) => {
+    const matchesSearch = item.ingredient_name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesLocation = selectedLocation === "all" || item.location_id === selectedLocation;
+    const matchesStatus = statusFilter === "all" || item.status === statusFilter;
+    return matchesSearch && matchesLocation && matchesStatus;
+  });
+
+  // Сортировка (Критические ошибки - Вверху)
+  const sortedItems = [...filteredItems].sort((a, b) => {
+    const order = { negative: 0, out: 1, low: 2, ok: 3 };
+    return order[a.status as StockStatus] - order[b.status as StockStatus];
+  });
 
   const getStatusBadge = (status: StockStatus) => {
     switch (status) {
-      case 'ok':
+      case "ok":
         return (
-          <Badge variant="outline" className="text-green-600 border-green-600">
-            <CheckCircle className="h-3 w-3 mr-1" />
-            В норме
+          <Badge
+            variant="outline"
+            className="text-emerald-500 border-emerald-500 bg-emerald-500/5 uppercase font-black"
+          >
+            <CheckCircle className="h-3 w-3 mr-1" /> В НОРМЕ
           </Badge>
         );
-      case 'low':
+      case "low":
         return (
-          <Badge variant="outline" className="text-amber-600 border-amber-600">
-            <AlertTriangle className="h-3 w-3 mr-1" />
-            Мало
+          <Badge variant="outline" className="text-amber-500 border-amber-500 bg-amber-500/5 uppercase font-black">
+            <AlertTriangle className="h-3 w-3 mr-1" /> МАЛО
           </Badge>
         );
-      case 'out':
+      case "out":
         return (
-          <Badge variant="destructive">
-            <XCircle className="h-3 w-3 mr-1" />
-            Нет
+          <Badge variant="destructive" className="uppercase font-black">
+            <XCircle className="h-3 w-3 mr-1" /> НЕТ
           </Badge>
         );
-      case 'negative':
+      case "negative":
         return (
-          <Badge variant="destructive" className="bg-red-700">
-            <TrendingDown className="h-3 w-3 mr-1" />
-            Минус
+          <Badge className="bg-red-600 text-white uppercase font-black animate-pulse">
+            <TrendingDown className="h-3 w-3 mr-1" /> МИНУС!
           </Badge>
         );
     }
   };
 
-  // Transform inventory to report items
-  const reportItems: InventoryReportItem[] = inventory.map(item => ({
-    id: item.id,
-    ingredient_id: item.ingredient_id,
-    ingredient_name: item.ingredient?.name || '—',
-    unit_abbr: item.ingredient?.unit?.abbreviation || '',
-    location_id: item.location_id,
-    location_name: item.location?.name || '—',
-    quantity: Number(item.quantity),
-    min_stock: Number(item.ingredient?.min_stock || 0),
-    status: getStatus(Number(item.quantity), Number(item.ingredient?.min_stock || 0)),
-  }));
-
-  // Filter items
-  const filteredItems = reportItems.filter(item => {
-    const matchesSearch = item.ingredient_name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesLocation = selectedLocation === 'all' || item.location_id === selectedLocation;
-    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
-    return matchesSearch && matchesLocation && matchesStatus;
-  });
-
-  // Sort: negative first, then out, low, ok
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    const statusOrder = { negative: 0, out: 1, low: 2, ok: 3 };
-    return statusOrder[a.status] - statusOrder[b.status];
-  });
-
-  // Stats
-  const stats = {
-    total: reportItems.length,
-    ok: reportItems.filter(i => i.status === 'ok').length,
-    low: reportItems.filter(i => i.status === 'low').length,
-    out: reportItems.filter(i => i.status === 'out').length,
-    negative: reportItems.filter(i => i.status === 'negative').length,
-  };
-
-  const exportToCSV = () => {
-    const headers = ['Ингредиент', 'Локация', 'Количество', 'Единица', 'Мин. остаток', 'Статус'];
-    const rows = sortedItems.map(item => [
-      item.ingredient_name,
-      item.location_name,
-      item.quantity.toString(),
-      item.unit_abbr,
-      item.min_stock.toString(),
-      item.status === 'ok' ? 'В норме' : item.status === 'low' ? 'Мало' : item.status === 'out' ? 'Нет' : 'Минус',
-    ]);
-
-    const csvContent = [headers, ...rows].map(row => row.join(';')).join('\n');
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `inventory-report-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success('Отчёт экспортирован');
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between gap-4">
+    <div className="p-6 bg-black min-h-screen text-white uppercase font-sans space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Отчёт по остаткам</h1>
-          <p className="text-muted-foreground">Текущее состояние склада по всем локациям</p>
+          <h1 className="text-4xl font-black italic tracking-tighter flex items-center gap-3">
+            <Package className="text-amber-500" size={40} /> ОТЧЕТ MI07: ОСТАТКИ
+          </h1>
+          <p className="text-zinc-500 font-bold tracking-widest mt-1">ОБЩЕЕ СОСТОЯНИЕ СКЛАДОВ</p>
         </div>
-        <Button variant="outline" onClick={exportToCSV}>
-          <Download className="h-4 w-4 mr-2" />
-          Экспорт CSV
-        </Button>
+        <div className="flex gap-2 w-full md:w-auto">
+          <Button
+            variant="outline"
+            onClick={fetchData}
+            className="bg-zinc-900 border-white/20 hover:bg-zinc-800 rounded-none h-12"
+          >
+            <RefreshCcw className="h-4 w-4" />
+          </Button>
+          <Button
+            onClick={() => toast.info("ФУНКЦИЯ ЭКСПОРТА ГОТОВИТСЯ")}
+            className="bg-white text-black hover:bg-zinc-200 rounded-none h-12 font-black px-8"
+          >
+            <Download className="h-4 w-4 mr-2" /> ЭКСПОРТ CSV
+          </Button>
+        </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid gap-4 md:grid-cols-5">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Всего позиций</CardDescription>
-            <CardTitle className="text-2xl">{stats.total}</CardTitle>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="bg-zinc-900/50 border-white/10 rounded-none">
+          <CardHeader className="p-4">
+            <CardDescription className="text-[10px] font-black">ВСЕГО ПОЗИЦИЙ</CardDescription>
+            <CardTitle className="text-3xl font-black italic">{reportItems.length}</CardTitle>
           </CardHeader>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              В норме
-            </CardDescription>
-            <CardTitle className="text-2xl text-green-600">{stats.ok}</CardTitle>
+        <Card className="bg-zinc-900/50 border-emerald-500/30 rounded-none border-l-4">
+          <CardHeader className="p-4">
+            <CardDescription className="text-[10px] font-black text-emerald-500">В НОРМЕ</CardDescription>
+            <CardTitle className="text-3xl font-black italic text-emerald-500">
+              {reportItems.filter((i) => i.status === "ok").length}
+            </CardTitle>
           </CardHeader>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              Мало
-            </CardDescription>
-            <CardTitle className="text-2xl text-amber-600">{stats.low}</CardTitle>
+        <Card className="bg-zinc-900/50 border-red-500/30 rounded-none border-l-4">
+          <CardHeader className="p-4">
+            <CardDescription className="text-[10px] font-black text-red-500">КРИТИЧНО (0 ИЛИ МИНУС)</CardDescription>
+            <CardTitle className="text-3xl font-black italic text-red-500">
+              {reportItems.filter((i) => i.status === "out" || i.status === "negative").length}
+            </CardTitle>
           </CardHeader>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <XCircle className="h-4 w-4 text-destructive" />
-              Нет в наличии
-            </CardDescription>
-            <CardTitle className="text-2xl text-destructive">{stats.out}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="border-red-700/50 bg-red-950/10">
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center gap-1">
-              <TrendingDown className="h-4 w-4 text-red-700" />
-              Отрицательные
-            </CardDescription>
-            <CardTitle className="text-2xl text-red-700">{stats.negative}</CardTitle>
+        <Card className="bg-zinc-900/50 border-amber-500/30 rounded-none border-l-4">
+          <CardHeader className="p-4">
+            <CardDescription className="text-[10px] font-black text-amber-500">НИЖЕ МИНИМУМА</CardDescription>
+            <CardTitle className="text-3xl font-black italic text-amber-500">
+              {reportItems.filter((i) => i.status === "low").length}
+            </CardTitle>
           </CardHeader>
         </Card>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+      <div className="bg-zinc-900/50 border border-white/10 p-4 flex flex-col md:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-zinc-500" />
           <Input
-            placeholder="Поиск ингредиента..."
+            placeholder="ПОИСК ТОВАРА..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
+            className="pl-10 bg-black border-white/20 rounded-none h-12 font-bold"
           />
         </div>
         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Локация" />
+          <SelectTrigger className="w-full md:w-[250px] bg-black border-white/20 rounded-none h-12 font-bold">
+            <SelectValue placeholder="ВСЕ СКЛАДЫ" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все локации</SelectItem>
-            {locations.map(loc => (
-              <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+          <SelectContent className="bg-zinc-900 border-white/20 text-white rounded-none">
+            <SelectItem value="all">ВСЕ СКЛАДЫ</SelectItem>
+            {locations.map((loc) => (
+              <SelectItem key={loc.id} value={loc.id}>
+                {loc.name}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Статус" />
+          <SelectTrigger className="w-full md:w-[200px] bg-black border-white/20 rounded-none h-12 font-bold">
+            <SelectValue placeholder="СТАТУС" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все статусы</SelectItem>
-            <SelectItem value="ok">В норме</SelectItem>
-            <SelectItem value="low">Мало</SelectItem>
-            <SelectItem value="out">Нет в наличии</SelectItem>
-            <SelectItem value="negative">Отрицательные</SelectItem>
+          <SelectContent className="bg-zinc-900 border-white/20 text-white rounded-none">
+            <SelectItem value="all">ВСЕ СТАТУСЫ</SelectItem>
+            <SelectItem value="ok">В НОРМЕ</SelectItem>
+            <SelectItem value="low">МАЛО</SelectItem>
+            <SelectItem value="out">НЕТ</SelectItem>
+            <SelectItem value="negative">ОТРИЦАТЕЛЬНЫЕ</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      {/* Table */}
-      {sortedItems.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Нет данных по заданным фильтрам</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <Table>
-            <TableHeader>
+      <div className="border border-white/10 bg-zinc-900/20">
+        <Table>
+          <TableHeader className="bg-white">
+            <TableRow className="hover:bg-white border-none h-12">
+              <TableHead className="text-black font-black pl-6">МАТЕРИАЛ</TableHead>
+              <TableHead className="text-black font-black">ЛОКАЦИЯ</TableHead>
+              <TableHead className="text-black font-black text-right">ОСТАТОК</TableHead>
+              <TableHead className="text-black font-black text-right">МИН. ПОРОГ</TableHead>
+              <TableHead className="text-black font-black text-center">СТАТУС</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
               <TableRow>
-                <TableHead>Ингредиент</TableHead>
-                <TableHead>Локация</TableHead>
-                <TableHead className="text-right">Количество</TableHead>
-                <TableHead className="text-right">Мин. остаток</TableHead>
-                <TableHead className="text-center">Статус</TableHead>
+                <TableCell colSpan={5} className="h-32 text-center animate-pulse font-black text-zinc-500">
+                  ЗАГРУЗКА ДАННЫХ...
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sortedItems.map(item => (
-                <TableRow 
-                  key={item.id} 
-                  className={
-                    item.status === 'negative' ? 'bg-red-950/20' : 
-                    item.status === 'out' ? 'bg-destructive/5' : 
-                    item.status === 'low' ? 'bg-amber-500/5' : ''
-                  }
+            ) : sortedItems.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="h-32 text-center italic text-zinc-600">
+                  НИЧЕГО НЕ НАЙДЕНО
+                </TableCell>
+              </TableRow>
+            ) : (
+              sortedItems.map((item) => (
+                <TableRow
+                  key={item.id}
+                  className={`border-b border-white/5 h-16 transition-colors ${item.status === "negative" ? "bg-red-500/10" : "hover:bg-white/5"}`}
                 >
-                  <TableCell className="font-medium">{item.ingredient_name}</TableCell>
-                  <TableCell>{item.location_name}</TableCell>
-                  <TableCell className={`text-right ${item.status === 'negative' ? 'text-red-600 font-bold' : ''}`}>
-                    {item.quantity.toFixed(2)} {item.unit_abbr}
+                  <TableCell className="pl-6 font-black italic text-lg tracking-tighter">
+                    {item.ingredient_name}
                   </TableCell>
-                  <TableCell className="text-right">
-                    {item.min_stock > 0 ? `${item.min_stock} ${item.unit_abbr}` : '—'}
+                  <TableCell className="text-zinc-400 font-bold">{item.location_name}</TableCell>
+                  <TableCell
+                    className={`text-right font-mono font-black text-lg ${item.status === "negative" ? "text-red-500" : ""}`}
+                  >
+                    {item.quantity.toFixed(3)} <span className="text-[10px] text-zinc-500 ml-1">{item.unit}</span>
                   </TableCell>
-                  <TableCell className="text-center">
-                    {getStatusBadge(item.status)}
+                  <TableCell className="text-right text-zinc-500 font-mono">
+                    {item.min_stock > 0 ? item.min_stock.toFixed(3) : "—"}
                   </TableCell>
+                  <TableCell className="text-center">{getStatusBadge(item.status)}</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
