@@ -1,53 +1,7 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { AuthProvider } from "@/hooks/useAuth";
-import { LanguageProvider } from "@/contexts/LanguageContext";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { useManifest } from "@/hooks/useManifest";
-
-// Pages
-import NotFound from "./pages/NotFound";
-import Auth from "./pages/Auth";
-import PinLogin from "./pages/PinLogin";
-import CashierPage from "./pages/Cashier";
-
-// Admin pages
-import AdminLayout from "./components/layout/AdminLayout";
-import AdminDashboard from "./pages/admin/Dashboard";
-import MenuPage from "./pages/admin/Menu";
-import CategoriesPage from "./pages/admin/Categories";
-import RecipesPage from "./pages/admin/Recipes";
-import SemiFinishedPage from "./pages/admin/SemiFinished";
-import IngredientsPage from "./pages/admin/Ingredients";
-import InventoryPage from "./pages/admin/Inventory";
-import LocationsPage from "./pages/admin/Locations";
-import StaffPage from "./pages/admin/Staff";
-import ReportsPage from "./pages/admin/Reports";
-import InventoryReportPage from "./pages/admin/InventoryReport";
-import PaymentMethodsPage from "./pages/admin/PaymentMethods";
-import DocumentsPage from "./pages/admin/Documents";
-import WorkTimePage from "./pages/admin/WorkTime";
-import FiscalSettingsPage from "./pages/admin/FiscalSettings";
-import DiscountsPage from "./pages/admin/Discounts";
-import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
-import CustomerDisplayPage from "./pages/CustomerDisplay";
-import CashierSettingsPage from "./pages/admin/CashierSettings";
-import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
-import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
-import MaterialDocsPage from "./pages/admin/MaterialDocs";
-import StockTransferPage from "./pages/admin/StockTransfer";
-import SupplyDocsPage from "./pages/admin/SupplyDocs";
-import StocktakingDocsPage from "./pages/admin/StocktakingDocs";
-import TransferDocsPage from "./pages/admin/TransferDocs";
-import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
+// ... (все твои импорты остаются прежними)
+// Проверь, что импорт MovementJournalPage на месте:
 import MovementJournalPage from "./pages/admin/MovementJournal";
 
-const queryClient = new QueryClient();
-
-// Wrapper component to use hooks inside BrowserRouter
 function AppRoutes() {
   useManifest();
 
@@ -90,38 +44,28 @@ function AppRoutes() {
         <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
         <Route path="cashier-settings" element={<CashierSettingsPage />} />
         <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
-        {/* Warehouse documents - ИСПРАВЛЕННЫЕ ПУТИ */}
+
+        {/* Warehouse docs & Logistics */}
         <Route path="goods-receipt" element={<GoodsReceiptPage />} />
-        <Route path="migo" element={<GoodsReceiptPage />} /> {/* Добавили алиас для кнопок MIGO */}
+        <Route path="migo" element={<GoodsReceiptPage />} />
+
         <Route path="material-docs" element={<MaterialDocsPage />} />
+
         <Route path="stock-transfer" element={<StockTransferPage />} />
-        <Route path="transfer" element={<StockTransferPage />} /> {/* Добавили алиас для кнопок TRANSFER */}
+        <Route path="transfer" element={<StockTransferPage />} />
+
+        {/* ИСПРАВЛЕНИЕ ТУТ: Добавляем маршрут для истории/журнала */}
+        <Route path="material-log" element={<MovementJournalPage />} />
+        <Route path="movement-journal" element={<MovementJournalPage />} />
+
         <Route path="supply-docs" element={<SupplyDocsPage />} />
         <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
         <Route path="transfer-docs" element={<TransferDocsPage />} />
         <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
-        <Route path="movement-journal" element={<MovementJournalPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <LanguageProvider>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
-    </LanguageProvider>
-  </QueryClientProvider>
-);
-
-export default App;
+// ... остальной код App (Provider-ы) остается без изменений
