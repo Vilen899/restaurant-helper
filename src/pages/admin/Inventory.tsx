@@ -22,8 +22,12 @@ import { toast } from "sonner";
 export default function InventoryDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+
+  // Справочные данные
   const [locations, setLocations] = useState<any[]>([]);
   const [allIngredients, setAllIngredients] = useState<any[]>([]);
+
+  // Состояние текущей работы
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [stockData, setStockData] = useState<any[]>([]);
 
@@ -38,7 +42,9 @@ export default function InventoryDashboard() {
     setAllIngredients(ings || []);
   };
 
+  // Загрузка текущих остатков при выборе склада
   const loadStockForLocation = async (locId: string) => {
+    if (!locId) return;
     setSelectedLocation(locId);
     setLoading(true);
     try {
@@ -48,6 +54,7 @@ export default function InventoryDashboard() {
         .eq("location_id", locId) as any);
 
       if (error) throw error;
+
       const formatted = (data || []).map((item: any) => ({
         id: item.ingredient_id,
         name: item.ingredient?.name || "НЕИЗВЕСТНО",
@@ -56,14 +63,14 @@ export default function InventoryDashboard() {
         factQty: Number(item.quantity) || 0,
       }));
       setStockData(formatted);
-    } catch (e) {
-      toast.error("ОШИБКА ЗАГРУЗКИ");
+    } catch (e: any) {
+      toast.error("ОШИБКА ЗАГРУЗКИ: " + e.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // ФУНКЦИЯ ДОБАВЛЕНИЯ НОВОГО ТОВАРА В СПИСОК (ДЛЯ ИЗЛИШКОВ)
+  // Добавление товара вручную (для фиксации излишков)
   const addNewItemToList = (ingredientId: string) => {
     if (!selectedLocation) {
       toast.error("СНАЧАЛА ВЫБЕРИТЕ СКЛАД!");
@@ -71,19 +78,19 @@ export default function InventoryDashboard() {
     }
     const alreadyInList = stockData.find((i) => i.id === ingredientId);
     if (alreadyInList) {
-      toast.error("ЭТОТ ТОВАР УЖЕ В СПИСКЕ");
+      toast.error("ТОВАР УЖЕ В СПИСКЕ");
       return;
     }
 
     const ing = allIngredients.find((i) => i.id === ingredientId);
     if (ing) {
-      setStockData([
-        ...stockData,
+      setStockData((prev) => [
+        ...prev,
         {
           id: ing.id,
           name: ing.name,
           unit: ing.unit,
-          systemQty: 0, // В системе его нет на этом складе
+          systemQty: 0,
           factQty: 0,
         },
       ]);
@@ -97,16 +104,64 @@ export default function InventoryDashboard() {
   };
 
   const removeItem = (id: string) => {
-    setStockData(stockData.filter((i) => i.id !== id));
+    setStockData((prev) => prev.filter((i) => i.id !== id));
   };
 
+  // ФУНКЦИЯ ПРОВЕДЕНИЯ MI07 И ОЧИСТКИ
   const handlePostDifferences = async () => {
+    if (!selectedLocation || stockData.length === 0) {
+      toast.error("НЕЧЕГО ПРОВОДИТЬ");
+      return;
+    }
+
     setLoading(true);
-    // Логика сохранения MI07
-    setTimeout(() => {
-      toast.success("ИНВЕНТАРИЗАЦИЯ СОХРАНЕНА");
+    try {
+      // 1. Создаем запись в журнале документов инвентаризации
+      const { data: doc, error: docError } = await supabase
+        .from("stocktaking_docs")
+        .insert([
+          {
+            location_id: selectedLocation,
+            status: "completed",
+            total_items: stockData.length,
+            total_difference: stockData.reduce((acc, item) => acc + (item.factQty - item.systemQty), 0),
+            created_at: new Date().toISOString(),
+          },
+        ])
+        .select()
+        .single();
+
+      if (docError) throw docError;
+
+      // 2. Обновляем остатки в таблице inventory (UPSERT)
+      for (const item of stockData) {
+        if (item.factQty !== item.systemQty) {
+          const { error: invError } = await supabase.from("inventory").upsert(
+            {
+              location_id: selectedLocation,
+              ingredient_id: item.id,
+              quantity: item.factQty,
+              updated_at: new Date().toISOString(),
+            },
+            {
+              onConflict: "location_id,ingredient_id",
+            },
+          );
+
+          if (invError) throw invError;
+        }
+      }
+
+      // 3. УСПЕХ: Очищаем экран
+      toast.success("ИНВЕНТАРИЗАЦИЯ ПРОВЕДЕНА. ДАННЫЕ СОХРАНЕНЫ.");
+      setStockData([]); // Очистить таблицу
+      setSelectedLocation(""); // Сбросить склад
+    } catch (e: any) {
+      console.error(e);
+      toast.error("КРИТИЧЕСКАЯ ОШИБКА: " + e.message);
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -139,14 +194,16 @@ export default function InventoryDashboard() {
         </Button>
       </div>
 
-      <div className="bg-zinc-900/50 border-2 border-white p-6">
+      <div className="bg-zinc-900/50 border-2 border-white p-6 shadow-2xl">
         <div className="flex flex-col lg:flex-row justify-between items-end gap-6 mb-8">
           <div className="w-full lg:w-1/3">
-            <h1 className="text-3xl font-black italic tracking-tighter flex items-center gap-3 mb-4">
+            <h1 className="text-3xl font-black italic tracking-tighter flex items-center gap-3 mb-4 text-white">
               <ClipboardCheck className="text-amber-500" size={32} /> MI01: ИНВЕНТАРИЗАЦИЯ
             </h1>
-            <label className="text-[10px] font-black mb-1 block text-zinc-400">1. ВЫБЕРИТЕ СКЛАД:</label>
-            <Select onValueChange={loadStockForLocation}>
+            <label className="text-[10px] font-black mb-1 block text-zinc-400 uppercase">
+              1. Выбор площадки (Склада):
+            </label>
+            <Select value={selectedLocation} onValueChange={loadStockForLocation}>
               <SelectTrigger className="bg-white text-black font-black rounded-none h-12">
                 <SelectValue placeholder="ВЫБРАТЬ ЛОКАЦИЮ..." />
               </SelectTrigger>
@@ -162,11 +219,11 @@ export default function InventoryDashboard() {
 
           <div className="w-full lg:w-1/3">
             <label className="text-[10px] font-black mb-1 block text-amber-500 italic underline">
-              2. ДОБАВИТЬ ТОВАР (ИЗЛИШКИ):
+              2. Найти и добавить материал:
             </label>
             <Select onValueChange={addNewItemToList}>
-              <SelectTrigger className="bg-zinc-800 border-amber-500/50 text-white font-black rounded-none h-12">
-                <SelectValue placeholder="НАЙТИ ТОВАР ДЛЯ ПОДСЧЕТА..." />
+              <SelectTrigger className="bg-zinc-800 border-amber-500/50 text-white font-black rounded-none h-12 focus:ring-0">
+                <SelectValue placeholder="ДОБАВИТЬ ПОЗИЦИЮ..." />
               </SelectTrigger>
               <SelectContent>
                 {allIngredients.map((ing) => (
@@ -179,7 +236,7 @@ export default function InventoryDashboard() {
           </div>
         </div>
 
-        <div className="border border-white/20">
+        <div className="border border-white/20 shadow-inner">
           <Table>
             <TableHeader className="bg-white">
               <TableRow className="h-12 border-none">
@@ -187,14 +244,14 @@ export default function InventoryDashboard() {
                 <TableHead className="text-black font-black text-right">КНИЖНЫЙ ОСТАТОК</TableHead>
                 <TableHead className="text-black font-black text-right">ФАКТ. НАЛИЧИЕ</TableHead>
                 <TableHead className="text-black font-black text-right">РАЗНИЦА</TableHead>
-                <TableHead className="text-black font-black text-center pr-4 w-10">DEL</TableHead>
+                <TableHead className="text-black font-black text-center w-10">DEL</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {stockData.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-zinc-600 italic font-black">
-                    ВЫБЕРИТЕ СКЛАД ИЛИ ДОБАВЬТЕ ТОВАРЫ ВРУЧНУЮ
+                  <TableCell colSpan={5} className="h-40 text-center text-zinc-600 italic font-black text-sm uppercase">
+                    Документ пуст. Выберите склад или добавьте материалы вручную.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -227,9 +284,9 @@ export default function InventoryDashboard() {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeItem(item.id)}
-                          className="text-zinc-700 hover:text-red-500"
+                          className="text-zinc-700 hover:text-red-500 transition-colors"
                         >
-                          <Trash2 size={16} />
+                          <Trash2 size={18} />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -244,7 +301,7 @@ export default function InventoryDashboard() {
           <Button
             disabled={loading || stockData.length === 0}
             onClick={handlePostDifferences}
-            className="bg-white text-black hover:bg-zinc-200 px-12 h-14 font-black rounded-none italic text-xl border-b-4 border-zinc-400 active:translate-y-1 active:border-b-0 transition-all"
+            className="bg-white text-black hover:bg-zinc-200 px-12 h-16 font-black rounded-none italic text-xl border-b-4 border-zinc-400 active:translate-y-1 active:border-b-0 transition-all shadow-xl"
           >
             <Save className="mr-3" /> ПРОВЕСТИ РАЗНИЦЫ (MI07)
           </Button>
