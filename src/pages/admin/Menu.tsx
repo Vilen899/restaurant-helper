@@ -1,44 +1,25 @@
-import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, UtensilsCrossed, Upload, Image, X, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import { Tables } from '@/integrations/supabase/types';
-import { PageHeader, ActionButton } from '@/components/admin/PageHeader';
-import { FilterBar } from '@/components/admin/FilterBar';
-import { StatCard } from '@/components/admin/StatCard';
-
-type MenuItem = Tables<'menu_items'>;
-type MenuCategory = Tables<'menu_categories'>;
+import { useState, useEffect, useRef } from "react";
+import { Plus, Pencil, Trash2, UtensilsCrossed, Upload, X, Loader2, Search, Filter } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 export default function MenuPage() {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [menuItems, setMenuItems] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editItem, setEditItem] = useState<MenuItem | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    category_id: '',
-    output_weight: '',
-    is_active: true,
-    image_url: '',
-  });
+  const [editItem, setEditItem] = useState<any | null>(null);
+  const [formData, setFormData] = useState({ name: "", price: "", category_id: "", is_active: true, image_url: "" });
 
   useEffect(() => {
     fetchData();
@@ -46,422 +27,210 @@ export default function MenuPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    try {
-      const [{ data: items }, { data: cats }] = await Promise.all([
-        supabase.from('menu_items').select('*').order('sort_order'),
-        supabase.from('menu_categories').select('*').order('sort_order'),
-      ]);
-
-      setMenuItems(items || []);
-      setCategories(cats || []);
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Ошибка загрузки данных');
-    } finally {
-      setLoading(false);
-    }
+    const [{ data: items }, { data: cats }] = await Promise.all([
+      supabase.from("menu_items").select("*").order("name"),
+      supabase.from("menu_categories").select("*").order("sort_order"),
+    ]);
+    setMenuItems(items || []);
+    setCategories(cats || []);
+    setLoading(false);
   };
 
-  const openCreateDialog = () => {
-    setEditItem(null);
-    setFormData({
-      name: '',
-      description: '',
-      price: '',
-      category_id: categories[0]?.id || '',
-      output_weight: '',
-      is_active: true,
-      image_url: '',
-    });
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = (item: MenuItem) => {
+  const openEdit = (item: any) => {
     setEditItem(item);
     setFormData({
       name: item.name,
-      description: item.description || '',
       price: item.price.toString(),
       category_id: item.category_id,
-      output_weight: item.output_weight?.toString() || '',
       is_active: item.is_active,
-      image_url: (item as any).image_url || '',
+      image_url: item.image_url || "",
     });
     setDialogOpen(true);
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      toast.error('Выберите изображение');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Файл слишком большой (макс. 5 МБ)');
-      return;
-    }
-
-    setUploading(true);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('menu-images')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from('menu-images')
-        .getPublicUrl(fileName);
-
-      setFormData({ ...formData, image_url: urlData.publicUrl });
-      toast.success('Фото загружено');
-    } catch (error: any) {
-      console.error('Upload error:', error);
-      toast.error('Ошибка загрузки фото');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const removeImage = () => {
-    setFormData({ ...formData, image_url: '' });
-  };
-
-  const handleSubmit = async () => {
-    if (!formData.name || !formData.price || !formData.category_id) {
-      toast.error('Заполните обязательные поля');
-      return;
-    }
-
-    const data = {
-      name: formData.name,
-      description: formData.description || null,
-      price: parseFloat(formData.price),
-      category_id: formData.category_id,
-      output_weight: formData.output_weight ? parseFloat(formData.output_weight) : null,
-      is_active: formData.is_active,
-      image_url: formData.image_url || null,
-    };
-
-    try {
-      if (editItem) {
-        const { error } = await supabase
-          .from('menu_items')
-          .update(data)
-          .eq('id', editItem.id);
-
-        if (error) throw error;
-        toast.success('Блюдо обновлено');
-      } else {
-        const { error } = await supabase
-          .from('menu_items')
-          .insert(data);
-
-        if (error) throw error;
-        toast.success('Блюдо добавлено');
-      }
-
-      setDialogOpen(false);
-      fetchData();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Ошибка сохранения');
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Удалить это блюдо?')) return;
-
-    try {
-      const { error } = await supabase.from('menu_items').delete().eq('id', id);
-      if (error) throw error;
-      toast.success('Блюдо удалено');
-      fetchData();
-    } catch (error) {
-      console.error('Error:', error);
-      toast.error('Ошибка удаления');
-    }
-  };
-
-  const filteredItems = menuItems.filter(item => {
+  const filteredItems = menuItems.filter((item) => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || item.category_id === selectedCategory;
-    return matchesSearch && matchesCategory;
+    const matchesCat = selectedCategory === "all" || item.category_id === selectedCategory;
+    return matchesSearch && matchesCat;
   });
 
-  const getCategoryName = (categoryId: string) => {
-    return categories.find(c => c.id === categoryId)?.name || 'Без категории';
-  };
-
-  const activeItems = menuItems.filter(i => i.is_active).length;
-  const totalRevenue = menuItems.reduce((sum, i) => sum + Number(i.price), 0);
-  const avgPrice = menuItems.length ? totalRevenue / menuItems.length : 0;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Меню"
-        description="Управление блюдами и позициями"
-        onRefresh={fetchData}
-        loading={loading}
-        actions={
-          <ActionButton label="Добавить блюдо" icon={Plus} onClick={openCreateDialog} />
-        }
-      />
-
-      {/* Stats */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Всего позиций" value={menuItems.length} icon={UtensilsCrossed} />
-        <StatCard title="Активных" value={activeItems} icon={UtensilsCrossed} variant="success" />
-        <StatCard title="Категорий" value={categories.length} icon={UtensilsCrossed} variant="info" />
-        <StatCard title="Средняя цена" value={`₽${Math.round(avgPrice)}`} icon={UtensilsCrossed} />
+    <div className="p-4 bg-zinc-50 min-h-screen font-sans">
+      {/* HEADER - Компактный */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white p-4 border rounded-lg shadow-sm">
+        <div>
+          <h1 className="text-xl font-bold text-zinc-800 uppercase tracking-tight">Управление Меню</h1>
+          <p className="text-xs text-zinc-500 uppercase">Всего позиций: {menuItems.length}</p>
+        </div>
+        <div className="flex gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" />
+            <Input
+              placeholder="Поиск блюда..."
+              className="pl-9 h-9 w-64 bg-zinc-100 border-none text-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="h-9 w-40 bg-white text-xs font-semibold">
+              <SelectValue placeholder="Категория" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все категории</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={() => {
+              setEditItem(null);
+              setDialogOpen(true);
+            }}
+            className="h-9 bg-zinc-900 text-white gap-2 px-4"
+          >
+            <Plus size={16} /> Добавить
+          </Button>
+        </div>
       </div>
 
-      {/* Filters */}
-      <FilterBar
-        searchValue={searchTerm}
-        onSearchChange={setSearchTerm}
-        searchPlaceholder="Поиск по названию..."
-      >
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="Категория" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все категории</SelectItem>
-            {categories.map(cat => (
-              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </FilterBar>
-      {/* Menu items grid */}
-      {filteredItems.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Блюда не найдены</p>
-            <Button variant="outline" className="mt-4" onClick={openCreateDialog}>
-              Добавить первое блюдо
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredItems.map(item => (
-            <Card key={item.id} className={!item.is_active ? 'opacity-60' : ''}>
-              {(item as any).image_url && (
-                <div className="aspect-video w-full overflow-hidden rounded-t-lg">
-                  <img 
-                    src={(item as any).image_url} 
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg">{item.name}</CardTitle>
-                    <CardDescription>{getCategoryName(item.category_id)}</CardDescription>
-                  </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => openEditDialog(item)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {item.description && (
-                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
-                    {item.description}
-                  </p>
-                )}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xl font-bold">₽ {Number(item.price).toLocaleString('ru-RU')}</p>
-                    {Number(item.cost_price) > 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        Себестоимость: ₽ {Number(item.cost_price).toLocaleString('ru-RU')}
-                      </p>
+      {/* TABLE - Вместо карточек */}
+      <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
+        <Table>
+          <TableHeader className="bg-zinc-50">
+            <TableRow>
+              <TableHead className="w-12"></TableHead>
+              <TableHead className="text-xs font-bold uppercase">Название</TableHead>
+              <TableHead className="text-xs font-bold uppercase">Категория</TableHead>
+              <TableHead className="text-right text-xs font-bold uppercase">Цена</TableHead>
+              <TableHead className="text-center text-xs font-bold uppercase">Статус</TableHead>
+              <TableHead className="text-right text-xs font-bold uppercase">Действия</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-40 text-center">
+                  <Loader2 className="animate-spin mx-auto text-zinc-300" />
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredItems.map((item) => (
+                <TableRow key={item.id} className={`hover:bg-zinc-50 ${!item.is_active ? "opacity-50" : ""}`}>
+                  <TableCell>
+                    {item.image_url ? (
+                      <img src={item.image_url} className="w-8 h-8 rounded object-cover border" />
+                    ) : (
+                      <div className="w-8 h-8 rounded bg-zinc-100 flex items-center justify-center">
+                        <UtensilsCrossed size={12} className="text-zinc-400" />
+                      </div>
                     )}
-                  </div>
-                  <div className="text-right">
-                    {item.output_weight && (
-                      <Badge variant="outline">{item.output_weight} г</Badge>
-                    )}
-                    {!item.is_active && (
-                      <Badge variant="secondary" className="ml-2">Скрыто</Badge>
-                    )}
-                  </div>
-                </div>
-                {Number(item.cost_price) > 0 && (
-                  <div className="mt-2 pt-2 border-t">
-                    <p className="text-xs text-muted-foreground">
-                      Наценка: {Math.round((Number(item.price) - Number(item.cost_price)) / Number(item.cost_price) * 100)}%
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                  </TableCell>
+                  <TableCell className="font-bold text-sm text-zinc-800 uppercase">{item.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="text-[10px] font-bold uppercase bg-zinc-100 border-none">
+                      {categories.find((c) => c.id === item.category_id)?.name || "---"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-bold">
+                    {Number(item.price).toLocaleString()} ₽
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div
+                      className={`inline-block w-2 h-2 rounded-full ${item.is_active ? "bg-emerald-500" : "bg-red-400"}`}
+                    />
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1">
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openEdit(item)}>
+                        <Pencil size={14} className="text-zinc-600" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-red-50"
+                        onClick={() => {
+                          /* delete */
+                        }}
+                      >
+                        <Trash2 size={14} className="text-red-500" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
-      {/* Add/Edit Dialog */}
+      {/* DIALOG - Компактный */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md rounded-none border-2">
           <DialogHeader>
-            <DialogTitle>{editItem ? 'Редактировать блюдо' : 'Добавить блюдо'}</DialogTitle>
-            <DialogDescription>
-              {editItem ? 'Измените данные блюда' : 'Заполните информацию о новом блюде'}
-            </DialogDescription>
+            <DialogTitle className="text-lg font-black uppercase italic">
+              {editItem ? "Правка блюда" : "Новое блюдо"}
+            </DialogTitle>
           </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Название *</Label>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-1">
+              <Label className="text-[10px] font-bold uppercase">Название блюда</Label>
               <Input
-                id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Цезарь с курицей"
+                className="h-9 rounded-none bg-zinc-50"
               />
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="category">Категория *</Label>
-              <Select
-                value={formData.category_id}
-                onValueChange={(value) => setFormData({ ...formData, category_id: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите категорию" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Описание</Label>
-              <Textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Салат с куриным филе, сыром пармезан..."
-              />
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Цена (₽) *</Label>
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold uppercase">Категория</Label>
+                <Select
+                  value={formData.category_id}
+                  onValueChange={(val) => setFormData({ ...formData, category_id: val })}
+                >
+                  <SelectTrigger className="h-9 rounded-none bg-zinc-50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[10px] font-bold uppercase">Цена ₽</Label>
                 <Input
-                  id="price"
                   type="number"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  placeholder="450"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="weight">Выход (г)</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  value={formData.output_weight}
-                  onChange={(e) => setFormData({ ...formData, output_weight: e.target.value })}
-                  placeholder="280"
+                  className="h-9 rounded-none bg-zinc-50"
                 />
               </div>
             </div>
-
-            {/* Image upload */}
-            <div className="space-y-2">
-              <Label>Фото блюда</Label>
-              {formData.image_url ? (
-                <div className="relative w-full aspect-video rounded-lg overflow-hidden border">
-                  <img 
-                    src={formData.image_url} 
-                    alt="Preview" 
-                    className="w-full h-full object-cover"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-2 right-2"
-                    onClick={removeImage}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div 
-                  className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {uploading ? (
-                    <div className="flex flex-col items-center gap-2">
-                      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">Загрузка...</p>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <Upload className="h-8 w-8 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">Нажмите для загрузки</p>
-                      <p className="text-xs text-muted-foreground">PNG, JPG до 5 МБ</p>
-                    </div>
-                  )}
-                </div>
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageUpload}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="active">Активно в меню</Label>
+            <div className="flex items-center justify-between border-t pt-4 mt-2">
+              <Label className="text-[10px] font-bold uppercase">Активно в меню</Label>
               <Switch
-                id="active"
                 checked={formData.is_active}
-                onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                onCheckedChange={(val) => setFormData({ ...formData, is_active: val })}
               />
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button
+              onClick={() => setDialogOpen(false)}
+              variant="outline"
+              className="h-9 rounded-none uppercase text-xs font-bold"
+            >
               Отмена
             </Button>
-            <Button onClick={handleSubmit}>
-              {editItem ? 'Сохранить' : 'Добавить'}
+            <Button className="h-9 rounded-none bg-zinc-900 text-white uppercase text-xs font-bold px-8">
+              Сохранить
             </Button>
           </DialogFooter>
         </DialogContent>
