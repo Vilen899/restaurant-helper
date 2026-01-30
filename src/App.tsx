@@ -47,22 +47,17 @@ import MovementJournalPage from "./pages/admin/MovementJournal";
 
 const queryClient = new QueryClient();
 
-// Wrapper component to use hooks inside BrowserRouter
 function AppRoutes() {
   useManifest();
 
   return (
     <Routes>
-      {/* Cashier routes */}
       <Route path="/" element={<PinLogin />} />
       <Route path="/pin" element={<PinLogin />} />
       <Route path="/cashier" element={<CashierPage />} />
       <Route path="/customer-display" element={<CustomerDisplayPage />} />
-
-      {/* Admin auth */}
       <Route path="/admin/login" element={<Auth />} />
 
-      {/* Admin routes */}
       <Route
         path="/admin"
         element={
@@ -90,15 +85,22 @@ function AppRoutes() {
         <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
         <Route path="cashier-settings" element={<CashierSettingsPage />} />
         <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
+
         {/* Warehouse documents */}
         <Route path="goods-receipt" element={<GoodsReceiptPage />} />
+        <Route path="migo" element={<GoodsReceiptPage />} />
         <Route path="material-docs" element={<MaterialDocsPage />} />
+
+        {/* Исправленный путь для перемещения */}
         <Route path="stock-transfer" element={<StockTransferPage />} />
+        <Route path="transfer" element={<StockTransferPage />} />
+
         <Route path="supply-docs" element={<SupplyDocsPage />} />
         <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
         <Route path="transfer-docs" element={<TransferDocsPage />} />
         <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
         <Route path="movement-journal" element={<MovementJournalPage />} />
+        <Route path="material-log" element={<MovementJournalPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />
