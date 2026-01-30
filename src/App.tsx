@@ -36,6 +36,15 @@ import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
 import CustomerDisplayPage from "./pages/CustomerDisplay";
 import CashierSettingsPage from "./pages/admin/CashierSettings";
 import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
+import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
+import MaterialDocsPage from "./pages/admin/MaterialDocs";
+import StockTransferPage from "./pages/admin/StockTransfer";
+import SupplyDocsPage from "./pages/admin/SupplyDocs";
+import StocktakingDocsPage from "./pages/admin/StocktakingDocs";
+import TransferDocsPage from "./pages/admin/TransferDocs";
+import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
+import MovementJournalPage from "./pages/admin/MovementJournal";
+
 const queryClient = new QueryClient();
 
 // Wrapper component to use hooks inside BrowserRouter
@@ -78,6 +87,15 @@ function AppRoutes() {
         <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
         <Route path="cashier-settings" element={<CashierSettingsPage />} />
         <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
+        {/* Warehouse documents */}
+        <Route path="goods-receipt" element={<GoodsReceiptPage />} />
+        <Route path="material-docs" element={<MaterialDocsPage />} />
+        <Route path="stock-transfer" element={<StockTransferPage />} />
+        <Route path="supply-docs" element={<SupplyDocsPage />} />
+        <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
+        <Route path="transfer-docs" element={<TransferDocsPage />} />
+        <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
+        <Route path="movement-journal" element={<MovementJournalPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />

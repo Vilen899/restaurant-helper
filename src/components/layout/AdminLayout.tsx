@@ -63,11 +63,17 @@ const menuGroups: MenuGroup[] = [
     ],
   },
   {
-    label: 'Контрагенты',
+    label: 'Складские документы',
     icon: Truck,
     roles: ['admin', 'manager'],
     items: [
-      { path: '/admin/suppliers', icon: Truck, label: 'Поставщики', roles: ['admin', 'manager'] },
+      { path: '/admin/goods-receipt', icon: Package, label: 'Приход (MIGO)', roles: ['admin', 'manager'] },
+      { path: '/admin/supply-docs', icon: FileText, label: 'Документы поставок', roles: ['admin', 'manager'] },
+      { path: '/admin/stock-transfer', icon: Truck, label: 'Перемещение (MB1B)', roles: ['admin', 'manager'] },
+      { path: '/admin/transfer-docs', icon: FileText, label: 'Документы перемещений', roles: ['admin', 'manager'] },
+      { path: '/admin/physical-inventory', icon: Warehouse, label: 'Инвентаризация (MI01)', roles: ['admin', 'manager'] },
+      { path: '/admin/stocktaking-docs', icon: FileText, label: 'Документы инвентаризации', roles: ['admin', 'manager'] },
+      { path: '/admin/movement-journal', icon: Clock, label: 'Журнал движений (MB51)', roles: ['admin', 'manager'] },
     ],
   },
   {
@@ -78,7 +84,7 @@ const menuGroups: MenuGroup[] = [
       { path: '/admin/reports', icon: FileText, label: 'Продажи', roles: ['admin', 'manager'] },
       { path: '/admin/reports/inventory', icon: Warehouse, label: 'Остатки', roles: ['admin', 'manager'] },
       { path: '/admin/reports/negative-sales', icon: TrendingDown, label: 'Минусовые продажи', roles: ['admin', 'manager'] },
-      { path: '/admin/documents', icon: FileText, label: 'Документы', roles: ['admin', 'manager'] },
+      { path: '/admin/documents', icon: FileText, label: 'Документы (чеки)', roles: ['admin', 'manager'] },
       { path: '/admin/work-time', icon: Clock, label: 'Рабочее время', roles: ['admin', 'manager'] },
     ],
   },

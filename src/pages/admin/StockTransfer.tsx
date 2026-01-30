@@ -27,12 +27,36 @@ export default function StockTransfer() {
 
     try {
       const q = Number(form.qty);
-      // Снимаем с А, добавляем на Б
-      await supabase.rpc('increment_inventory', { loc_id: form.from, ing_id: form.ing, val: -q });
-      await supabase.rpc('increment_inventory', { loc_id: form.to, ing_id: form.ing, val: q });
+      
+      // Снимаем с А, добавляем на Б через RPC
+      await (supabase as any).rpc('increment_inventory', { loc_id: form.from, ing_id: form.ing, val: -q });
+      await (supabase as any).rpc('increment_inventory', { loc_id: form.to, ing_id: form.ing, val: q });
+      
+      // Создаём запись о перемещении в transfers
+      const { data: transfer } = await supabase
+        .from("transfers")
+        .insert({
+          from_location_id: form.from,
+          to_location_id: form.to,
+          status: "completed",
+          completed_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (transfer) {
+        // Создаём позиции перемещения
+        await supabase
+          .from("transfer_items")
+          .insert({
+            transfer_id: transfer.id,
+            ingredient_id: form.ing,
+            quantity: q
+          });
+      }
       
       // ЗАПИСЫВАЕМ В ЖУРНАЛ (ДЛЯ MB51)
-      await (supabase.from("stock_movements" as any) as any).insert({
+      await (supabase as any).from("stock_movements").insert({
         ingredient_id: form.ing,
         location_id: form.from,
         quantity: -q,
@@ -42,8 +66,8 @@ export default function StockTransfer() {
 
       toast.success("ПЕРЕНОС ВЫПОЛНЕН. ПРОВЕРЬТЕ MB51");
       setForm({ ...form, qty: "" });
-    } catch (e) {
-      toast.error("ОШИБКА ПЕРЕНОСА");
+    } catch (e: any) {
+      toast.error("ОШИБКА ПЕРЕНОСА: " + e.message);
     }
   };
 
@@ -55,12 +79,41 @@ export default function StockTransfer() {
       </div>
       <div className="space-y-6 bg-zinc-900/30 p-6 border border-white/5 rounded-lg">
         <div className="grid grid-cols-2 gap-4">
-          <Select onValueChange={v => setForm({...form, from: v})}><SelectTrigger className="h-10 bg-black uppercase font-bold text-red-400"><SelectValue placeholder="ОТКУДА" /></SelectTrigger><SelectContent className="bg-zinc-900 text-white">{locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent></Select>
-          <Select onValueChange={v => setForm({...form, to: v})}><SelectTrigger className="h-10 bg-black uppercase font-bold text-emerald-400"><SelectValue placeholder="КУДА" /></SelectTrigger><SelectContent className="bg-zinc-900 text-white">{locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}</SelectContent></Select>
+          <Select onValueChange={v => setForm({...form, from: v})}>
+            <SelectTrigger className="h-10 bg-black uppercase font-bold text-red-400">
+              <SelectValue placeholder="ОТКУДА" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 text-white">
+              {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select onValueChange={v => setForm({...form, to: v})}>
+            <SelectTrigger className="h-10 bg-black uppercase font-bold text-emerald-400">
+              <SelectValue placeholder="КУДА" />
+            </SelectTrigger>
+            <SelectContent className="bg-zinc-900 text-white">
+              {locations.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
-        <Select onValueChange={v => setForm({...form, ing: v})}><SelectTrigger className="h-12 bg-black uppercase font-bold"><SelectValue placeholder="ВЫБЕРИТЕ ТОВАР" /></SelectTrigger><SelectContent className="bg-zinc-900 text-white">{ingredients.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent></Select>
-        <Input type="number" value={form.qty} onChange={e => setForm({...form, qty: e.target.value})} className="h-12 bg-black text-center text-xl font-black" placeholder="0.000" />
-        <Button onClick={handleTransfer} className="w-full h-12 bg-blue-600 hover:bg-blue-500 font-black">ВЫПОЛНИТЬ ПЕРЕНОС</Button>
+        <Select onValueChange={v => setForm({...form, ing: v})}>
+          <SelectTrigger className="h-12 bg-black uppercase font-bold">
+            <SelectValue placeholder="ВЫБЕРИТЕ ТОВАР" />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-900 text-white">
+            {ingredients.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Input 
+          type="number" 
+          value={form.qty} 
+          onChange={e => setForm({...form, qty: e.target.value})} 
+          className="h-12 bg-black text-center text-xl font-black" 
+          placeholder="0.000" 
+        />
+        <Button onClick={handleTransfer} className="w-full h-12 bg-blue-600 hover:bg-blue-500 font-black">
+          ВЫПОЛНИТЬ ПЕРЕНОС
+        </Button>
       </div>
     </div>
   );
