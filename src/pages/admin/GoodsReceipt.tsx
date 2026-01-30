@@ -10,14 +10,18 @@ export default function GoodsReceipt() {
   const [locations, setLocations] = useState<any[]>([]);
   const [ingredients, setIngredients] = useState<any[]>([]);
   
-  const [header, setHeader] = useState({ doc_num: "", inn: "", loc_id: "" });
+  const [header, setHeader] = useState({ 
+    doc_num: "", 
+    inn: "", 
+    loc_id: "", 
+    supplier_name: "" 
+  });
   const [items, setItems] = useState([{ ingredient_id: "", quantity: 0, price: 0 }]);
 
-  // 1. Загружаем справочники при входе на страницу
   useEffect(() => {
     const loadRefs = async () => {
       const { data: locs } = await supabase.from("locations").select("id, name");
-      const { data: ings } = await supabase.from("ingredients").select("id, name, unit");
+      const { data: ings } = await supabase.from("ingredients").select("id, name, unit:units(abbreviation)");
       setLocations(locs || []);
       setIngredients(ings || []);
     };
@@ -35,28 +39,29 @@ export default function GoodsReceipt() {
 
     setLoading(true);
     try {
-      // 2. Создаем заголовок (MIGO)
+      // Создаем заголовок (MIGO)
       const { data: doc, error: docError } = await (supabase as any)
         .from("material_documents")
         .insert([{
           type: "MIGO_101",
           doc_number: header.doc_num,
           vendor_inn: header.inn,
+          supplier_name: header.supplier_name,
           location_id: header.loc_id,
           total_amount: items.reduce((sum, i) => sum + (i.quantity * i.price), 0)
-        }] as any)
+        }])
         .select().single();
 
       if (docError) throw docError;
 
-      // 3. Создаем позиции и обновляем остатки
+      // Создаем позиции и обновляем остатки
       for (const item of items) {
         await (supabase as any).from("material_document_items").insert([{
           doc_id: doc.id,
           ingredient_id: item.ingredient_id,
           quantity: item.quantity,
           price: item.price
-        }] as any);
+        }]);
 
         await (supabase as any).rpc('increment_inventory', {
           loc_id: header.loc_id,
@@ -66,7 +71,7 @@ export default function GoodsReceipt() {
       }
 
       toast.success("ДОКУМЕНТ ПРОВЕДЕН: " + doc.doc_number);
-      setHeader({ doc_num: "", inn: "", loc_id: "" });
+      setHeader({ doc_num: "", inn: "", loc_id: "", supplier_name: "" });
       setItems([{ ingredient_id: "", quantity: 0, price: 0 }]);
     } catch (e: any) {
       toast.error("СБОЙ ПРОВОДКИ: " + e.message);
@@ -83,7 +88,7 @@ export default function GoodsReceipt() {
         </h1>
 
         {/* ШАПКА ДОКУМЕНТА */}
-        <div className="grid grid-cols-3 gap-4 bg-zinc-900/50 p-6 border border-white/10 mb-6">
+        <div className="grid grid-cols-2 gap-4 bg-zinc-900/50 p-6 border border-white/10 mb-6">
           <div className="space-y-1">
             <label className="text-[10px] font-black text-zinc-500">СКЛАД ПОЛУЧАТЕЛЬ</label>
             <select 
@@ -96,12 +101,31 @@ export default function GoodsReceipt() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-black text-zinc-500">№ НАКЛАДНОЙ</label>
-            <Input className="bg-black border-white/10 h-9 rounded-none" value={header.doc_num} onChange={e => setHeader({...header, doc_num: e.target.value})} />
+            <label className="text-[10px] font-black text-zinc-500">№ НАКЛАДНОЙ / СЕРИЯ</label>
+            <Input 
+              className="bg-black border-white/10 h-9 rounded-none" 
+              value={header.doc_num} 
+              onChange={e => setHeader({...header, doc_num: e.target.value})} 
+              placeholder="ABC-12345"
+            />
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-black text-zinc-500">ИНН ПОСТАВЩИКА</label>
-            <Input className="bg-black border-white/10 h-9 rounded-none" value={header.inn} onChange={e => setHeader({...header, inn: e.target.value})} />
+            <Input 
+              className="bg-black border-white/10 h-9 rounded-none" 
+              value={header.inn} 
+              onChange={e => setHeader({...header, inn: e.target.value})} 
+              placeholder="Без ограничения цифр"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-black text-zinc-500">ИМЯ ПОСТАВЩИКА</label>
+            <Input 
+              className="bg-black border-white/10 h-9 rounded-none" 
+              value={header.supplier_name} 
+              onChange={e => setHeader({...header, supplier_name: e.target.value})} 
+              placeholder="ТОО «Название»"
+            />
           </div>
         </div>
 
@@ -130,31 +154,50 @@ export default function GoodsReceipt() {
                       }}
                     >
                       <option value="" className="bg-black text-white">ВЫБЕРИТЕ ТОВАР...</option>
-                      {ingredients.map(i => <option key={i.id} value={i.id} className="bg-black text-white">{i.name} ({i.unit})</option>)}
+                      {ingredients.map(i => (
+                        <option key={i.id} value={i.id} className="bg-black text-white">
+                          {i.name} ({i.unit?.abbreviation || ''})
+                        </option>
+                      ))}
                     </select>
                   </td>
                   <td className="p-2">
-                    <input type="number" className="w-full bg-black border border-white/5 p-2 font-mono" value={item.quantity} onChange={e => {
-                      const newItems = [...items];
-                      newItems[idx].quantity = Number(e.target.value);
-                      setItems(newItems);
-                    }} />
+                    <input 
+                      type="number" 
+                      className="w-full bg-black border border-white/5 p-2 font-mono" 
+                      value={item.quantity} 
+                      onChange={e => {
+                        const newItems = [...items];
+                        newItems[idx].quantity = Number(e.target.value);
+                        setItems(newItems);
+                      }} 
+                    />
                   </td>
                   <td className="p-2">
-                    <input type="number" className="w-full bg-black border border-white/5 p-2 font-mono text-emerald-500" value={item.price} onChange={e => {
-                      const newItems = [...items];
-                      newItems[idx].price = Number(e.target.value);
-                      setItems(newItems);
-                    }} />
+                    <input 
+                      type="number" 
+                      className="w-full bg-black border border-white/5 p-2 font-mono text-emerald-500" 
+                      value={item.price} 
+                      onChange={e => {
+                        const newItems = [...items];
+                        newItems[idx].price = Number(e.target.value);
+                        setItems(newItems);
+                      }} 
+                    />
                   </td>
                   <td className="p-2 text-center">
-                    <button onClick={() => removeItem(idx)} className="text-zinc-600 hover:text-red-500"><Trash2 size={16}/></button>
+                    <button onClick={() => removeItem(idx)} className="text-zinc-600 hover:text-red-500">
+                      <Trash2 size={16}/>
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <button onClick={addItem} className="w-full py-3 border-t border-white/5 bg-white/5 hover:bg-white/10 text-[10px] font-black flex items-center justify-center gap-2 tracking-widest">
+          <button 
+            onClick={addItem} 
+            className="w-full py-3 border-t border-white/5 bg-white/5 hover:bg-white/10 text-[10px] font-black flex items-center justify-center gap-2 tracking-widest"
+          >
             <Plus size={14} /> ДОБАВИТЬ СТРОКУ
           </button>
         </div>

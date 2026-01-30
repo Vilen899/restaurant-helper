@@ -342,6 +342,89 @@ export type Database = {
         }
         Relationships: []
       }
+      material_document_items: {
+        Row: {
+          doc_id: string | null
+          id: string
+          ingredient_id: string | null
+          price: number | null
+          quantity: number
+        }
+        Insert: {
+          doc_id?: string | null
+          id?: string
+          ingredient_id?: string | null
+          price?: number | null
+          quantity: number
+        }
+        Update: {
+          doc_id?: string | null
+          id?: string
+          ingredient_id?: string | null
+          price?: number | null
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_document_items_doc_id_fkey"
+            columns: ["doc_id"]
+            isOneToOne: false
+            referencedRelation: "material_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "material_document_items_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      material_documents: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          doc_number: string | null
+          id: string
+          location_id: string | null
+          supplier_name: string | null
+          total_amount: number | null
+          type: string
+          vendor_inn: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          doc_number?: string | null
+          id?: string
+          location_id?: string | null
+          supplier_name?: string | null
+          total_amount?: number | null
+          type: string
+          vendor_inn?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          doc_number?: string | null
+          id?: string
+          location_id?: string | null
+          supplier_name?: string | null
+          total_amount?: number | null
+          type?: string
+          vendor_inn?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_documents_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       menu_categories: {
         Row: {
           created_at: string
@@ -799,6 +882,54 @@ export type Database = {
           },
         ]
       }
+      stock_movements: {
+        Row: {
+          created_at: string | null
+          id: string
+          ingredient_id: string | null
+          location_id: string | null
+          quantity: number
+          reference: string | null
+          type: string
+          vendor_inn: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          ingredient_id?: string | null
+          location_id?: string | null
+          quantity: number
+          reference?: string | null
+          type: string
+          vendor_inn?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          ingredient_id?: string | null
+          location_id?: string | null
+          quantity?: number
+          reference?: string | null
+          type?: string
+          vendor_inn?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_ingredient_id_fkey"
+            columns: ["ingredient_id"]
+            isOneToOne: false
+            referencedRelation: "ingredients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stock_movements_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stocktaking_items: {
         Row: {
           actual_quantity: number
@@ -1137,6 +1268,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_inventory: {
+        Args: { ing_id: string; loc_id: string; val: number }
+        Returns: undefined
       }
       is_admin_or_manager: { Args: { _user_id: string }; Returns: boolean }
     }

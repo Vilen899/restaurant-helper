@@ -2,15 +2,16 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Package, Receipt, AlertCircle, Loader2 } from "lucide-react";
+import { FileText, Package, Receipt, AlertCircle, Loader2, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 export default function MaterialDocs() {
   const [docs, setDocs] = useState<any[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // 1. ЗАГРУЗКА СПИСКА ПРИ ОТКРЫТИИ СТРАНИЦЫ
   useEffect(() => {
     fetchDocs();
   }, []);
@@ -18,20 +19,13 @@ export default function MaterialDocs() {
   const fetchDocs = async () => {
     setLoading(true);
     try {
-      console.log("Запрос к material_documents...");
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("material_documents")
-        .select('*')
+        .select('*, location:locations(name)')
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-
-      console.log("Получено строк:", data?.length);
       setDocs(data || []);
-      
-      if (data && data.length > 0) {
-        toast.success(`Найдено документов: ${data.length}`);
-      }
     } catch (error: any) {
       console.error("Ошибка запроса:", error);
       toast.error("ОШИБКА БАЗЫ ДАННЫХ: " + error.message);
@@ -40,10 +34,9 @@ export default function MaterialDocs() {
     }
   };
 
-  // 2. ЗАГРУЗКА ДЕТАЛЕЙ КОНКРЕТНОГО ДОКУМЕНТА
   const loadDetails = async (doc: any) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from("material_document_items")
         .select(`*, ingredient:ingredients(name)`)
         .eq("doc_id", doc.id);
@@ -52,6 +45,28 @@ export default function MaterialDocs() {
       setSelectedDoc({ ...doc, items: data });
     } catch (error: any) {
       toast.error("ОШИБКА ЗАГРУЗКИ ПОЗИЦИЙ: " + error.message);
+    }
+  };
+
+  const handleDeleteDoc = async (docId: string) => {
+    try {
+      // Удаляем позиции документа
+      await (supabase as any)
+        .from("material_document_items")
+        .delete()
+        .eq("doc_id", docId);
+
+      // Удаляем документ
+      await (supabase as any)
+        .from("material_documents")
+        .delete()
+        .eq("id", docId);
+
+      toast.success("ДОКУМЕНТ УДАЛЁН");
+      setSelectedDoc(null);
+      fetchDocs();
+    } catch (error: any) {
+      toast.error("ОШИБКА УДАЛЕНИЯ: " + error.message);
     }
   };
 
@@ -118,6 +133,9 @@ export default function MaterialDocs() {
                   <div>
                     <h3 className="text-base font-black text-white italic tracking-tight">№ {doc.doc_number || 'Б/Н'}</h3>
                     <p className="text-[10px] text-zinc-500 mt-1 font-bold">ИНН: {doc.vendor_inn || '---'}</p>
+                    {doc.supplier_name && (
+                      <p className="text-[10px] text-emerald-500 font-bold">{doc.supplier_name}</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-[9px] font-black text-zinc-600 mb-1">ИТОГО</p>
@@ -143,9 +161,28 @@ export default function MaterialDocs() {
                       СОДЕРЖАНИЕ ДОКУМЕНТА
                     </CardTitle>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[9px] text-zinc-500">ID ОПЕРАЦИИ</p>
-                    <p className="text-[10px] font-mono text-zinc-400">{selectedDoc.id.slice(0,8)}...</p>
+                  <div className="flex items-center gap-2">
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="sm" className="h-8 text-[10px] font-black">
+                          <Trash2 size={14} className="mr-1" /> УДАЛИТЬ
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent className="bg-zinc-900 border-white/10">
+                        <AlertDialogHeader>
+                          <AlertDialogTitle className="text-white">Удалить документ?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Документ и все его позиции будут удалены. Это действие необратимо.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="bg-zinc-800 border-white/10">Отмена</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteDoc(selectedDoc.id)} className="bg-red-600 hover:bg-red-500">
+                            Удалить
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </div>
               </CardHeader>
