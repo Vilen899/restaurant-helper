@@ -8,40 +8,42 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useManifest } from "@/hooks/useManifest";
 
-// Базовые страницы
+// Pages
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import PinLogin from "./pages/PinLogin";
 import CashierPage from "./pages/Cashier";
-import CustomerDisplayPage from "./pages/CustomerDisplay";
 
-// Админка - Компоненты и Лейаут
+// Admin pages
 import AdminLayout from "./components/layout/AdminLayout";
 import AdminDashboard from "./pages/admin/Dashboard";
-
-// Админка - Склад и Номенклатура
 import MenuPage from "./pages/admin/Menu";
-import CategoriesPage from "./pages/admin/Categories";
 import RecipesPage from "./pages/admin/Recipes";
 import SemiFinishedPage from "./pages/admin/SemiFinished";
 import IngredientsPage from "./pages/admin/Ingredients";
 import InventoryPage from "./pages/admin/Inventory";
+import LocationsPage from "./pages/admin/Locations";
+import StaffPage from "./pages/admin/Staff";
+import CategoriesPage from "./pages/admin/Categories";
+import ReportsPage from "./pages/admin/Reports";
+import InventoryReportPage from "./pages/admin/InventoryReport";
+import PaymentMethodsPage from "./pages/admin/PaymentMethods";
+import DocumentsPage from "./pages/admin/Documents";
+import WorkTimePage from "./pages/admin/WorkTime";
+import FiscalSettingsPage from "./pages/admin/FiscalSettings";
+import DiscountsPage from "./pages/admin/Discounts";
+import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
+import CustomerDisplayPage from "./pages/CustomerDisplay";
+import CashierSettingsPage from "./pages/admin/CashierSettings";
+import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
 import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
 import MaterialDocsPage from "./pages/admin/MaterialDocs";
 import StockTransferPage from "./pages/admin/StockTransfer";
+import SupplyDocsPage from "./pages/admin/SupplyDocs";
 import StocktakingDocsPage from "./pages/admin/StocktakingDocs";
-
-// Админка - Персонал и Настройки
-import StaffPage from "./pages/admin/Staff";
-import WorkTimePage from "./pages/admin/WorkTime";
-import LocationsPage from "./pages/admin/Locations";
-import PaymentMethodsPage from "./pages/admin/PaymentMethods";
-import DiscountsPage from "./pages/admin/Discounts";
-import ReportsPage from "./pages/admin/Reports";
-import InventoryReportPage from "./pages/admin/InventoryReport";
-import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
-import CashierSettingsPage from "./pages/admin/CashierSettings";
-import FiscalSettingsPage from "./pages/admin/FiscalSettings";
+import TransferDocsPage from "./pages/admin/TransferDocs";
+import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
+import MovementJournalPage from "./pages/admin/MovementJournal";
 
 const queryClient = new QueryClient();
 
@@ -50,14 +52,12 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* ПУБЛИЧНЫЕ И КАССОВЫЕ РОУТЫ */}
       <Route path="/" element={<PinLogin />} />
       <Route path="/pin" element={<PinLogin />} />
       <Route path="/cashier" element={<CashierPage />} />
       <Route path="/customer-display" element={<CustomerDisplayPage />} />
       <Route path="/admin/login" element={<Auth />} />
 
-      {/* АДМИН-ПАНЕЛЬ С ЗАЩИТОЙ */}
       <Route
         path="/admin"
         element={
@@ -67,34 +67,40 @@ function AppRoutes() {
         }
       >
         <Route index element={<AdminDashboard />} />
-
-        {/* НОМЕНКЛАТУРА */}
         <Route path="menu" element={<MenuPage />} />
         <Route path="categories" element={<CategoriesPage />} />
-        <Route path="ingredients" element={<IngredientsPage />} />
         <Route path="recipes" element={<RecipesPage />} />
         <Route path="semi-finished" element={<SemiFinishedPage />} />
-
-        {/* СКЛАД (MIGO) */}
+        <Route path="ingredients" element={<IngredientsPage />} />
         <Route path="inventory" element={<InventoryPage />} />
-        <Route path="migo" element={<GoodsReceiptPage />} />
-        <Route path="transfer" element={<StockTransferPage />} />
-        <Route path="material-docs" element={<MaterialDocsPage />} />
-        <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
-
-        {/* ПЕРСОНАЛ И БИЗНЕС */}
-        <Route path="staff" element={<StaffPage />} />
-        <Route path="work-time" element={<WorkTimePage />} />
         <Route path="locations" element={<LocationsPage />} />
-        <Route path="payment-methods" element={<PaymentMethodsPage />} />
-        <Route path="discounts" element={<DiscountsPage />} />
-
-        {/* ОТЧЕТЫ И СИСТЕМА */}
+        <Route path="staff" element={<StaffPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/inventory" element={<InventoryReportPage />} />
-        <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
-        <Route path="cashier-settings" element={<CashierSettingsPage />} />
+        <Route path="payment-methods" element={<PaymentMethodsPage />} />
+        <Route path="documents" element={<DocumentsPage />} />
+        <Route path="work-time" element={<WorkTimePage />} />
         <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
+        <Route path="discounts" element={<DiscountsPage />} />
+        <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
+        <Route path="cashier-settings" element={<CashierSettingsPage />} />
+        <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
+
+        {/* Warehouse documents */}
+        <Route path="goods-receipt" element={<GoodsReceiptPage />} />
+        <Route path="migo" element={<GoodsReceiptPage />} />
+        <Route path="material-docs" element={<MaterialDocsPage />} />
+
+        {/* Исправленный путь для перемещения */}
+        <Route path="stock-transfer" element={<StockTransferPage />} />
+        <Route path="transfer" element={<StockTransferPage />} />
+
+        <Route path="supply-docs" element={<SupplyDocsPage />} />
+        <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
+        <Route path="transfer-docs" element={<TransferDocsPage />} />
+        <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
+        <Route path="movement-journal" element={<MovementJournalPage />} />
+        <Route path="material-log" element={<MovementJournalPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />
@@ -102,7 +108,6 @@ function AppRoutes() {
   );
 }
 
-// ОСНОВНОЙ КОМПОНЕНТ APP
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <LanguageProvider>
