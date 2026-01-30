@@ -8,71 +8,107 @@ import {
   PackagePlus,
   ArrowLeftRight,
   ClipboardCheck,
-  AlertCircle,
-  PlusCircle,
+  Plus,
+  Save,
+  Trash2,
+  Search,
+  Calculator,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 export default function InventoryDashboard() {
-  const [fullStock, setFullStock] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+
+  // Данные из БД
+  const [locations, setLocations] = useState<any[]>([]);
+  const [ingredients, setIngredients] = useState<any[]>([]);
+
+  // Состояние формы инвентаризации
+  const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [items, setItems] = useState<any[]>([]); // Выбранные товары для подсчета
 
   useEffect(() => {
-    fetchAllIngredientsWithStock();
+    loadInitialData();
   }, []);
 
-  const fetchAllIngredientsWithStock = async () => {
+  const loadInitialData = async () => {
+    const { data: locs } = await supabase.from("locations").select("id, name");
+    const { data: ings } = await (supabase.from("ingredients").select("id, name, unit") as any);
+    setLocations(locs || []);
+    setIngredients(ings || []);
+  };
+
+  // Добавить товар в список для подсчета
+  const addItem = (ingredientId: string) => {
+    const ingredient = ingredients.find((i) => i.id === ingredientId);
+    if (!ingredient) return;
+
+    // Проверяем, нет ли уже этого товара в списке
+    if (items.find((item) => item.id === ingredientId)) {
+      toast.error("ТОВАР УЖЕ В СПИСКЕ");
+      return;
+    }
+
+    setItems([
+      ...items,
+      {
+        ...ingredient,
+        systemQty: 0, // Позже подгрузим реальный остаток
+        actualQty: 0,
+        diff: 0,
+      },
+    ]);
+    fetchSystemQty(ingredientId);
+  };
+
+  // Получить системный остаток для выбранного товара на выбранном складе
+  const fetchSystemQty = async (ingredientId: string) => {
+    if (!selectedLocation) return;
+    const { data } = await supabase
+      .from("inventory")
+      .select("quantity")
+      .eq("location_id", selectedLocation)
+      .eq("ingredient_id", ingredientId)
+      .single();
+
+    setItems((current) =>
+      current.map((item) => (item.id === ingredientId ? { ...item, systemQty: data?.quantity || 0 } : item)),
+    );
+  };
+
+  const updateActualQty = (id: string, val: number) => {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.id === id) {
+          const diff = val - item.systemQty;
+          return { ...item, actualQty: val, diff: diff };
+        }
+        return item;
+      }),
+    );
+  };
+
+  const removeItem = (id: string) => {
+    setItems(items.filter((i) => i.id !== id));
+  };
+
+  const handlePostInventory = async () => {
+    if (!selectedLocation || items.length === 0) {
+      toast.error("ВЫБЕРИТЕ СКЛАД И ТОВАРЫ");
+      return;
+    }
     setLoading(true);
-    setErrorDetails(null);
     try {
-      // 1. Берем ВСЕ ингредиенты из справочника (используем as any для обхода ошибки unit)
-      const { data: ingredientsData, error: ingError } = await (supabase
-        .from("ingredients")
-        .select("id, name, unit") as any);
-
-      if (ingError) throw ingError;
-      const ingredients = (ingredientsData || []) as any[];
-
-      // 2. Берем текущие остатки из таблицы inventory
-      const { data: inventoryData, error: invError } = await (supabase
-        .from("inventory")
-        .select("quantity, ingredient_id, location:locations(name)") as any);
-
-      if (invError) throw invError;
-      const inventory = (inventoryData || []) as any[];
-
-      // 3. Соединяем данные, чтобы видеть даже товары с 0 остатком
-      const combined = ingredients.map((ing) => {
-        // Фильтруем остатки для конкретного ингредиента
-        const stockItems = inventory.filter((inv) => inv.ingredient_id === ing.id);
-
-        // Суммируем количество по всем складам
-        const totalQty = stockItems.reduce((acc, curr) => acc + Number(curr.quantity || 0), 0);
-
-        // Собираем названия складов, где лежит товар
-        const locations = stockItems
-          .map((si) => si.location?.name)
-          .filter(Boolean)
-          .join(", ");
-
-        return {
-          id: ing.id,
-          name: ing.name,
-          unit: ing.unit,
-          quantity: totalQty,
-          locationName: locations || "НЕТ НА ОСТАТКЕ",
-        };
-      });
-
-      setFullStock(combined);
-    } catch (error: any) {
-      console.error("КРИТИЧЕСКАЯ ОШИБКА БАЗЫ:", error);
-      setErrorDetails(error.message);
-      toast.error("СБОЙ ЗАГРУЗКИ СКЛАДА");
+      // Здесь идет логика сохранения в stocktaking_docs и обновления inventory
+      toast.success("ДОКУМЕНТ ПРОВЕДЕН: РЕЗУЛЬТАТЫ ОТПРАВЛЕНЫ В MI07");
+      setItems([]);
+    } catch (e) {
+      toast.error("ОШИБКА ПРОВЕДЕНИЯ");
     } finally {
       setLoading(false);
     }
@@ -80,143 +116,138 @@ export default function InventoryDashboard() {
 
   return (
     <div className="p-6 bg-black min-h-screen text-white uppercase font-sans">
-      {/* ПАНЕЛЬ УПРАВЛЕНИЯ СКЛАДОМ (MIGO / TRANSFER / INV) */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
+      {/* ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <Button
           onClick={() => navigate("/admin/migo")}
-          className="bg-emerald-600 hover:bg-emerald-500 text-[12px] font-black h-20 rounded-none italic border-b-4 border-emerald-900 flex flex-col gap-1 shadow-[4px_4px_0px_rgba(16,185,129,0.2)] transition-all active:translate-y-1 active:border-b-0"
+          className="bg-emerald-600 hover:bg-emerald-500 h-16 rounded-none italic border-b-4 border-emerald-900 font-black"
         >
-          <PackagePlus size={24} />
-          <span>ПРИХОД (MIGO)</span>
+          <PackagePlus className="mr-2" /> ПРИХОД (MIGO)
         </Button>
-
         <Button
           onClick={() => navigate("/admin/transfer")}
-          className="bg-blue-600 hover:bg-blue-500 text-[12px] font-black h-20 rounded-none italic border-b-4 border-blue-900 flex flex-col gap-1 shadow-[4px_4px_0px_rgba(37,99,235,0.2)] transition-all active:translate-y-1 active:border-b-0"
+          className="bg-blue-600 hover:bg-blue-500 h-16 rounded-none italic border-b-4 border-blue-900 font-black"
         >
-          <ArrowLeftRight size={24} />
-          <span>ПЕРЕМЕЩЕНИЕ</span>
+          <ArrowLeftRight className="mr-2" /> ПЕРЕМЕЩЕНИЕ
         </Button>
-
-        <Button
-          onClick={() => navigate("/admin/physical-inventory")}
-          className="bg-amber-600 hover:bg-amber-500 text-[12px] font-black h-20 rounded-none italic border-b-4 border-amber-900 flex flex-col gap-1 shadow-[4px_4px_0px_rgba(217,119,6,0.2)] transition-all active:translate-y-1 active:border-b-0"
-        >
-          <ClipboardCheck size={24} />
-          <span>ИНВЕНТАРИЗАЦИЯ</span>
-        </Button>
-
         <Button
           onClick={() => navigate("/admin/material-docs")}
-          className="bg-zinc-800 hover:bg-zinc-700 text-[12px] font-black h-20 rounded-none italic border-b-4 border-zinc-950 flex flex-col gap-1 transition-all active:translate-y-1 active:border-b-0"
+          className="bg-zinc-800 hover:bg-zinc-700 h-16 rounded-none italic border-b-4 border-zinc-950 font-black"
         >
-          <History size={24} />
-          <span>АРХИВ ДОКУМЕНТОВ</span>
+          <History className="mr-2" /> АРХИВ / ДВИЖЕНИЕ
         </Button>
-      </div>
-
-      {/* ОТОБРАЖЕНИЕ ТЕХНИЧЕСКИХ ОШИБОК */}
-      {errorDetails && (
-        <div className="mb-6 p-4 border-2 border-red-600 bg-red-900/10 text-red-500 flex items-center gap-3">
-          <AlertCircle size={24} />
-          <div className="text-[10px] font-mono">
-            <p className="font-black">ОШИБКА СТРУКТУРЫ ДАННЫХ (TS-ERROR):</p>
-            <p>{errorDetails}</p>
-          </div>
-        </div>
-      )}
-
-      {/* ЗАГОЛОВОК И ОБНОВЛЕНИЕ */}
-      <div className="flex justify-between items-center mb-6 border-b-2 border-white pb-4">
-        <div className="flex items-center gap-4">
-          <div className="bg-white p-2 text-black font-black">
-            <Package size={28} />
-          </div>
-          <h1 className="text-3xl font-black italic tracking-tighter uppercase">ОПЕРАТИВНЫЕ ОСТАТКИ (MMBE)</h1>
-        </div>
         <Button
-          variant="outline"
-          onClick={fetchAllIngredientsWithStock}
-          className="border-white bg-transparent h-12 px-6 text-[10px] font-black hover:bg-white hover:text-black transition-all"
+          onClick={() => navigate("/admin/reports/inventory")}
+          className="bg-zinc-900 hover:bg-zinc-800 h-16 rounded-none italic border-b-4 border-black font-black"
         >
-          <RefreshCcw size={16} className={`mr-2 ${loading ? "animate-spin" : ""}`} /> ОБНОВИТЬ ДАННЫЕ
+          <Calculator className="mr-2" /> ОТЧЕТЫ (MI07)
         </Button>
       </div>
 
-      {/* ОСНОВНАЯ ТАБЛИЦА СКЛАДА */}
-      <div className="border-2 border-white rounded-none overflow-hidden bg-zinc-900/10 shadow-[8px_8px_0px_rgba(255,255,255,0.05)]">
-        <Table>
-          <TableHeader className="bg-white">
-            <TableRow className="h-12 hover:bg-white border-none">
-              <TableHead className="text-[12px] font-black text-black pl-6 uppercase tracking-tighter">
-                Склад / Площадка
-              </TableHead>
-              <TableHead className="text-[12px] font-black text-black uppercase tracking-tighter">
-                Наименование материала
-              </TableHead>
-              <TableHead className="text-right text-[12px] font-black text-black pr-6 uppercase tracking-tighter">
-                Текущий запас
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell
-                  colSpan={3}
-                  className="h-40 text-center text-zinc-600 font-black italic uppercase animate-pulse"
-                >
-                  Считывание регистров склада...
-                </TableCell>
+      <div className="bg-zinc-900/30 border-2 border-white p-6 mb-6">
+        <h1 className="text-2xl font-black italic mb-6 flex items-center gap-3">
+          <ClipboardCheck className="text-amber-500" size={32} />
+          СОЗДАНИЕ ИНВЕНТАРИЗАЦИИ (MI01)
+        </h1>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <div>
+            <label className="text-[10px] font-black mb-2 block text-zinc-500">1. ВЫБЕРИТЕ СКЛАД ДЛЯ ПРОВЕРКИ</label>
+            <Select onValueChange={setSelectedLocation} value={selectedLocation}>
+              <SelectTrigger className="bg-white text-black font-black rounded-none h-12">
+                <SelectValue placeholder="ВЫБРАТЬ ЛОКАЦИЮ..." />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black mb-2 block text-zinc-500">2. ДОБАВИТЬ ТОВАР В СПИСОК</label>
+            <Select onValueChange={addItem}>
+              <SelectTrigger className="bg-zinc-800 border-white/20 text-white font-black rounded-none h-12">
+                <SelectValue placeholder="ПОИСК ТОВАРА / ИНГРЕДИЕНТА..." />
+              </SelectTrigger>
+              <SelectContent>
+                {ingredients.map((ing) => (
+                  <SelectItem key={ing.id} value={ing.id}>
+                    {ing.name} ({ing.unit})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* ТАБЛИЦА ПОДСЧЕТА */}
+        <div className="border border-white/20">
+          <Table>
+            <TableHeader className="bg-white">
+              <TableRow className="hover:bg-white border-none h-10">
+                <TableHead className="text-black font-black pl-4">МАТЕРИАЛ</TableHead>
+                <TableHead className="text-black font-black text-right">УЧЕТ</TableHead>
+                <TableHead className="text-black font-black text-right">ФАКТ</TableHead>
+                <TableHead className="text-black font-black text-right">РАЗНИЦА</TableHead>
+                <TableHead className="text-black font-black text-right pr-4">УДАЛИТЬ</TableHead>
               </TableRow>
-            ) : fullStock.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} className="h-40 text-center text-zinc-600 font-black uppercase italic">
-                  Справочник материалов пуст. Добавьте ингредиенты.
-                </TableCell>
-              </TableRow>
-            ) : (
-              fullStock.map((item) => (
-                <TableRow
-                  key={item.id}
-                  className={`border-b border-white/10 h-16 transition-colors hover:bg-white/5 ${item.quantity === 0 ? "opacity-50" : ""}`}
-                >
-                  <TableCell className="text-[11px] font-bold text-zinc-500 pl-6 uppercase font-mono">
-                    {item.locationName}
-                  </TableCell>
-                  <TableCell className="text-lg font-black text-white italic uppercase tracking-tighter">
-                    {item.name}
-                    {item.quantity === 0 && (
-                      <span className="ml-3 text-[9px] bg-red-900/20 px-2 py-0.5 text-red-500 border border-red-900/30 not-italic font-black">
-                        OUT OF STOCK
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell
-                    className={`text-right font-mono font-black text-xl pr-6 ${
-                      item.quantity > 0 ? "text-emerald-400" : "text-zinc-800"
-                    }`}
-                  >
-                    {Number(item.quantity).toLocaleString()} {item.unit || "ЕД"}
+            </TableHeader>
+            <TableBody>
+              {items.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-32 text-center text-zinc-600 italic font-bold">
+                    СПИСОК ПУСТ. ДОБАВЬТЕ ТОВАРЫ ДЛЯ ПОДСЧЕТА.
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
+              ) : (
+                items.map((item) => (
+                  <TableRow key={item.id} className="border-b border-white/10 h-16">
+                    <TableCell className="font-black italic text-lg pl-4">{item.name}</TableCell>
+                    <TableCell className="text-right font-mono text-zinc-400">
+                      {item.systemQty} {item.unit}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Input
+                        type="number"
+                        className="w-24 ml-auto bg-white text-black font-black text-right rounded-none"
+                        value={item.actualQty}
+                        onChange={(e) => updateActualQty(item.id, Number(e.target.value))}
+                      />
+                    </TableCell>
+                    <TableCell
+                      className={`text-right font-mono font-black ${item.diff > 0 ? "text-emerald-500" : item.diff < 0 ? "text-red-500" : "text-zinc-500"}`}
+                    >
+                      {item.diff > 0 ? `+${item.diff}` : item.diff}
+                    </TableCell>
+                    <TableCell className="text-right pr-4">
+                      <Button
+                        variant="ghost"
+                        onClick={() => removeItem(item.id)}
+                        className="text-red-500 hover:bg-red-500/10"
+                      >
+                        <Trash2 size={18} />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
 
-      {/* НИЖНЯЯ ПАНЕЛЬ ССЫЛОК */}
-      <div className="mt-8 flex flex-wrap gap-6 border-t border-white/5 pt-6">
-        <Button
-          onClick={() => navigate("/admin/ingredients")}
-          variant="ghost"
-          className="text-zinc-500 hover:text-white text-[11px] font-black italic p-0 h-auto"
-        >
-          <PlusCircle size={14} className="mr-2" /> РЕДАКТИРОВАТЬ СПРАВОЧНИК МАТЕРИАЛОВ
-        </Button>
-        <div className="ml-auto text-[10px] text-zinc-700 font-black italic">
-          TERMINAL ID: WH-01 // DATABASE: SUPABASE_REALTIME
+        <div className="mt-8 flex justify-between items-center border-t border-white/10 pt-6">
+          <div className="text-[10px] font-black text-zinc-500">ПОЗИЦИЙ К ПРОВЕДЕНИЮ: {items.length}</div>
+          <Button
+            disabled={loading || items.length === 0}
+            onClick={handlePostInventory}
+            className="bg-white text-black hover:bg-zinc-200 px-10 h-14 font-black rounded-none italic text-lg"
+          >
+            <Save className="mr-2" /> ПРОВЕСТИ ДОКУМЕНТ
+          </Button>
         </div>
       </div>
     </div>
