@@ -2,7 +2,18 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileText, Package, Receipt, AlertCircle, Loader2, Trash2, Edit } from "lucide-react";
+import {
+  FileText,
+  Package,
+  Receipt,
+  AlertCircle,
+  Loader2,
+  Trash2,
+  Edit,
+  PackagePlus,
+  ArrowLeftRight,
+  Database,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,19 +27,10 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-// Вставь это в начало MaterialDocs.tsx (внутри return, над заголовком)
-<div className="flex gap-4 mb-8 bg-zinc-900/50 p-4 border border-white/10">
-  <Button onClick={() => navigate("/admin/migo")} className="bg-emerald-600 text-[10px] font-black">
-    + ПРИХОД (MIGO)
-  </Button>
-  <Button onClick={() => navigate("/admin/transfer")} className="bg-blue-600 text-[10px] font-black">
-    ↔ ПЕРЕМЕЩЕНИЕ
-  </Button>
-  <Button onClick={() => navigate("/admin/inventory-check")} className="bg-amber-600 text-[10px] font-black">
-    ! ИНВЕНТАРКА
-  </Button>
-</div>;
+import { useNavigate } from "react-router-dom"; // ДОБАВИЛИ ИМПОРТ
+
 export default function MaterialDocs() {
+  const navigate = useNavigate(); // ДОБАВИЛИ ИНИЦИАЛИЗАЦИЮ
   const [docs, setDocs] = useState<any[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,6 +89,28 @@ export default function MaterialDocs() {
 
   return (
     <div className="p-6 bg-[#050505] min-h-screen text-zinc-300 font-sans uppercase">
+      {/* ПАНЕЛЬ БЫСТРОЙ НАВИГАЦИИ — ДОБАВИЛИ СЮДА КНОПКИ */}
+      <div className="flex flex-wrap gap-3 mb-8 bg-zinc-900/30 p-4 border border-white/10 rounded-sm">
+        <Button
+          onClick={() => navigate("/admin/migo")}
+          className="bg-emerald-600 hover:bg-emerald-500 text-[10px] font-black h-10 px-6 rounded-none italic shadow-[4px_4px_0px_rgba(0,0,0,1)]"
+        >
+          <PackagePlus className="mr-2" size={16} /> ПРИХОД (MIGO)
+        </Button>
+        <Button
+          onClick={() => navigate("/admin/transfer")}
+          className="bg-blue-600 hover:bg-blue-500 text-[10px] font-black h-10 px-6 rounded-none italic shadow-[4px_4px_0px_rgba(0,0,0,1)]"
+        >
+          <ArrowLeftRight className="mr-2" size={16} /> ПЕРЕМЕЩЕНИЕ
+        </Button>
+        <Button
+          onClick={() => navigate("/admin/inventory")}
+          className="bg-zinc-800 text-white hover:bg-zinc-700 text-[10px] font-black h-10 px-6 rounded-none italic shadow-[4px_4px_0px_rgba(0,0,0,1)]"
+        >
+          <Database className="mr-2" size={16} /> ТЕКУЩИЙ СКЛАД
+        </Button>
+      </div>
+
       {/* ВЕРХНЯЯ ПАНЕЛЬ */}
       <div className="flex items-center justify-between mb-8 border-b border-white/10 pb-6">
         <div className="flex items-center gap-4">
@@ -169,7 +193,7 @@ export default function MaterialDocs() {
         {/* ПРАВАЯ ЧАСТЬ: ДЕТАЛИЗАЦИЯ */}
         <div className="col-span-7">
           {selectedDoc ? (
-            <Card className="bg-zinc-900/20 border-white/10 rounded-none overflow-hidden border-t-2 border-t-emerald-500">
+            <Card className="bg-zinc-900/20 border-white/10 rounded-none overflow-hidden border-t-2 border-t-emerald-500 shadow-2xl">
               <CardHeader className="bg-zinc-900/80 p-6 border-b border-white/5">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
