@@ -5,8 +5,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FileText, Package, Receipt, AlertCircle, Loader2, Trash2, Edit } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+// Вставь это в начало MaterialDocs.tsx (внутри return, над заголовком)
+<div className="flex gap-4 mb-8 bg-zinc-900/50 p-4 border border-white/10">
+  <Button onClick={() => navigate("/admin/migo")} className="bg-emerald-600 text-[10px] font-black">
+    + ПРИХОД (MIGO)
+  </Button>
+  <Button onClick={() => navigate("/admin/transfer")} className="bg-blue-600 text-[10px] font-black">
+    ↔ ПЕРЕМЕЩЕНИЕ
+  </Button>
+  <Button onClick={() => navigate("/admin/inventory-check")} className="bg-amber-600 text-[10px] font-black">
+    ! ИНВЕНТАРКА
+  </Button>
+</div>;
 export default function MaterialDocs() {
   const [docs, setDocs] = useState<any[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
@@ -21,7 +42,7 @@ export default function MaterialDocs() {
     try {
       const { data, error } = await (supabase as any)
         .from("material_documents")
-        .select('*, location:locations(name)')
+        .select("*, location:locations(name)")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -51,16 +72,10 @@ export default function MaterialDocs() {
   const handleDeleteDoc = async (docId: string) => {
     try {
       // Удаляем позиции документа
-      await (supabase as any)
-        .from("material_document_items")
-        .delete()
-        .eq("doc_id", docId);
+      await (supabase as any).from("material_document_items").delete().eq("doc_id", docId);
 
       // Удаляем документ
-      await (supabase as any)
-        .from("material_documents")
-        .delete()
-        .eq("id", docId);
+      await (supabase as any).from("material_documents").delete().eq("id", docId);
 
       toast.success("ДОКУМЕНТ УДАЛЁН");
       setSelectedDoc(null);
@@ -83,7 +98,7 @@ export default function MaterialDocs() {
             <p className="text-[10px] text-zinc-500 font-bold tracking-[0.3em]">СИСТЕМА УЧЕТА ДВИЖЕНИЯ ТОВАРА</p>
           </div>
         </div>
-        <button 
+        <button
           onClick={fetchDocs}
           className="text-[10px] border border-white/10 px-4 py-2 hover:bg-white/5 transition-colors font-black"
         >
@@ -109,33 +124,35 @@ export default function MaterialDocs() {
             </div>
           ) : (
             docs.map((doc) => (
-              <div 
+              <div
                 key={doc.id}
                 onClick={() => loadDetails(doc)}
                 className={`p-5 border transition-all cursor-pointer relative overflow-hidden group ${
-                  selectedDoc?.id === doc.id 
-                  ? 'bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/30' 
-                  : 'bg-zinc-900/40 border-white/5 hover:border-white/20'
+                  selectedDoc?.id === doc.id
+                    ? "bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/30"
+                    : "bg-zinc-900/40 border-white/5 hover:border-white/20"
                 }`}
               >
                 <div className="flex justify-between items-start mb-4">
-                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-sm ${
-                    doc.type === 'MIGO_101' ? 'bg-blue-600 text-white' : 'bg-amber-600 text-white'
-                  }`}>
+                  <span
+                    className={`text-[9px] font-black px-2 py-0.5 rounded-sm ${
+                      doc.type === "MIGO_101" ? "bg-blue-600 text-white" : "bg-amber-600 text-white"
+                    }`}
+                  >
                     {doc.type}
                   </span>
                   <span className="text-[10px] text-zinc-500 font-mono">
                     {new Date(doc.created_at).toLocaleString()}
                   </span>
                 </div>
-                
+
                 <div className="flex justify-between items-end">
                   <div>
-                    <h3 className="text-base font-black text-white italic tracking-tight">№ {doc.doc_number || 'Б/Н'}</h3>
-                    <p className="text-[10px] text-zinc-500 mt-1 font-bold">ИНН: {doc.vendor_inn || '---'}</p>
-                    {doc.supplier_name && (
-                      <p className="text-[10px] text-emerald-500 font-bold">{doc.supplier_name}</p>
-                    )}
+                    <h3 className="text-base font-black text-white italic tracking-tight">
+                      № {doc.doc_number || "Б/Н"}
+                    </h3>
+                    <p className="text-[10px] text-zinc-500 mt-1 font-bold">ИНН: {doc.vendor_inn || "---"}</p>
+                    {doc.supplier_name && <p className="text-[10px] text-emerald-500 font-bold">{doc.supplier_name}</p>}
                   </div>
                   <div className="text-right">
                     <p className="text-[9px] font-black text-zinc-600 mb-1">ИТОГО</p>
@@ -157,9 +174,7 @@ export default function MaterialDocs() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <Package className="text-emerald-500" size={20} />
-                    <CardTitle className="text-sm font-black text-white italic">
-                      СОДЕРЖАНИЕ ДОКУМЕНТА
-                    </CardTitle>
+                    <CardTitle className="text-sm font-black text-white italic">СОДЕРЖАНИЕ ДОКУМЕНТА</CardTitle>
                   </div>
                   <div className="flex items-center gap-2">
                     <AlertDialog>
@@ -177,7 +192,10 @@ export default function MaterialDocs() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel className="bg-zinc-800 border-white/10">Отмена</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeleteDoc(selectedDoc.id)} className="bg-red-600 hover:bg-red-500">
+                          <AlertDialogAction
+                            onClick={() => handleDeleteDoc(selectedDoc.id)}
+                            className="bg-red-600 hover:bg-red-500"
+                          >
                             Удалить
                           </AlertDialogAction>
                         </AlertDialogFooter>
@@ -215,7 +233,7 @@ export default function MaterialDocs() {
                     ))}
                   </TableBody>
                 </Table>
-                
+
                 {/* ФИНАЛЬНЫЙ ИТОГ В КАРТОЧКЕ */}
                 <div className="p-8 bg-emerald-500/5 flex justify-between items-center border-t border-white/5">
                   <div>
@@ -235,7 +253,9 @@ export default function MaterialDocs() {
             <div className="h-[60vh] border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-800 bg-zinc-900/5">
               <FileText size={60} strokeWidth={1} className="mb-4 opacity-10 text-white" />
               <p className="text-[10px] font-black tracking-[0.4em] uppercase text-zinc-500 animate-pulse text-center leading-relaxed">
-                ОЖИДАНИЕ ВЫБОРА ДОКУМЕНТА<br/>ДЛЯ ДЕТАЛИЗАЦИИ
+                ОЖИДАНИЕ ВЫБОРА ДОКУМЕНТА
+                <br />
+                ДЛЯ ДЕТАЛИЗАЦИИ
               </p>
             </div>
           )}
