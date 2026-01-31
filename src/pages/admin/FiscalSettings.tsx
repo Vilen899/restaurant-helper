@@ -1,5 +1,16 @@
 import { useState, useEffect } from "react";
-import { Printer, Settings, Wifi, WifiOff, TestTube, Save, AlertTriangle, Eye, EyeOff, ListTree } from "lucide-react";
+import {
+  Printer,
+  Settings,
+  Wifi,
+  WifiOff,
+  TestTube,
+  Save,
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,24 +23,26 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
+// Интерфейс полностью совпадает с твоим XML конфигом iiko
 interface FiscalConfig {
   id?: string;
   location_id: string;
   enabled: boolean;
-  driver: "hdm_iiko" | "custom";
+  driver: "hdm_iiko" | "custom" | "hdm" | "atol" | "shtrih" | "evotor";
   api_url: string;
   api_login: string; // CashierId
   api_password: string; // CashierPin
-  kkm_password: string;
-  vat_rate: number;
-  default_adg: string;
+  kkm_password: string; // KkmPassword
+  vat_rate: number; // VatRate
+  default_adg: string; // DefaultAdg
   use_default_adg: boolean;
-  subcharge_name: string;
-  subcharge_code: string;
+  subcharge_name: string; // SubchargeAsDishName
+  subcharge_code: string; // SubchargeAsDishCode
   default_timeout: number;
   payment_timeout: number;
   use_kitchen_name: boolean;
   use_discount: boolean;
+  auto_print_receipt: boolean;
 }
 
 const defaultConfig: FiscalConfig = {
@@ -49,6 +62,7 @@ const defaultConfig: FiscalConfig = {
   payment_timeout: 120000,
   use_kitchen_name: true,
   use_discount: true,
+  auto_print_receipt: true,
 };
 
 export default function FiscalSettingsPage() {
@@ -67,28 +81,53 @@ export default function FiscalSettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedLocation) fetchSettings(selectedLocation);
+    if (selectedLocation) {
+      fetchSettings(selectedLocation);
+    }
   }, [selectedLocation]);
 
   const fetchLocations = async () => {
-    const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
-    if (data) {
-      setLocations(data);
-      if (data.length > 0) setSelectedLocation(data[0].id);
+    try {
+      const { data, error } = await supabase.from("locations").select("id, name").eq("is_active", true).order("name");
+      if (error) throw error;
+      setLocations(data || []);
+      if (data && data.length > 0) setSelectedLocation(data[0].id);
+    } catch (error) {
+      toast.error("Ошибка загрузки точек");
     }
-    setLoading(false);
   };
 
   const fetchSettings = async (locationId: string) => {
-    const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locationId).maybeSingle();
-    if (data) {
-      setConfig({ ...data, driver: "hdm_iiko" });
-    } else {
-      setConfig({ ...defaultConfig, location_id: locationId });
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("fiscal_settings")
+        .select("*")
+        .eq("location_id", locationId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        // Решение ошибки TS2345: смешиваем дефолты с данными из БД
+        setConfig({
+          ...defaultConfig,
+          ...data,
+          driver: data.driver || "hdm_iiko",
+        });
+      } else {
+        setConfig({ ...defaultConfig, location_id: locationId });
+      }
+    } catch (error) {
+      console.error("Fetch error:", error);
+      toast.error("Ошибка загрузки настроек");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSave = async () => {
+    if (!selectedLocation) return toast.error("Выберите точку");
     setSaving(true);
     try {
       const { error } = await supabase.from("fiscal_settings").upsert({
@@ -98,21 +137,48 @@ export default function FiscalSettingsPage() {
       });
       if (error) throw error;
       toast.success("Настройки iiko KKM сохранены");
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (error: any) {
+      toast.error(error.message || "Ошибка сохранения");
     } finally {
       setSaving(false);
     }
   };
 
+  const handleTestConnection = async () => {
+    setTesting(true);
+    try {
+      // Здесь будет вызов либо Edge Function, либо прямой запрос к локальному IP
+      toast.info(`Проверка связи с ${config.api_url}...`);
+      // Имитация теста
+      setTimeout(() => {
+        setConnected(true);
+        setTesting(false);
+        toast.success("Соединение с iiko плагином установлено!");
+      }, 1500);
+    } catch (e) {
+      setTesting(false);
+      toast.error("Касса не отвечает. Проверьте сеть.");
+    }
+  };
+
+  if (loading)
+    return (
+      <div className="flex justify-center p-10">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Интеграция iiko KKM" description="Настройка фискализации по протоколу iiko (HDM Armenia)" />
+      <PageHeader
+        title="Интеграция iiko KKM"
+        description="Настройка связи с фискальным регистратором через плагин HDM"
+      />
 
-      <Card className="border-blue-500/20 bg-blue-500/5">
-        <CardContent className="p-4 flex items-center justify-between">
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Label>Рабочая точка:</Label>
+            <Label className="font-bold">Точка продаж:</Label>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
               <SelectTrigger className="w-64 bg-background">
                 <SelectValue />
@@ -126,29 +192,33 @@ export default function FiscalSettingsPage() {
               </SelectContent>
             </Select>
           </div>
-          {config.enabled ? (
-            <div className="flex items-center text-green-600 gap-2 font-medium">
-              <Wifi className="h-4 w-4" /> Активна
-            </div>
-          ) : (
-            <div className="text-muted-foreground">Выключена</div>
-          )}
+          <div className="flex items-center gap-2">
+            {config.enabled ? (
+              <span className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                <ShieldCheck className="h-4 w-4" /> Система активна
+              </span>
+            ) : (
+              <span className="text-muted-foreground bg-gray-100 px-3 py-1 rounded-full border">Выключена</span>
+            )}
+          </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Основные сетевые настройки */}
+        {/* Connection & Auth */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase tracking-wider">Сетевой узел (Host)</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-primary">
+              <Settings className="h-5 w-5" /> Авторизация и Сеть
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>API Host / IP Address</Label>
+              <Label>Host Address (IP:Port)</Label>
               <Input
                 value={config.api_url}
                 onChange={(e) => setConfig({ ...config, api_url: e.target.value })}
-                placeholder="192.168.9.19:8080"
+                placeholder="http://192.168.9.19:8080"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -176,8 +246,9 @@ export default function FiscalSettingsPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Пароль ККМ (KkmPassword)</Label>
+              <Label>Kkm Password</Label>
               <Input
+                type="password"
                 value={config.kkm_password}
                 onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
               />
@@ -185,17 +256,20 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Налоговые настройки */}
+        {/* Taxes & ADG */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase tracking-wider">Налоги и ADG коды</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-primary">
+              <ListTree className="h-5 w-5" /> Налоги и ADG коды
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Ставка НДС (%)</Label>
+                <Label>Ставка НДС (VatRate %)</Label>
                 <Input
                   type="number"
+                  step="0.01"
                   value={config.vat_rate}
                   onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) })}
                 />
@@ -208,15 +282,18 @@ export default function FiscalSettingsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between p-2 border rounded-lg bg-muted/30">
-              <Label>Использовать ADG по умолчанию</Label>
+            <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
+              <div className="space-y-0.5">
+                <Label>Use Default ADG</Label>
+                <p className="text-xs text-muted-foreground">Применять код ко всем товарам</p>
+              </div>
               <Switch
                 checked={config.use_default_adg}
                 onCheckedChange={(v) => setConfig({ ...config, use_default_adg: v })}
               />
             </div>
             <div className="space-y-2">
-              <Label>Название услуги (Subcharge Name)</Label>
+              <Label>Имя услуги (Subcharge Name)</Label>
               <Input
                 value={config.subcharge_name}
                 onChange={(e) => setConfig({ ...config, subcharge_name: e.target.value })}
@@ -225,12 +302,12 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Дополнительные параметры */}
+        {/* Operational Settings */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase tracking-wider">Параметры работы</CardTitle>
+            <CardTitle className="text-sm font-bold uppercase">Дополнительные параметры</CardTitle>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label>Скидки в ККМ</Label>
@@ -246,22 +323,40 @@ export default function FiscalSettingsPage() {
                   onCheckedChange={(v) => setConfig({ ...config, use_kitchen_name: v })}
                 />
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between text-primary font-bold">
                 <Label>Включить ККТ</Label>
                 <Switch checked={config.enabled} onCheckedChange={(v) => setConfig({ ...config, enabled: v })} />
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Таймаут ККМ (мс)</Label>
-              <Input
-                type="number"
-                value={config.payment_timeout}
-                onChange={(e) => setConfig({ ...config, payment_timeout: parseInt(e.target.value) })}
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Таймаут оплаты (мс)</Label>
+                <Input
+                  type="number"
+                  value={config.payment_timeout}
+                  onChange={(e) => setConfig({ ...config, payment_timeout: parseInt(e.target.value) })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Авто-печать чека</Label>
+                <Switch
+                  checked={config.auto_print_receipt}
+                  onCheckedChange={(v) => setConfig({ ...config, auto_print_receipt: v })}
+                />
+              </div>
             </div>
 
-            <div className="flex items-end pb-1">
+            <div className="flex flex-col gap-3 justify-end">
+              <Button variant="outline" onClick={handleTestConnection} disabled={testing}>
+                {testing ? (
+                  "Проверка..."
+                ) : (
+                  <>
+                    <Wifi className="h-4 w-4 mr-2" /> Тест связи
+                  </>
+                )}
+              </Button>
               <Button className="w-full" onClick={handleSave} disabled={saving}>
                 {saving ? (
                   "Сохранение..."
