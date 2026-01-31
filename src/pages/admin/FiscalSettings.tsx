@@ -15,8 +15,9 @@ import {
   FileText,
   AlertCircle,
   HardDrive,
+  Lock,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +26,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
+// 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML
 interface PaymentTypeItem {
   Id: string;
   Name: string;
@@ -33,45 +35,50 @@ interface PaymentTypeItem {
   enabled: boolean;
 }
 
-interface FullConfig {
+interface FullXmlConfig {
   location_id: string;
-  host: string;
-  port: string;
-  cashier_id: string;
-  cashier_pin: string;
-  kkm_password: string;
-  vat_rate: number;
-  use_discount_in_kkm: boolean;
-  use_subcharge_as_dish: boolean;
-  use_kitchen_name: boolean;
-  default_adg: string;
-  use_default_adg: boolean;
-  use_dept_from_kitchen: boolean;
-  bonus_payment_name: string;
-  c16_transfer: boolean;
-  subcharge_code: string;
-  subcharge_name: string;
-  subcharge_adg: string;
-  subcharge_unit: string;
-  op_timeout: number;
-  kkm_timeout: number;
-  adg_length: number;
-  fast_code_length: number;
-  backup_days: number;
-  version_major: number;
-  version_minor: number;
-  aggregate_sales: boolean;
-  aggregate_name: string;
-  aggregate_adg: string;
-  aggregate_code: string;
-  aggregate_unit: string;
-  disable_cash_io: boolean;
-  do_x_report: boolean;
-  do_z_report: boolean;
-  counter_relogin: number;
-  debug_mode: number;
-  manual_mode: string;
-  payment_types: PaymentTypeItem[];
+  // Основные теги
+  Host: string;
+  Port: string;
+  CashierId: string;
+  CashierPin: string;
+  KkmPassword: string;
+  VatRate: number;
+  // Флаги (Boolean)
+  UseDiscountInKkm: boolean;
+  UseSubchargeAsDish: boolean;
+  UseKitchenName: boolean;
+  UseDefaultAdg: boolean;
+  UseDepartmentFromKitchenName: boolean;
+  C16CardIdTransfer: boolean;
+  DisableCashInOut: boolean;
+  DoXReport: boolean;
+  DoZReport: boolean;
+  AggregateSales: boolean;
+  // Значения
+  DefaultAdg: string;
+  BonusPaymentName: string;
+  SubchargeAsDishCode: string;
+  SubchargeAsDishName: string;
+  SubchargeAsDishAdgCode: string;
+  SubchargeAsDishUnit: string;
+  DefaultOperationTimeout: number;
+  KkmPaymentTimeout: number;
+  AdgCodeFromProductCodeLength: number;
+  AdgCodeFromProductFastCodeLength: number;
+  BackupDaysLimit: number;
+  VersionMajor: number;
+  VersionMinor: number;
+  CounterToRelogin: number;
+  DebugMode: number;
+  Mode: string;
+  // Агрегация
+  AggregateSaleName: string;
+  AggregateSaleAdg: string;
+  AggregateSaleCode: string;
+  AggregateSaleUnit: string;
+  // Список оплат
+  PaymentTypes: PaymentTypeItem[];
 }
 
 const xmlDefaultPayments: PaymentTypeItem[] = [
@@ -140,49 +147,49 @@ const xmlDefaultPayments: PaymentTypeItem[] = [
   },
 ];
 
-const initialConfig: FullConfig = {
+const initialConfig: FullXmlConfig = {
   location_id: "",
-  host: "192.168.9.19",
-  port: "8080",
-  cashier_id: "3",
-  cashier_pin: "4321",
-  kkm_password: "Aa1111Bb",
-  vat_rate: 16.67,
-  use_discount_in_kkm: true,
-  use_subcharge_as_dish: true,
-  use_kitchen_name: true,
-  default_adg: "56.10",
-  use_default_adg: true,
-  use_dept_from_kitchen: false,
-  bonus_payment_name: "",
-  c16_transfer: false,
-  subcharge_code: "999999",
-  subcharge_name: "Հանրային սննդի կազմակерպում",
-  subcharge_adg: "56.10",
-  subcharge_unit: "հատ․",
-  op_timeout: 30000,
-  kkm_timeout: 120000,
-  adg_length: 1,
-  fast_code_length: 1,
-  backup_days: 14,
-  version_major: 0,
-  version_minor: 7,
-  aggregate_sales: false,
-  aggregate_name: "",
-  aggregate_adg: "",
-  aggregate_code: "",
-  aggregate_unit: "",
-  disable_cash_io: true,
-  do_x_report: false,
-  do_z_report: false,
-  counter_relogin: 50,
-  debug_mode: 1,
-  manual_mode: "Manual",
-  payment_types: xmlDefaultPayments,
+  Host: "192.168.9.19",
+  Port: "8080",
+  CashierId: "3",
+  CashierPin: "4321",
+  KkmPassword: "Aa1111Bb",
+  VatRate: 16.67,
+  UseDiscountInKkm: true,
+  UseSubchargeAsDish: true,
+  UseKitchenName: true,
+  DefaultAdg: "56.10",
+  UseDefaultAdg: true,
+  UseDepartmentFromKitchenName: false,
+  BonusPaymentName: "",
+  C16CardIdTransfer: false,
+  SubchargeAsDishCode: "999999",
+  SubchargeAsDishName: "Հանրային սննդի կազմակերպում",
+  SubchargeAsDishAdgCode: "56.10",
+  SubchargeAsDishUnit: "հատ․",
+  DefaultOperationTimeout: 30000,
+  KkmPaymentTimeout: 120000,
+  AdgCodeFromProductCodeLength: 1,
+  AdgCodeFromProductFastCodeLength: 1,
+  BackupDaysLimit: 14,
+  VersionMajor: 0,
+  VersionMinor: 7,
+  AggregateSales: false,
+  AggregateSaleName: "",
+  AggregateSaleAdg: "",
+  AggregateSaleCode: "",
+  AggregateSaleUnit: "",
+  DisableCashInOut: true,
+  DoXReport: false,
+  DoZReport: false,
+  CounterToRelogin: 50,
+  DebugMode: 1,
+  Mode: "Manual",
+  PaymentTypes: xmlDefaultPayments,
 };
 
 export default function FiscalSettingsPage() {
-  const [config, setConfig] = useState<FullConfig>(initialConfig);
+  const [config, setConfig] = useState<FullXmlConfig>(initialConfig);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -201,6 +208,7 @@ export default function FiscalSettingsPage() {
     setLoading(true);
     const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
     if (data) {
+      // Прямой перенос данных из базы в стейт без изменения имен ключей
       setConfig({ ...initialConfig, ...(data as any), location_id: locId });
     } else {
       setConfig({ ...initialConfig, location_id: locId });
@@ -212,32 +220,34 @@ export default function FiscalSettingsPage() {
     const { error } = await supabase
       .from("fiscal_settings")
       .upsert({ ...config, updated_at: new Date().toISOString() } as any, { onConflict: "location_id" });
-    if (!error) toast.success("ALL XML PARAMETERS SYNCED");
+    if (!error) toast.success("XML CONFIG SYNCED SUCCESSFULLY");
     else toast.error(error.message);
   };
 
   if (loading)
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center font-mono text-blue-500 tracking-[0.3em]">
-        PARSING_COMPLETE_XML_DATA...
+      <div className="min-h-screen bg-black flex items-center justify-center font-mono text-blue-500 tracking-widest">
+        DRY_RUN_XML_V0.7...
       </div>
     );
 
   return (
     <div className="min-h-screen bg-[#050505] text-slate-300 p-4 md:p-8 pb-32 font-sans tracking-tight">
-      <div className="max-w-[1600px] mx-auto space-y-8">
-        {/* HEADER */}
-        <div className="flex justify-between items-center bg-slate-900/40 p-6 rounded-3xl border border-slate-800 backdrop-blur-md">
+      <div className="max-w-[1600px] mx-auto space-y-6">
+        {/* TOP STATUS BAR */}
+        <div className="flex flex-col md:flex-row justify-between items-center bg-slate-900/40 p-6 rounded-3xl border border-slate-800 shadow-2xl">
           <div className="flex items-center gap-6">
-            <div className="p-4 bg-blue-600 rounded-2xl shadow-blue-500/20 shadow-lg">
-              <Cpu className="h-8 w-8 text-white" />
+            <div className="p-4 bg-emerald-600 rounded-2xl shadow-emerald-500/20 shadow-lg">
+              <Terminal className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-white uppercase tracking-tighter">HDM Point Master Manager</h1>
-              <div className="flex items-center gap-3 mt-1 font-bold">
-                <MapPin className="h-4 w-4 text-blue-500" />
+              <h1 className="text-xl font-black text-white uppercase tracking-tighter italic">
+                Fiscal Core Manager <span className="text-emerald-500 text-xs ml-2">XML_PROTOCOL_v0.7</span>
+              </h1>
+              <div className="flex items-center gap-3 mt-1 font-bold text-slate-400">
+                <MapPin className="h-3 w-3" />
                 <Select value={config.location_id} onValueChange={loadSettings}>
-                  <SelectTrigger className="bg-transparent border-none p-0 h-auto text-blue-400 focus:ring-0 uppercase text-xs">
+                  <SelectTrigger className="bg-transparent border-none p-0 h-auto text-blue-400 focus:ring-0 uppercase text-[10px] tracking-widest">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-slate-900 border-slate-800 text-white">
@@ -253,94 +263,94 @@ export default function FiscalSettingsPage() {
           </div>
           <Button
             onClick={save}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-black px-12 h-14 rounded-2xl shadow-xl transition-all uppercase tracking-widest text-xs"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-12 h-14 rounded-2xl shadow-xl transition-all uppercase tracking-widest text-[11px]"
           >
-            <Save className="mr-3 h-5 w-5" /> Save Configuration
+            <Save className="mr-3 h-5 w-5" /> Sync Data
           </Button>
         </div>
 
-        {/* PAYMENT REGISTRY */}
+        {/* 1. PAYMENT TYPES - СТРОГО ИЗ XML */}
         <Card className="bg-slate-900/20 border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
           <CardHeader className="bg-slate-900/40 border-b border-slate-800 p-6 flex flex-row justify-between items-center">
-            <CardTitle className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-3">
-              <CreditCard className="h-4 w-4 text-purple-500" /> PaymentTypes Registry
+            <CardTitle className="text-xs font-black uppercase tracking-[0.2em] text-emerald-500 flex items-center gap-3">
+              <CreditCard className="h-4 w-4" /> PaymentTypes Registry
             </CardTitle>
             <Button
               onClick={() =>
                 setConfig({
                   ...config,
-                  payment_types: [
-                    ...config.payment_types,
+                  PaymentTypes: [
+                    ...config.PaymentTypes,
                     { Id: "", Name: "New", UseExtPos: true, PaymentType: "paidAmountCard", enabled: true },
                   ],
                 })
               }
               variant="outline"
-              className="border-slate-700 h-9 text-[10px] font-bold px-4 hover:bg-slate-800"
+              className="border-slate-700 h-9 text-[10px] font-bold px-4 hover:bg-slate-800 text-slate-400"
             >
               <Plus className="h-4 w-4 mr-2" /> ADD ITEM
             </Button>
           </CardHeader>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-black/40 text-slate-500 uppercase text-[9px] font-black">
+              <thead className="bg-black/60 text-slate-500 uppercase text-[9px] font-black">
                 <tr>
                   <th className="p-4 text-center w-24">Active</th>
                   <th className="p-4 text-left">Name</th>
                   <th className="p-4 text-left">Id (UUID)</th>
                   <th className="p-4 text-left">PaymentType</th>
-                  <th className="p-4 text-center w-20">UseExtPos</th>
-                  <th className="p-4 text-center w-16">Remove</th>
+                  <th className="p-4 text-center w-20">ExtPos</th>
+                  <th className="p-4 text-center w-16">Del</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/40">
-                {config.payment_types.map((pt, idx) => (
+                {config.PaymentTypes.map((pt, idx) => (
                   <tr
                     key={idx}
-                    className={`transition-all ${!pt.enabled ? "opacity-20 bg-red-900/5" : "hover:bg-blue-900/5"}`}
+                    className={`transition-all ${!pt.enabled ? "opacity-20 bg-red-900/5" : "hover:bg-emerald-900/5"}`}
                   >
                     <td className="p-4 text-center">
                       <Switch
                         checked={pt.enabled}
                         onCheckedChange={(v) => {
-                          const upd = [...config.payment_types];
+                          const upd = [...config.PaymentTypes];
                           upd[idx].enabled = v;
-                          setConfig({ ...config, payment_types: upd });
+                          setConfig({ ...config, PaymentTypes: upd });
                         }}
                       />
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 font-bold text-white">
                       <Input
                         value={pt.Name}
                         onChange={(e) => {
-                          const upd = [...config.payment_types];
+                          const upd = [...config.PaymentTypes];
                           upd[idx].Name = e.target.value;
-                          setConfig({ ...config, payment_types: upd });
+                          setConfig({ ...config, PaymentTypes: upd });
                         }}
-                        className="bg-slate-950 border-slate-800 h-10 text-xs font-bold text-white"
+                        className="bg-slate-950/50 border-slate-800 h-10 text-xs"
                       />
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 font-mono text-[10px] text-slate-400">
                       <Input
                         value={pt.Id}
                         onChange={(e) => {
-                          const upd = [...config.payment_types];
+                          const upd = [...config.PaymentTypes];
                           upd[idx].Id = e.target.value;
-                          setConfig({ ...config, payment_types: upd });
+                          setConfig({ ...config, PaymentTypes: upd });
                         }}
-                        className="bg-slate-950 border-slate-800 h-10 text-[10px] font-mono text-slate-400"
+                        className="bg-slate-950/50 border-slate-800 h-10"
                       />
                     </td>
                     <td className="p-4">
                       <Select
                         value={pt.PaymentType}
                         onValueChange={(v: any) => {
-                          const upd = [...config.payment_types];
+                          const upd = [...config.PaymentTypes];
                           upd[idx].PaymentType = v;
-                          setConfig({ ...config, payment_types: upd });
+                          setConfig({ ...config, PaymentTypes: upd });
                         }}
                       >
-                        <SelectTrigger className="bg-slate-950 border-slate-800 h-10 text-[10px] uppercase font-black">
+                        <SelectTrigger className="bg-slate-950/50 border-slate-800 h-10 text-[10px] font-black">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-slate-900 border-slate-800 text-white">
@@ -353,9 +363,9 @@ export default function FiscalSettingsPage() {
                       <Switch
                         checked={pt.UseExtPos}
                         onCheckedChange={(v) => {
-                          const upd = [...config.payment_types];
+                          const upd = [...config.PaymentTypes];
                           upd[idx].UseExtPos = v;
-                          setConfig({ ...config, payment_types: upd });
+                          setConfig({ ...config, PaymentTypes: upd });
                         }}
                       />
                     </td>
@@ -363,7 +373,7 @@ export default function FiscalSettingsPage() {
                       <Button
                         variant="ghost"
                         onClick={() =>
-                          setConfig({ ...config, payment_types: config.payment_types.filter((_, i) => i !== idx) })
+                          setConfig({ ...config, PaymentTypes: config.PaymentTypes.filter((_, i) => i !== idx) })
                         }
                         className="h-8 w-8 text-slate-600 hover:text-red-500"
                       >
@@ -377,322 +387,280 @@ export default function FiscalSettingsPage() {
           </div>
         </Card>
 
-        {/* THE REST OF CONFIG (FULL XML MAPPING) */}
+        {/* 2. ГРИД ВСЕХ ОСТАЛЬНЫХ ПАРАМЕТРОВ */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* CONNECTION & AUTH */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl">
-            <h3 className="text-[10px] font-black uppercase text-blue-500 flex items-center gap-2 tracking-widest">
-              <Wifi className="h-4 w-4" /> Connection
+          {/* HARDWARE (HOST, PORT, TIMEOUTS) */}
+          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl border-l-4 border-l-blue-500">
+            <h3 className="text-[10px] font-black uppercase text-blue-500 flex items-center gap-2">
+              <Wifi className="h-4 w-4" /> Hardware / TCP
             </h3>
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-[8px] text-slate-500">HOST</Label>
+                  <Label className="text-[8px] text-slate-500">Host</Label>
                   <Input
-                    value={config.host}
-                    onChange={(e) => setConfig({ ...config, host: e.target.value })}
+                    value={config.Host}
+                    onChange={(e) => setConfig({ ...config, Host: e.target.value })}
                     className="bg-slate-950 border-slate-800 h-9 font-mono text-xs"
                   />
                 </div>
                 <div>
-                  <Label className="text-[8px] text-slate-500">PORT</Label>
+                  <Label className="text-[8px] text-slate-500">Port</Label>
                   <Input
-                    value={config.port}
-                    onChange={(e) => setConfig({ ...config, port: e.target.value })}
+                    value={config.Port}
+                    onChange={(e) => setConfig({ ...config, Port: e.target.value })}
                     className="bg-slate-950 border-slate-800 h-9 font-mono text-xs"
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 pt-2">
                 <div>
-                  <Label className="text-[8px] text-slate-500">CASHIER ID</Label>
+                  <Label className="text-[8px] text-slate-500 italic">DefaultOperationTimeout</Label>
                   <Input
-                    value={config.cashier_id}
-                    onChange={(e) => setConfig({ ...config, cashier_id: e.target.value })}
+                    type="number"
+                    value={config.DefaultOperationTimeout}
+                    onChange={(e) => setConfig({ ...config, DefaultOperationTimeout: parseInt(e.target.value) })}
                     className="bg-slate-950 border-slate-800 h-9 text-xs"
                   />
                 </div>
                 <div>
-                  <Label className="text-[8px] text-slate-500">CASHIER PIN</Label>
+                  <Label className="text-[8px] text-slate-500 italic">KkmPaymentTimeout</Label>
                   <Input
-                    value={config.cashier_pin}
-                    onChange={(e) => setConfig({ ...config, cashier_pin: e.target.value })}
+                    type="number"
+                    value={config.KkmPaymentTimeout}
+                    onChange={(e) => setConfig({ ...config, KkmPaymentTimeout: parseInt(e.target.value) })}
                     className="bg-slate-950 border-slate-800 h-9 text-xs"
                   />
                 </div>
               </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">KKM PASSWORD</Label>
+            </div>
+          </Card>
+
+          {/* FISCAL CORE (VAT, CASHIER, PIN, ADG) */}
+          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl border-l-4 border-l-emerald-500">
+            <h3 className="text-[10px] font-black uppercase text-emerald-500 flex items-center gap-2">
+              <Lock className="h-4 w-4" /> Fiscal Auth
+            </h3>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-1">
+                <Label className="text-[8px] text-slate-500">CashierId</Label>
                 <Input
-                  value={config.kkm_password}
-                  onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
+                  value={config.CashierId}
+                  onChange={(e) => setConfig({ ...config, CashierId: e.target.value })}
                   className="bg-slate-950 border-slate-800 h-9 text-xs"
                 />
               </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">VAT RATE</Label>
+              <div className="col-span-1">
+                <Label className="text-[8px] text-slate-500">CashierPin</Label>
+                <Input
+                  value={config.CashierPin}
+                  onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
+                  className="bg-slate-950 border-slate-800 h-9 text-xs"
+                />
+              </div>
+              <div className="col-span-1">
+                <Label className="text-[8px] text-slate-500">VatRate</Label>
                 <Input
                   type="number"
-                  value={config.vat_rate}
-                  onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) })}
+                  value={config.VatRate}
+                  onChange={(e) => setConfig({ ...config, VatRate: parseFloat(e.target.value) })}
+                  className="bg-slate-950 border-slate-800 h-9 text-xs font-bold text-emerald-500"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-[8px] text-slate-500">KkmPassword</Label>
+              <Input
+                value={config.KkmPassword}
+                onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
+                className="bg-slate-950 border-slate-800 h-9 text-xs"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[8px] text-slate-500 italic">AdgLength</Label>
+                <Input
+                  type="number"
+                  value={config.AdgCodeFromProductCodeLength}
+                  onChange={(e) => setConfig({ ...config, AdgCodeFromProductCodeLength: parseInt(e.target.value) })}
+                  className="bg-slate-950 border-slate-800 h-9 text-xs"
+                />
+              </div>
+              <div>
+                <Label className="text-[8px] text-slate-500 italic">FastCodeLength</Label>
+                <Input
+                  type="number"
+                  value={config.AdgCodeFromProductFastCodeLength}
+                  onChange={(e) => setConfig({ ...config, AdgCodeFromProductFastCodeLength: parseInt(e.target.value) })}
                   className="bg-slate-950 border-slate-800 h-9 text-xs"
                 />
               </div>
             </div>
           </Card>
 
-          {/* SUBCHARGE SETTINGS */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl">
+          {/* SUBCHARGE ASDISH (ВСЕ ТЕГИ) */}
+          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl border-l-4 border-l-amber-500">
             <h3 className="text-[10px] font-black uppercase text-amber-500 flex items-center gap-2 tracking-widest">
-              <Zap className="h-4 w-4" /> Subcharge Dish
+              <Zap className="h-4 w-4" /> SubchargeAsDish
             </h3>
             <div className="space-y-3">
               <div>
-                <Label className="text-[8px] text-slate-500">CODE (SUBCHARGEASDISHCODE)</Label>
+                <Label className="text-[8px] text-slate-500 italic">SubchargeAsDishName</Label>
                 <Input
-                  value={config.subcharge_code}
-                  onChange={(e) => setConfig({ ...config, subcharge_code: e.target.value })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs"
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">NAME (SUBCHARGEASDISHNAME)</Label>
-                <Input
-                  value={config.subcharge_name}
-                  onChange={(e) => setConfig({ ...config, subcharge_name: e.target.value })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[8px] text-slate-500">ADG CODE</Label>
-                  <Input
-                    value={config.subcharge_adg}
-                    onChange={(e) => setConfig({ ...config, subcharge_adg: e.target.value })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[8px] text-slate-500">UNIT</Label>
-                  <Input
-                    value={config.subcharge_unit}
-                    onChange={(e) => setConfig({ ...config, subcharge_unit: e.target.value })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-between items-center bg-black/40 p-2 rounded-lg">
-                <span className="text-[10px] uppercase">Use Subcharge Dish</span>
-                <Switch
-                  checked={config.use_subcharge_as_dish}
-                  onCheckedChange={(v) => setConfig({ ...config, use_subcharge_as_dish: v })}
-                />
-              </div>
-            </div>
-          </Card>
-
-          {/* TIMEOUTS & CORE LOGIC */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl">
-            <h3 className="text-[10px] font-black uppercase text-purple-500 flex items-center gap-2 tracking-widest">
-              <Settings className="h-4 w-4" /> System Core
-            </h3>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[8px] text-slate-500">OP TIMEOUT</Label>
-                  <Input
-                    type="number"
-                    value={config.op_timeout}
-                    onChange={(e) => setConfig({ ...config, op_timeout: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[8px] text-slate-500">KKM TIMEOUT</Label>
-                  <Input
-                    type="number"
-                    value={config.kkm_timeout}
-                    onChange={(e) => setConfig({ ...config, kkm_timeout: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[8px] text-slate-500">ADG LEN</Label>
-                  <Input
-                    type="number"
-                    value={config.adg_length}
-                    onChange={(e) => setConfig({ ...config, adg_length: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[8px] text-slate-500">FAST CODE LEN</Label>
-                  <Input
-                    type="number"
-                    value={config.fast_code_length}
-                    onChange={(e) => setConfig({ ...config, fast_code_length: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-[8px] text-slate-500">RELOGIN COUNTER</Label>
-                  <Input
-                    type="number"
-                    value={config.counter_relogin}
-                    onChange={(e) => setConfig({ ...config, counter_relogin: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-[8px] text-slate-500">DEBUG MODE</Label>
-                  <Input
-                    type="number"
-                    value={config.debug_mode}
-                    onChange={(e) => setConfig({ ...config, debug_mode: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* AGGREGATE SALES */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl text-purple-200">
-            <h3 className="text-[10px] font-black uppercase text-purple-400 flex items-center gap-2 tracking-widest">
-              <Database className="h-4 w-4" /> Aggregate Sales
-            </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px]">ENABLE AGGREGATE</span>
-                <Switch
-                  checked={config.aggregate_sales}
-                  onCheckedChange={(v) => setConfig({ ...config, aggregate_sales: v })}
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">AGGREGATE NAME</Label>
-                <Input
-                  value={config.aggregate_name}
-                  onChange={(e) => setConfig({ ...config, aggregate_name: e.target.value })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs"
+                  value={config.SubchargeAsDishName}
+                  onChange={(e) => setConfig({ ...config, SubchargeAsDishName: e.target.value })}
+                  className="bg-slate-950 border-slate-800 h-9 text-[10px]"
                 />
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <div className="col-span-1">
-                  <Label className="text-[8px] text-slate-500">CODE</Label>
+                  <Label className="text-[8px] text-slate-500">Code</Label>
                   <Input
-                    value={config.aggregate_code}
-                    onChange={(e) => setConfig({ ...config, aggregate_code: e.target.value })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
-                  />
-                </div>
-                <div className="col-span-1">
-                  <Label className="text-[8px] text-slate-500">UNIT</Label>
-                  <Input
-                    value={config.aggregate_unit}
-                    onChange={(e) => setConfig({ ...config, aggregate_unit: e.target.value })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
+                    value={config.SubchargeAsDishCode}
+                    onChange={(e) => setConfig({ ...config, SubchargeAsDishCode: e.target.value })}
+                    className="bg-slate-950 border-slate-800 h-9 text-[10px]"
                   />
                 </div>
                 <div className="col-span-1">
                   <Label className="text-[8px] text-slate-500">ADG</Label>
                   <Input
-                    value={config.aggregate_adg}
-                    onChange={(e) => setConfig({ ...config, aggregate_adg: e.target.value })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
+                    value={config.SubchargeAsDishAdgCode}
+                    onChange={(e) => setConfig({ ...config, SubchargeAsDishAdgCode: e.target.value })}
+                    className="bg-slate-950 border-slate-800 h-9 text-[10px]"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <Label className="text-[8px] text-slate-500">Unit</Label>
+                  <Input
+                    value={config.SubchargeAsDishUnit}
+                    onChange={(e) => setConfig({ ...config, SubchargeAsDishUnit: e.target.value })}
+                    className="bg-slate-950 border-slate-800 h-9 text-[10px]"
                   />
                 </div>
               </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">BONUS PAYMENT NAME</Label>
-                <Input
-                  value={config.bonus_payment_name}
-                  onChange={(e) => setConfig({ ...config, bonus_payment_name: e.target.value })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs"
+              <div className="flex justify-between items-center bg-amber-500/5 p-2 rounded-lg border border-amber-500/20">
+                <span className="text-[9px] uppercase font-bold text-amber-200">Enable Subcharge</span>
+                <Switch
+                  checked={config.UseSubchargeAsDish}
+                  onCheckedChange={(v) => setConfig({ ...config, UseSubchargeAsDish: v })}
                 />
               </div>
             </div>
           </Card>
 
-          {/* VERSION & BACKUP & MANUAL */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl">
-            <h3 className="text-[10px] font-black uppercase text-slate-500 flex items-center gap-2 tracking-widest">
-              <FileText className="h-4 w-4" /> Version / Misc
+          {/* AGGREGATE SALES (ВСЕ ТЕГИ) */}
+          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl border-l-4 border-l-purple-500">
+            <h3 className="text-[10px] font-black uppercase text-purple-500 flex items-center gap-2 tracking-widest">
+              <Database className="h-4 w-4" /> AggregateSales
             </h3>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-[8px] text-slate-500 italic">AggregateSaleName</Label>
+                <Input
+                  value={config.AggregateSaleName}
+                  onChange={(e) => setConfig({ ...config, AggregateSaleName: e.target.value })}
+                  className="bg-slate-950 border-slate-800 h-9 text-[10px]"
+                />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <Label className="text-[8px] text-slate-500">MAJOR</Label>
+                  <Label className="text-[8px] text-slate-500">Code</Label>
                   <Input
-                    type="number"
-                    value={config.version_major}
-                    onChange={(e) => setConfig({ ...config, version_major: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
+                    value={config.AggregateSaleCode}
+                    onChange={(e) => setConfig({ ...config, AggregateSaleCode: e.target.value })}
+                    className="bg-slate-950 border-slate-800 h-9 text-[10px]"
                   />
                 </div>
                 <div>
-                  <Label className="text-[8px] text-slate-500">MINOR</Label>
+                  <Label className="text-[8px] text-slate-500">ADG</Label>
                   <Input
-                    type="number"
-                    value={config.version_minor}
-                    onChange={(e) => setConfig({ ...config, version_minor: parseInt(e.target.value) })}
-                    className="bg-slate-950 border-slate-800 h-9 text-xs"
+                    value={config.AggregateSaleAdg}
+                    onChange={(e) => setConfig({ ...config, AggregateSaleAdg: e.target.value })}
+                    className="bg-slate-950 border-slate-800 h-9 text-[10px]"
+                  />
+                </div>
+                <div>
+                  <Label className="text-[8px] text-slate-500">Unit</Label>
+                  <Input
+                    value={config.AggregateSaleUnit}
+                    onChange={(e) => setConfig({ ...config, AggregateSaleUnit: e.target.value })}
+                    className="bg-slate-950 border-slate-800 h-9 text-[10px]"
                   />
                 </div>
               </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">BACKUP DAYS LIMIT</Label>
-                <Input
-                  type="number"
-                  value={config.backup_days}
-                  onChange={(e) => setConfig({ ...config, backup_days: parseInt(e.target.value) })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs font-bold text-blue-500"
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">MODE (MANUAL/AUTO)</Label>
-                <Input
-                  value={config.manual_mode}
-                  onChange={(e) => setConfig({ ...config, manual_mode: e.target.value })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs"
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] text-slate-500">DEFAULT ADG</Label>
-                <Input
-                  value={config.default_adg}
-                  onChange={(e) => setConfig({ ...config, default_adg: e.target.value })}
-                  className="bg-slate-950 border-slate-800 h-9 text-xs"
+              <div className="flex justify-between items-center bg-purple-500/5 p-2 rounded-lg border border-purple-500/20">
+                <span className="text-[9px] uppercase font-bold text-purple-200">Enable Aggregate</span>
+                <Switch
+                  checked={config.AggregateSales}
+                  onCheckedChange={(v) => setConfig({ ...config, AggregateSales: v })}
                 />
               </div>
             </div>
           </Card>
 
-          {/* BOOLEAN FLAGS (THE BIG LIST) */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-3 rounded-2xl col-span-1 lg:col-span-3">
-            <h3 className="text-[10px] font-black uppercase text-green-500 flex items-center gap-2 tracking-widest">
-              <ShieldCheck className="h-4 w-4" /> Operation Switches
+          {/* MISC (VERSION, MODE, REPORTS) */}
+          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl col-span-1 lg:col-span-2">
+            <h3 className="text-[10px] font-black uppercase text-slate-500 flex items-center gap-2">
+              <Settings className="h-4 w-4" /> System Meta / Reports
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="space-y-1">
+                <Label className="text-[8px] uppercase">BackupLimit</Label>
+                <Input
+                  type="number"
+                  value={config.BackupDaysLimit}
+                  onChange={(e) => setConfig({ ...config, BackupDaysLimit: parseInt(e.target.value) })}
+                  className="bg-slate-950 h-9"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[8px] uppercase">ReloginCtr</Label>
+                <Input
+                  type="number"
+                  value={config.CounterToRelogin}
+                  onChange={(e) => setConfig({ ...config, CounterToRelogin: parseInt(e.target.value) })}
+                  className="bg-slate-950 h-9"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[8px] uppercase">VerMajor</Label>
+                <Input
+                  type="number"
+                  value={config.VersionMajor}
+                  onChange={(e) => setConfig({ ...config, VersionMajor: parseInt(e.target.value) })}
+                  className="bg-slate-950 h-9"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[8px] uppercase">VerMinor</Label>
+                <Input
+                  type="number"
+                  value={config.VersionMinor}
+                  onChange={(e) => setConfig({ ...config, VersionMinor: parseInt(e.target.value) })}
+                  className="bg-slate-950 h-9"
+                />
+              </div>
+            </div>
+          </Card>
+
+          {/* BOOLEAN FLAGS (СТРОГО КАК В XML) */}
+          <Card className="bg-slate-900/30 border-slate-800 p-6 space-y-4 rounded-2xl col-span-1 lg:col-span-2">
+            <h3 className="text-[10px] font-black uppercase text-blue-400 flex items-center gap-2 tracking-widest">
+              <ShieldCheck className="h-4 w-4" /> Operational Switches
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
-                { label: "Use Discount in KKM", key: "use_discount_in_kkm" },
-                { label: "Use Kitchen Name", key: "use_kitchen_name" },
-                { label: "Use Default ADG", key: "use_default_adg" },
-                { label: "Dept from Kitchen", key: "use_dept_from_kitchen" },
-                { label: "C16 Card ID Transfer", key: "c16_transfer" },
-                { label: "Disable Cash In/Out", key: "disable_cash_io" },
-                { label: "Do X Report", key: "do_x_report" },
-                { label: "Do Z Report", key: "do_z_report" },
+                { label: "UseDiscountInKkm", key: "UseDiscountInKkm" },
+                { label: "UseKitchenName", key: "UseKitchenName" },
+                { label: "UseDefaultAdg", key: "UseDefaultAdg" },
+                { label: "UseDeptFromKitchen", key: "UseDepartmentFromKitchenName" },
+                { label: "DisableCashInOut", key: "DisableCashInOut" },
+                { label: "DoXReport", key: "DoXReport" },
+                { label: "DoZReport", key: "DoZReport" },
+                { label: "C16Transfer", key: "C16CardIdTransfer" },
               ].map((item) => (
-                <div
-                  key={item.key}
-                  className="flex items-center justify-between p-3 bg-black/40 rounded-xl border border-slate-800/50"
-                >
-                  <span className="text-[10px] font-bold uppercase text-slate-400">{item.label}</span>
+                <div key={item.key} className="flex flex-col gap-1 p-2 bg-black/40 rounded-lg border border-slate-800">
+                  <span className="text-[8px] uppercase text-slate-500 font-black">{item.label}</span>
                   <Switch
                     checked={(config as any)[item.key]}
                     onCheckedChange={(v) => setConfig({ ...config, [item.key]: v })}
