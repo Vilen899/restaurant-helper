@@ -89,8 +89,6 @@ export default function FiscalSettingsPage() {
   const [config, setConfig] = useState({ ...XML_DEFAULTS, location_id: "" });
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // States для теста соединения
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "online" | "offline">("idle");
 
@@ -110,50 +108,66 @@ export default function FiscalSettingsPage() {
   async function loadSettings(locId) {
     setLoading(true);
     setConnectionStatus("idle");
-    const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
-    if (data) {
-      setConfig({ ...XML_DEFAULTS, ...data, location_id: locId });
-    } else {
-      setConfig({ ...XML_DEFAULTS, location_id: locId });
+    try {
+      const { data, error } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
+
+      if (data) {
+        setConfig({ ...XML_DEFAULTS, ...data, location_id: locId });
+        // Кэшируем локально
+        localStorage.setItem(`hdm_config_${locId}`, JSON.stringify(data));
+      } else {
+        // Если в базе нет или ошибка, пробуем локальный кэш
+        const cached = localStorage.getItem(`hdm_config_${locId}`);
+        if (cached) {
+          setConfig(JSON.parse(cached));
+          toast.info("Загружено из локального кэша");
+        } else {
+          setConfig({ ...XML_DEFAULTS, location_id: locId });
+        }
+      }
+    } catch (e) {
+      const cached = localStorage.getItem(`hdm_config_${locId}`);
+      if (cached) setConfig(JSON.parse(cached));
+      toast.error("Ошибка сети. Используются локальные данные.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
-  // ФУНКЦИЯ ПРОВЕРКИ СОЕДИНЕНИЯ
   const handleTestConnection = async () => {
     setIsTesting(true);
     setConnectionStatus("idle");
-    try {
-      // Пробуем достучаться до драйвера по HTTP (обычно кассы отвечают по этому протоколу)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // Таймаут 5 секунд
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-      const response = await fetch(`http://${config.Host}:${config.Port}/api/v1/status`, {
+    try {
+      await fetch(`http://${config.Host}:${config.Port}/api/v1/status`, {
         method: "GET",
         signal: controller.signal,
-        mode: "no-cors", // Используем no-cors для обхода ограничений браузера при прямом пинге
+        mode: "no-cors",
       });
-
       setConnectionStatus("online");
       toast.success("Связь с ККМ установлена (Network OK)");
     } catch (error) {
       setConnectionStatus("offline");
-      toast.error("Касса не отвечает. Проверьте IP, порт и сеть.");
+      toast.error("Касса не отвечает. Проверьте IP и сеть.");
     } finally {
+      clearTimeout(timeoutId);
       setIsTesting(false);
     }
   };
 
   const save = async () => {
-    const { error } = await supabase.from("fiscal_settings").upsert(
-      {
-        ...config,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "location_id" },
-    );
-    if (!error) toast.success("Данные синхронизированы 1:1 с XML");
-    else toast.error(error.message);
+    const { error } = await supabase
+      .from("fiscal_settings")
+      .upsert({ ...config, updated_at: new Date().toISOString() }, { onConflict: "location_id" });
+
+    if (!error) {
+      localStorage.setItem(`hdm_config_${config.location_id}`, JSON.stringify(config));
+      toast.success("Данные синхронизированы 1:1 с XML");
+    } else {
+      toast.error(error.message);
+    }
   };
 
   if (loading)
@@ -177,7 +191,7 @@ export default function FiscalSettingsPage() {
               <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
                 <MapPin className="h-3 w-3" />
                 <select
-                  className="bg-transparent border-none outline-none text-emerald-500"
+                  className="bg-transparent border-none outline-none text-emerald-500 cursor-pointer"
                   value={config.location_id}
                   onChange={(e) => loadSettings(e.target.value)}
                 >
@@ -192,7 +206,7 @@ export default function FiscalSettingsPage() {
           </div>
           <Button
             onClick={save}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-10 h-12 rounded-xl text-[11px] tracking-widest shadow-xl transition-all"
+            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-10 h-12 rounded-xl text-[11px] tracking-widest shadow-xl transition-all active:scale-95"
           >
             <Save className="mr-2 h-4 w-4" /> SAVE TO DATABASE
           </Button>
@@ -206,8 +220,6 @@ export default function FiscalSettingsPage() {
                 <Wifi className="h-4 w-4" />
                 <h3 className="text-[10px] font-black uppercase tracking-widest">Connection</h3>
               </div>
-
-              {/* Статус связи */}
               <div
                 className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${
                   connectionStatus === "online"
@@ -228,7 +240,7 @@ export default function FiscalSettingsPage() {
                   <Input
                     value={config.Host}
                     onChange={(e) => setConfig({ ...config, Host: e.target.value })}
-                    className="bg-slate-950 font-mono text-blue-400"
+                    className="bg-slate-950 font-mono text-blue-400 border-slate-800"
                   />
                 </div>
                 <div className="space-y-1">
@@ -236,7 +248,7 @@ export default function FiscalSettingsPage() {
                   <Input
                     value={config.Port}
                     onChange={(e) => setConfig({ ...config, Port: e.target.value })}
-                    className="bg-slate-950 font-mono text-blue-400"
+                    className="bg-slate-950 font-mono text-blue-400 border-slate-800"
                   />
                 </div>
               </div>
@@ -245,11 +257,9 @@ export default function FiscalSettingsPage() {
                 <Input
                   value={config.KkmPassword}
                   onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
-                  className="bg-slate-950 text-emerald-500"
+                  className="bg-slate-950 text-emerald-500 border-slate-800"
                 />
               </div>
-
-              {/* Кнопка Теста */}
               <Button
                 onClick={handleTestConnection}
                 disabled={isTesting}
@@ -274,7 +284,7 @@ export default function FiscalSettingsPage() {
                   <Input
                     value={config.CashierId}
                     onChange={(e) => setConfig({ ...config, CashierId: e.target.value })}
-                    className="bg-slate-950 h-9"
+                    className="bg-slate-950 h-9 border-slate-800"
                   />
                 </div>
                 <div className="space-y-1">
@@ -282,7 +292,7 @@ export default function FiscalSettingsPage() {
                   <Input
                     value={config.CashierPin}
                     onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
-                    className="bg-slate-950 h-9"
+                    className="bg-slate-950 h-9 border-slate-800"
                   />
                 </div>
               </div>
@@ -312,7 +322,7 @@ export default function FiscalSettingsPage() {
               ].map((f) => (
                 <div
                   key={f.key}
-                  className="flex flex-col gap-2 p-2 bg-black/30 rounded-lg border border-slate-800 items-center"
+                  className="flex flex-col gap-2 p-2 bg-black/30 rounded-lg border border-slate-800 items-center hover:bg-black/50 transition-colors"
                 >
                   <span className="text-[8px] font-black uppercase text-slate-500">{f.label}</span>
                   <Switch checked={config[f.key]} onCheckedChange={(v) => setConfig({ ...config, [f.key]: v })} />
@@ -322,7 +332,7 @@ export default function FiscalSettingsPage() {
           </Card>
         </div>
 
-        {/* SECTION 2: SUBCHARGE AS DISH (SPECIAL) */}
+        {/* SECTION 2: SUBCHARGE AS DISH */}
         <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl shadow-xl border-l-4 border-l-amber-600">
           <div className="flex items-center gap-2 mb-6 text-amber-500">
             <Zap className="h-4 w-4" />
@@ -330,35 +340,35 @@ export default function FiscalSettingsPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-1">
-              <Label className="text-[9px] uppercase">Name</Label>
+              <Label className="text-[9px] uppercase font-bold text-slate-500">Name</Label>
               <Input
                 value={config.SubchargeAsDishName}
                 onChange={(e) => setConfig({ ...config, SubchargeAsDishName: e.target.value })}
-                className="bg-slate-950 text-[11px]"
+                className="bg-slate-950 text-[11px] border-slate-800"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-[9px] uppercase">ADG Code</Label>
+              <Label className="text-[9px] uppercase font-bold text-slate-500">ADG Code</Label>
               <Input
                 value={config.SubchargeAsDishAdgCode}
                 onChange={(e) => setConfig({ ...config, SubchargeAsDishAdgCode: e.target.value })}
-                className="bg-slate-950 font-bold text-amber-500"
+                className="bg-slate-950 font-bold text-amber-500 border-slate-800"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-[9px] uppercase">Dish Code</Label>
+              <Label className="text-[9px] uppercase font-bold text-slate-500">Dish Code</Label>
               <Input
                 value={config.SubchargeAsDishCode}
                 onChange={(e) => setConfig({ ...config, SubchargeAsDishCode: e.target.value })}
-                className="bg-slate-950"
+                className="bg-slate-950 border-slate-800"
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-[9px] uppercase">Unit</Label>
+              <Label className="text-[9px] uppercase font-bold text-slate-500">Unit</Label>
               <Input
                 value={config.SubchargeAsDishUnit}
                 onChange={(e) => setConfig({ ...config, SubchargeAsDishUnit: e.target.value })}
-                className="bg-slate-950"
+                className="bg-slate-950 border-slate-800"
               />
             </div>
           </div>
@@ -366,9 +376,9 @@ export default function FiscalSettingsPage() {
 
         {/* SECTION 3: PAYMENT TYPES TABLE */}
         <Card className="bg-slate-900/20 border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="p-4 bg-slate-900/40 border-b border-slate-800 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500">
+          <div className="p-4 bg-slate-900/40 border-b border-slate-800 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500 font-mono">
             <div className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4" /> Payment Types Registry
+              <CreditCard className="h-4 w-4" /> Payment Types Registry (XML Map)
             </div>
           </div>
           <table className="w-full text-[11px]">
@@ -410,7 +420,7 @@ export default function FiscalSettingsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
             <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Timeouts
+              <Clock className="h-3 w-3" /> Timeouts (ms)
             </div>
             <div className="space-y-3">
               <div>
@@ -419,7 +429,7 @@ export default function FiscalSettingsPage() {
                   type="number"
                   value={config.DefaultOperationTimeout}
                   onChange={(e) => setConfig({ ...config, DefaultOperationTimeout: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
+                  className="h-8 bg-slate-950 border-slate-800"
                 />
               </div>
               <div>
@@ -428,7 +438,7 @@ export default function FiscalSettingsPage() {
                   type="number"
                   value={config.KkmPaymentTimeout}
                   onChange={(e) => setConfig({ ...config, KkmPaymentTimeout: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
+                  className="h-8 bg-slate-950 border-slate-800"
                 />
               </div>
             </div>
@@ -436,7 +446,7 @@ export default function FiscalSettingsPage() {
 
           <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
             <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <Activity className="h-3 w-3" /> System
+              <Activity className="h-3 w-3" /> System Control
             </div>
             <div className="space-y-3">
               <div>
@@ -445,7 +455,7 @@ export default function FiscalSettingsPage() {
                   type="number"
                   value={config.BackupDaysLimit}
                   onChange={(e) => setConfig({ ...config, BackupDaysLimit: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
+                  className="h-8 bg-slate-950 border-slate-800"
                 />
               </div>
               <div>
@@ -454,7 +464,7 @@ export default function FiscalSettingsPage() {
                   type="number"
                   value={config.CounterToRelogin}
                   onChange={(e) => setConfig({ ...config, CounterToRelogin: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
+                  className="h-8 bg-slate-950 border-slate-800"
                 />
               </div>
             </div>
@@ -462,7 +472,7 @@ export default function FiscalSettingsPage() {
 
           <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
             <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <Database className="h-3 w-3" /> ADG Length
+              <Database className="h-3 w-3" /> ADG Definition
             </div>
             <div className="space-y-3">
               <div>
@@ -471,7 +481,7 @@ export default function FiscalSettingsPage() {
                   type="number"
                   value={config.AdgCodeFromProductCodeLength}
                   onChange={(e) => setConfig({ ...config, AdgCodeFromProductCodeLength: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
+                  className="h-8 bg-slate-950 border-slate-800"
                 />
               </div>
               <div>
@@ -480,7 +490,7 @@ export default function FiscalSettingsPage() {
                   type="number"
                   value={config.AdgCodeFromProductFastCodeLength}
                   onChange={(e) => setConfig({ ...config, AdgCodeFromProductFastCodeLength: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
+                  className="h-8 bg-slate-950 border-slate-800"
                 />
               </div>
             </div>
@@ -488,29 +498,29 @@ export default function FiscalSettingsPage() {
 
           <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
             <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> Advanced
+              <AlertTriangle className="h-3 w-3" /> Maintenance
             </div>
             <div className="space-y-3">
-              <div className="flex justify-between items-center p-1">
+              <div className="flex justify-between items-center p-1 hover:bg-white/5 rounded transition-colors">
                 <span className="text-[8px] font-bold uppercase">C16 Transfer</span>
                 <Switch
                   checked={config.C16CardIdTransfer}
                   onCheckedChange={(v) => setConfig({ ...config, C16CardIdTransfer: v })}
                 />
               </div>
-              <div className="flex justify-between items-center p-1">
+              <div className="flex justify-between items-center p-1 hover:bg-white/5 rounded transition-colors">
                 <span className="text-[8px] font-bold uppercase">Cash I/O</span>
                 <Switch
                   checked={config.DisableCashInOut}
                   onCheckedChange={(v) => setConfig({ ...config, DisableCashInOut: v })}
                 />
               </div>
-              <div className="flex justify-between items-center p-1">
+              <div className="flex justify-between items-center p-1 hover:bg-white/5 rounded transition-colors">
                 <span className="text-[8px] font-bold uppercase">Debug Mode</span>
                 <Input
                   value={config.DebugMode}
                   onChange={(e) => setConfig({ ...config, DebugMode: parseInt(e.target.value) })}
-                  className="w-10 h-6 bg-transparent p-0 text-right border-none font-bold"
+                  className="w-10 h-6 bg-transparent p-0 text-right border-none font-bold text-amber-500"
                 />
               </div>
             </div>
@@ -522,16 +532,16 @@ export default function FiscalSettingsPage() {
           {[
             { label: "Do X Report", key: "DoXReport" },
             { label: "Do Z Report", key: "DoZReport" },
-            { label: "Kitchen Dept", key: "UseDepartmentFromKitchenName" },
-            { label: "Manual Mode", key: "Mode", isText: true },
+            { label: "Kitchen Dept Mapping", key: "UseDepartmentFromKitchenName" },
+            { label: "Operation Mode", key: "Mode", isText: true },
           ].map((f) => (
             <div
               key={f.key}
-              className="p-3 bg-slate-900/40 border border-slate-800 rounded-xl flex items-center justify-between"
+              className="p-3 bg-slate-900/40 border border-slate-800 rounded-xl flex items-center justify-between hover:border-slate-700 transition-all"
             >
               <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{f.label}</span>
               {f.isText ? (
-                <span className="text-[9px] font-bold text-white italic">{config[f.key]}</span>
+                <span className="text-[9px] font-bold text-emerald-500 italic uppercase">{config[f.key]}</span>
               ) : (
                 <Switch checked={config[f.key]} onCheckedChange={(v) => setConfig({ ...config, [f.key]: v })} />
               )}
