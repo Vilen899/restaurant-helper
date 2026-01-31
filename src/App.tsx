@@ -13,6 +13,7 @@ import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import PinLogin from "./pages/PinLogin";
 import CashierPage from "./pages/Cashier";
+import CustomerDisplayPage from "./pages/CustomerDisplay";
 
 // Admin pages
 import AdminLayout from "./components/layout/AdminLayout";
@@ -21,26 +22,19 @@ import MenuPage from "./pages/admin/Menu";
 import RecipesPage from "./pages/admin/Recipes";
 import SemiFinishedPage from "./pages/admin/SemiFinished";
 import IngredientsPage from "./pages/admin/Ingredients";
-import InventoryPage from "./pages/admin/Inventory";
+import InventoryPage from "./pages/admin/Inventory"; // ТА САМАЯ ЧИСТАЯ СТРАНИЦА
 import LocationsPage from "./pages/admin/Locations";
 import StaffPage from "./pages/admin/Staff";
 import CategoriesPage from "./pages/admin/Categories";
 import ReportsPage from "./pages/admin/Reports";
 import InventoryReportPage from "./pages/admin/InventoryReport";
 import PaymentMethodsPage from "./pages/admin/PaymentMethods";
-import DocumentsPage from "./pages/admin/Documents";
 import WorkTimePage from "./pages/admin/WorkTime";
 import FiscalSettingsPage from "./pages/admin/FiscalSettings";
 import DiscountsPage from "./pages/admin/Discounts";
-import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
-import CustomerDisplayPage from "./pages/CustomerDisplay";
 import CashierSettingsPage from "./pages/admin/CashierSettings";
 import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
-import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
 import MaterialDocsPage from "./pages/admin/MaterialDocs";
-import StockTransferPage from "./pages/admin/StockTransfer";
-import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
-import MovementJournalPage from "./pages/admin/MovementJournal";
 
 const queryClient = new QueryClient();
 
@@ -69,32 +63,25 @@ function AppRoutes() {
         <Route path="recipes" element={<RecipesPage />} />
         <Route path="semi-finished" element={<SemiFinishedPage />} />
         <Route path="ingredients" element={<IngredientsPage />} />
+
+        {/* ВСЕ СКЛАДСКИЕ ПУТИ ТЕПЕРЬ ВЕДУТ НА ЧИСТУЮ СТРАНИЦУ ОСТАТКОВ */}
         <Route path="inventory" element={<InventoryPage />} />
+        <Route path="physical-inventory" element={<InventoryPage />} />
+        <Route path="stock-transfer" element={<InventoryPage />} />
+        <Route path="goods-receipt" element={<InventoryPage />} />
+        <Route path="migo" element={<InventoryPage />} />
+
         <Route path="locations" element={<LocationsPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="reports/inventory" element={<InventoryReportPage />} />
         <Route path="payment-methods" element={<PaymentMethodsPage />} />
-        <Route path="documents" element={<DocumentsPage />} />
         <Route path="work-time" element={<WorkTimePage />} />
         <Route path="fiscal-settings" element={<FiscalSettingsPage />} />
         <Route path="discounts" element={<DiscountsPage />} />
-        <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
         <Route path="cashier-settings" element={<CashierSettingsPage />} />
         <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
-
-        {/* Warehouse documents */}
-        <Route path="goods-receipt" element={<GoodsReceiptPage />} />
-        <Route path="migo" element={<GoodsReceiptPage />} />
         <Route path="material-docs" element={<MaterialDocsPage />} />
-
-        {/* Исправленный путь для перемещения */}
-        <Route path="stock-transfer" element={<StockTransferPage />} />
-        <Route path="transfer" element={<StockTransferPage />} />
-
-        <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
-        <Route path="movement-journal" element={<MovementJournalPage />} />
-        <Route path="material-log" element={<MovementJournalPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />
