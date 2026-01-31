@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Save, Settings, Wifi, Hash, Zap, CreditCard, Clock, ShieldCheck } from "lucide-react";
+import { Save, Settings, Wifi, Hash, Zap, CreditCard, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +38,7 @@ interface FullIikoConfig {
   payment_types: PaymentTypeItem[];
 }
 
+// Конфиг строго по твоему XML файлу
 const initialConfig: FullIikoConfig = {
   host: "192.168.9.19",
   port: "8080",
@@ -53,12 +54,18 @@ const initialConfig: FullIikoConfig = {
   subcharge_code: "999999",
   subcharge_name: "Հանրային սննդի կազմակերպում",
   subcharge_adg: "56.10",
-  subcharge_unit: "հատ․",
+  subcharge_unit: "հат․",
   op_timeout: 30000,
   kkm_timeout: 120000,
   adg_length: 1,
   fast_code_length: 1,
-  payment_types: [],
+  payment_types: [
+    { Id: "09322f46-578a-d210-add7-eec222a08871", Name: "Կանխիկ", UseExtPos: true, PaymentType: "paidAmount" },
+    { Id: "768a07d5-f689-4850-bc93-5fdb9d3a9241", Name: "Bank Cards", UseExtPos: false, PaymentType: "paidAmountCard" },
+    { Id: "6dcb7577-458d-4215-b29f-08ee5dc3dbce", Name: "Glovo", UseExtPos: true, PaymentType: "paidAmountCard" },
+    { Id: "c58e022d-96f2-4f50-b94f-3831f3c90265", Name: "Yandex", UseExtPos: true, PaymentType: "paidAmountCard" },
+    { Id: "3859f307-61e4-4bcd-9314-757f831d8c23", Name: "Idram", UseExtPos: true, PaymentType: "paidAmountCard" },
+  ],
 };
 
 export default function FiscalSettingsPage() {
@@ -67,79 +74,95 @@ export default function FiscalSettingsPage() {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("fiscal_settings").select("*").maybeSingle();
-      if (data) {
-        setConfig({ ...initialConfig, ...data });
+      try {
+        const { data, error } = await supabase.from("fiscal_settings").select("*").maybeSingle();
+        if (error) throw error;
+        if (data) {
+          // Гарантируем корректность массива при загрузке
+          setConfig({
+            ...initialConfig,
+            ...data,
+            payment_types: Array.isArray(data.payment_types) ? data.payment_types : initialConfig.payment_types,
+          });
+        }
+      } catch (err) {
+        console.error("Load error:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     load();
   }, []);
 
   const save = async () => {
-    // Вставляем как any, чтобы избежать ошибок типизации Supabase
-    const { error } = await supabase.from("fiscal_settings").upsert({
-      ...config,
-      id: 1,
-      updated_at: new Date().toISOString(),
-    } as any);
+    try {
+      const { error } = await supabase.from("fiscal_settings").upsert({
+        ...config,
+        id: 1,
+        updated_at: new Date().toISOString(),
+      } as any);
 
-    if (!error) toast.success("Конфигурация HDM сохранена");
-    else toast.error("Ошибка сохранения");
+      if (error) throw error;
+      toast.success("Конфигурация iiko HDM сохранена");
+    } catch (err: any) {
+      toast.error("Ошибка сохранения: " + err.message);
+    }
   };
 
-  if (loading) return <div className="p-10 text-center">Загрузка XML параметров...</div>;
+  if (loading) return <div className="p-10 text-center text-slate-500 animate-pulse">Загрузка параметров iiko...</div>;
 
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <div className="flex justify-between items-center bg-white p-4 rounded-lg border shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-5 rounded-xl border shadow-sm gap-4">
         <div>
-          <h1 className="text-xl font-bold flex items-center gap-2 italic text-slate-700">
-            <Settings className="text-blue-600" /> iiko HDM Armenia Config
+          <h1 className="text-2xl font-black flex items-center gap-2 text-slate-800 tracking-tight">
+            <Settings className="text-blue-600 h-6 w-6" /> IIKO HDM ARMENIA
           </h1>
+          <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Fiscal Driver Configuration</p>
         </div>
-        <Button onClick={save} className="bg-green-600 hover:bg-green-700">
-          <Save className="mr-2 h-4 w-4" /> Save Config
+        <Button onClick={save} className="bg-blue-600 hover:bg-blue-700 h-11 px-8 shadow-lg shadow-blue-200">
+          <Save className="mr-2 h-4 w-4" /> Save Configuration
         </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* CONNECTION */}
-        <Card>
-          <CardHeader className="bg-slate-50 py-3">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <Wifi className="h-4 w-4" /> CONNECTION
+        {/* CONNECTION SECTION */}
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b py-3">
+            <CardTitle className="text-xs font-bold flex items-center gap-2 text-slate-600">
+              <Wifi className="h-4 w-4" /> NETWORK ACCESS
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>Host</Label>
+          <CardContent className="space-y-4 pt-5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Host IP</Label>
                 <Input value={config.host} onChange={(e) => setConfig({ ...config, host: e.target.value })} />
               </div>
-              <div className="space-y-1">
-                <Label>Port</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Port</Label>
                 <Input value={config.port} onChange={(e) => setConfig({ ...config, port: e.target.value })} />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>KkmPassword</Label>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase font-bold text-slate-500">Kkm Password</Label>
               <Input
+                type="password"
                 value={config.kkm_password}
                 onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <Label>OpTimeout</Label>
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-slate-400">OP TIMEOUT</Label>
                 <Input
                   type="number"
                   value={config.op_timeout}
                   onChange={(e) => setConfig({ ...config, op_timeout: parseInt(e.target.value) })}
                 />
               </div>
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <Label>KkmTimeout</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[10px] text-slate-400">KKM TIMEOUT</Label>
                 <Input
                   type="number"
                   value={config.kkm_timeout}
@@ -150,40 +173,41 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* FISCAL DATA */}
-        <Card>
-          <CardHeader className="bg-slate-50 py-3">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <Hash className="h-4 w-4" /> FISCAL & TAX
+        {/* TAX & CASHIER SECTION */}
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b py-3">
+            <CardTitle className="text-xs font-bold flex items-center gap-2 text-slate-600">
+              <Hash className="h-4 w-4" /> FISCAL DATA
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>CashierId</Label>
+          <CardContent className="space-y-4 pt-5">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Cashier ID</Label>
                 <Input
                   value={config.cashier_id}
                   onChange={(e) => setConfig({ ...config, cashier_id: e.target.value })}
                 />
               </div>
-              <div className="space-y-1">
-                <Label>CashierPin</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Cashier PIN</Label>
                 <Input
                   value={config.cashier_pin}
                   onChange={(e) => setConfig({ ...config, cashier_pin: e.target.value })}
                 />
               </div>
             </div>
-            <div className="space-y-1">
-              <Label>VatRate (%)</Label>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase font-bold text-slate-500">Vat Rate (%)</Label>
               <Input
                 type="number"
+                step="0.01"
                 value={config.vat_rate}
                 onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) })}
               />
             </div>
-            <div className="space-y-1">
-              <Label>Default ADG</Label>
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase font-bold text-slate-500">Default ADG</Label>
               <Input
                 value={config.default_adg}
                 onChange={(e) => setConfig({ ...config, default_adg: e.target.value })}
@@ -192,48 +216,48 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* CODES & GENERATION */}
-        <Card>
-          <CardHeader className="bg-slate-50 py-3">
-            <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <Zap className="h-4 w-4" /> SUBCHARGE & ADG
+        {/* SUBCHARGE SECTION */}
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="bg-slate-50/50 border-b py-3">
+            <CardTitle className="text-xs font-bold flex items-center gap-2 text-slate-600">
+              <Zap className="h-4 w-4" /> SUBCHARGE SETTINGS
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            <div className="space-y-1">
-              <Label>Subcharge Name (AM)</Label>
+          <CardContent className="space-y-4 pt-5">
+            <div className="space-y-1.5">
+              <Label className="text-[11px] uppercase font-bold text-slate-500">Name (Armenian)</Label>
               <Input
                 value={config.subcharge_name}
                 onChange={(e) => setConfig({ ...config, subcharge_name: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>Sub. Code</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Dish Code</Label>
                 <Input
                   value={config.subcharge_code}
                   onChange={(e) => setConfig({ ...config, subcharge_code: e.target.value })}
                 />
               </div>
-              <div className="space-y-1">
-                <Label>Sub. Unit</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Unit</Label>
                 <Input
                   value={config.subcharge_unit}
                   onChange={(e) => setConfig({ ...config, subcharge_unit: e.target.value })}
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <Label>ADG Len</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">ADG Code Len</Label>
                 <Input
                   type="number"
                   value={config.adg_length}
                   onChange={(e) => setConfig({ ...config, adg_length: parseInt(e.target.value) })}
                 />
               </div>
-              <div className="space-y-1">
-                <Label>Fast Len</Label>
+              <div className="space-y-1.5">
+                <Label className="text-[11px] uppercase font-bold text-slate-500">Fast Code Len</Label>
                 <Input
                   type="number"
                   value={config.fast_code_length}
@@ -245,40 +269,62 @@ export default function FiscalSettingsPage() {
         </Card>
       </div>
 
+      {/* OPTIONS BAR */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {[
+          { label: "Use Default ADG", key: "use_default_adg" },
+          { label: "Use Discount in KKM", key: "use_discount" },
+          { label: "Use Kitchen Names", key: "use_kitchen_name" },
+        ].map((item) => (
+          <div key={item.key} className="flex items-center justify-between p-4 bg-white rounded-xl border shadow-sm">
+            <Label className="text-sm font-bold text-slate-700">{item.label}</Label>
+            <Switch
+              checked={(config as any)[item.key]}
+              onCheckedChange={(v) => setConfig({ ...config, [item.key]: v })}
+            />
+          </div>
+        ))}
+      </div>
+
       {/* PAYMENT TYPES LIST */}
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <CreditCard className="h-4 w-4" /> PAYMENT TYPES MAPPING
+      <Card className="shadow-md overflow-hidden border-slate-200">
+        <CardHeader className="bg-slate-800 text-white py-3">
+          <CardTitle className="text-xs uppercase tracking-widest flex items-center gap-2">
+            <CreditCard className="h-4 w-4" /> Payment Types Mapping
           </CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-slate-500">
+            <thead className="bg-slate-100 text-slate-600 border-b">
               <tr>
-                <th className="text-left p-3 font-medium">Name</th>
-                <th className="text-left p-3 font-medium">iiko ID (External)</th>
-                <th className="text-center p-3 font-medium">ExtPos</th>
-                <th className="text-left p-3 font-medium">Type</th>
+                <th className="text-left p-4 font-bold">Local Name</th>
+                <th className="text-left p-4 font-bold">iiko External ID</th>
+                <th className="text-center p-4 font-bold">ExtPOS</th>
+                <th className="text-right p-4 font-bold">Fiscal Type</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
-              {config.payment_types.map((pt, idx) => (
-                <tr key={pt.Id} className="hover:bg-slate-50/50">
-                  <td className="p-3 font-medium">{pt.Name}</td>
-                  <td className="p-3 text-xs font-mono text-slate-400">{pt.Id}</td>
-                  <td className="p-3 text-center">{pt.UseExtPos ? "✅" : "❌"}</td>
-                  <td className="p-3 text-xs uppercase font-bold text-blue-600">{pt.PaymentType}</td>
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {(config.payment_types || []).map((pt, idx) => (
+                <tr key={pt.Id || idx} className="hover:bg-blue-50/30 transition-colors">
+                  <td className="p-4 font-semibold text-slate-700">{pt.Name}</td>
+                  <td className="p-4 font-mono text-[11px] text-slate-400">{pt.Id}</td>
+                  <td className="p-4 text-center">
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${pt.UseExtPos ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}
+                    >
+                      {pt.UseExtPos ? "YES" : "NO"}
+                    </span>
+                  </td>
+                  <td className="p-4 text-right">
+                    <span className="text-[10px] font-black uppercase text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                      {pt.PaymentType}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {config.payment_types.length === 0 && (
-            <div className="p-10 text-center text-slate-400">
-              Payment types will appear here after XML import or DB sync
-            </div>
-          )}
-        </CardContent>
+        </div>
       </Card>
     </div>
   );
