@@ -1,265 +1,671 @@
 import { useState, useEffect } from "react";
-import {
-  Save,
-  Wifi,
-  Zap,
-  CreditCard,
-  MapPin,
-  Terminal,
-  Lock,
-  Database,
-  ShieldCheck,
-  Clock,
-  Activity,
-  AlertTriangle,
-  RefreshCw,
-} from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Printer, Settings, Wifi, WifiOff, TestTube, Save, AlertTriangle, Eye, EyeOff } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
+import { PageHeader } from "@/components/admin/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 
-const XML_PAYMENT_METHODS = [
-  { Id: "09322f46-578a-d210-add7-eec222a08871", Name: "Կանխիկ", UseExtPos: true, PaymentType: "paidAmount" },
-  { Id: "768a07d5-f689-4850-bc93-5fdb9d3a9241", Name: "Bank Cards", UseExtPos: false, PaymentType: "paidAmountCard" },
-  { Id: "6dcb7577-458d-4215-b29f-08ee5dc3dbce", Name: "Glovo", UseExtPos: true, PaymentType: "paidAmountCard" },
-  { Id: "c58e022d-96f2-4f50-b94f-3831f3c90265", Name: "Yandex", UseExtPos: true, PaymentType: "paidAmountCard" },
-  { Id: "7a0ae73c-b12b-4025-9783-85a77156cbcb", Name: "Buy.Am", UseExtPos: true, PaymentType: "paidAmountCard" },
-  { Id: "78c242fc-6fad-4ee6-9a44-7fbdfd54f7e5", Name: "Tel Cell", UseExtPos: true, PaymentType: "paidAmountCard" },
-  { Id: "3859f307-61e4-4bcd-9314-757f831d8c23", Name: "Idram", UseExtPos: true, PaymentType: "paidAmountCard" },
-  {
-    Id: "9c4eebef-dd32-4883-ab1a-1d0854e75dcf",
-    Name: "Հյուրասիրություն",
-    UseExtPos: true,
-    PaymentType: "paidAmountCard",
-  },
-  {
-    Id: "27144aaf-e4ac-438e-9155-68280819edad",
-    Name: "Առաքում POS ով",
-    UseExtPos: true,
-    PaymentType: "paidAmountCard",
-  },
-];
+interface FiscalConfig {
+  id?: string;
+  location_id: string;
+  enabled: boolean;
+  driver: "hdm" | "atol" | "shtrih" | "evotor" | "newland" | "aisino" | "custom";
+  connection_type: "network" | "api";
+  api_url: string;
+  ip_address: string;
+  port: string;
+  api_login: string;
+  api_password: string;
+  api_token: string;
+  device_id: string;
+  serial_number: string;
+  inn: string;
+  operator_name: string;
+  company_name: string;
+  company_address: string;
+  auto_print_receipt: boolean;
+  print_copy: boolean;
+  // HDM-specific fields
+  kkm_password: string;
+  vat_rate: number;
+  terminal_id: string;
+  default_timeout: number;
+  payment_timeout: number;
+}
 
-const XML_DEFAULTS = {
-  Host: "192.168.9.19",
-  Port: "8080",
-  CashierId: "3",
-  CashierPin: "4321",
-  KkmPassword: "Aa1111Bb",
-  VatRate: 16.67,
-  UseDiscountInKkm: true,
-  UseSubchargeAsDish: true,
-  UseKitchenName: true,
-  DefaultAdg: "56.10",
-  UseDefaultAdg: true,
-  UseDepartmentFromKitchenName: false,
-  BonusPaymentName: "",
-  C16CardIdTransfer: false,
-  SubchargeAsDishCode: "999999",
-  SubchargeAsDishName: "Հանрային սննդի կազմակերպում",
-  SubchargeAsDishAdgCode: "56.10",
-  SubchargeAsDishUnit: "հատ․",
-  DefaultOperationTimeout: 30000,
-  KkmPaymentTimeout: 120000,
-  AdgCodeFromProductCodeLength: 1,
-  AdgCodeFromProductFastCodeLength: 1,
-  BackupDaysLimit: 14,
-  VersionMajor: 0,
-  VersionMinor: 7,
-  AggregateSales: false,
-  AggregateSaleName: "",
-  AggregateSaleAdg: "",
-  AggregateSaleCode: "",
-  AggregateSaleUnit: "",
-  DisableCashInOut: true,
-  DoXReport: false,
-  DoZReport: false,
-  CounterToRelogin: 50,
-  DebugMode: 1,
-  Mode: "Manual",
+const defaultConfig: FiscalConfig = {
+  location_id: "",
+  enabled: false,
+  driver: "hdm",
+  connection_type: "api",
+  api_url: "",
+  ip_address: "",
+  port: "8080",
+  api_login: "",
+  api_password: "",
+  api_token: "",
+  device_id: "",
+  serial_number: "",
+  inn: "",
+  operator_name: "",
+  company_name: "",
+  company_address: "",
+  auto_print_receipt: true,
+  print_copy: false,
+  // HDM defaults from iiko config
+  kkm_password: "",
+  vat_rate: 20,
+  terminal_id: "",
+  default_timeout: 30000,
+  payment_timeout: 120000,
 };
 
 export default function FiscalSettingsPage() {
-  const [config, setConfig] = useState({ ...XML_DEFAULTS, location_id: "", PaymentTypes: XML_PAYMENT_METHODS });
-  const [locations, setLocations] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // --- НОВЫЕ ПОЛЯ ДЛЯ ПРОВЕРКИ ---
+  const { user } = useAuth();
+  const [config, setConfig] = useState<FiscalConfig>(defaultConfig);
+  const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<string>("");
+  const [connected, setConnected] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [connStatus, setConnStatus] = useState<"offline" | "online" | "unknown">("unknown");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showToken, setShowToken] = useState(false);
 
   useEffect(() => {
-    async function init() {
-      const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
-      if (data?.length) {
-        setLocations(data);
-        await loadSettings(data[0].id);
-      } else {
-        setLoading(false);
-      }
-    }
-    init();
+    fetchLocations();
   }, []);
 
-  async function loadSettings(locId) {
-    setLoading(true);
-    setConnStatus("unknown"); // Сбрасываем статус при смене локации
-    const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
-    if (data) {
-      setConfig({
-        ...XML_DEFAULTS,
-        ...data,
-        location_id: locId,
-        PaymentTypes: data.PaymentTypes || XML_PAYMENT_METHODS,
-      });
-    } else {
-      setConfig({ ...XML_DEFAULTS, location_id: locId, PaymentTypes: XML_PAYMENT_METHODS });
+  useEffect(() => {
+    if (selectedLocation) {
+      fetchSettings(selectedLocation);
     }
-    setLoading(false);
-  }
+  }, [selectedLocation]);
 
-  // --- ФУНКЦИЯ ПРОВЕРКИ КАССЫ ---
-  const checkKkmStatus = async () => {
-    setTesting(true);
+  const fetchLocations = async () => {
     try {
-      // Пытаемся постучаться по указанному адресу
-      // ВАЖНО: Это сработает, только если браузер находится в той же сети, что и касса!
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 5000); // Таймаут 5 сек
+      const { data, error } = await supabase.from("locations").select("id, name").eq("is_active", true).order("name");
 
-      const res = await fetch(`http://${config.Host}:${config.Port}/api/v1/status`, {
-        signal: controller.signal,
-        mode: "no-cors", // Кассы часто не поддерживают CORS
+      if (error) throw error;
+      setLocations(data || []);
+
+      if (data && data.length > 0) {
+        setSelectedLocation(data[0].id);
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Ошибка загрузки точек");
+    }
+  };
+
+  const fetchSettings = async (locationId: string) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("fiscal_settings")
+        .select("*")
+        .eq("location_id", locationId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setConfig({
+          id: data.id,
+          location_id: data.location_id,
+          enabled: data.enabled,
+          driver: (data.driver as FiscalConfig["driver"]) || "hdm",
+          connection_type: data.connection_type as FiscalConfig["connection_type"],
+          api_url: data.api_url || "",
+          ip_address: data.ip_address || "",
+          port: data.port || "8080",
+          api_login: data.api_login || "",
+          api_password: data.api_password || "",
+          api_token: data.api_token || "",
+          device_id: data.device_id || "",
+          serial_number: data.serial_number || "",
+          inn: data.inn || "",
+          operator_name: data.operator_name || "",
+          company_name: data.company_name || "",
+          company_address: data.company_address || "",
+          auto_print_receipt: data.auto_print_receipt,
+          print_copy: data.print_copy,
+          // HDM fields
+          kkm_password: (data as any).kkm_password || "",
+          vat_rate: (data as any).vat_rate || 20,
+          terminal_id: (data as any).terminal_id || "",
+          default_timeout: (data as any).default_timeout || 30000,
+          payment_timeout: (data as any).payment_timeout || 120000,
+        });
+      } else {
+        setConfig({ ...defaultConfig, location_id: locationId });
+      }
+      setConnected(false);
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Ошибка загрузки настроек");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!selectedLocation) {
+      toast.error("Выберите точку");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const dataToSave = {
+        location_id: selectedLocation,
+        enabled: config.enabled,
+        driver: config.driver,
+        connection_type: config.connection_type,
+        api_url: config.api_url || null,
+        ip_address: config.ip_address || null,
+        port: config.port || null,
+        api_login: config.api_login || null,
+        api_password: config.api_password || null,
+        api_token: config.api_token || null,
+        device_id: config.device_id || null,
+        serial_number: config.serial_number || null,
+        inn: config.inn || null,
+        operator_name: config.operator_name || null,
+        company_name: config.company_name || null,
+        company_address: config.company_address || null,
+        auto_print_receipt: config.auto_print_receipt,
+        print_copy: config.print_copy,
+        // HDM-specific
+        kkm_password: config.kkm_password || null,
+        vat_rate: config.vat_rate || 20,
+        terminal_id: config.terminal_id || null,
+        default_timeout: config.default_timeout || 30000,
+        payment_timeout: config.payment_timeout || 120000,
+      };
+
+      if (config.id) {
+        const { error } = await supabase.from("fiscal_settings").update(dataToSave).eq("id", config.id);
+
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from("fiscal_settings").insert(dataToSave).select().single();
+
+        if (error) throw error;
+        setConfig((prev) => ({ ...prev, id: data.id }));
+      }
+
+      toast.success("Настройки сохранены");
+    } catch (error: any) {
+      console.error("Error:", error);
+      toast.error(error.message || "Ошибка сохранения");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    if (!config.api_url && !config.ip_address) {
+      toast.error("Укажите API URL или IP-адрес");
+      return;
+    }
+
+    setTesting(true);
+    setConnected(false);
+
+    try {
+      const { data, error } = await supabase.functions.invoke("fiscal-print", {
+        body: {
+          action: "test_connection",
+          location_id: selectedLocation,
+        },
       });
 
-      setConnStatus("online");
-      toast.success("KKM ОТВЕЧАЕТ (Network OK)");
-    } catch (err) {
-      setConnStatus("offline");
-      toast.error("НЕТ СВЯЗИ: Касса не найдена по адресу " + config.Host);
+      if (error) throw error;
+
+      if (data?.success) {
+        setConnected(true);
+        toast.success(data.message || "Подключение успешно!");
+      } else {
+        toast.error(data?.error || data?.message || "Не удалось подключиться");
+      }
+    } catch (error: any) {
+      console.error("Test error:", error);
+      toast.error(error.message || "Ошибка тестирования подключения");
     } finally {
       setTesting(false);
     }
   };
 
-  const save = async () => {
-    const { error } = await supabase
-      .from("fiscal_settings")
-      .upsert({ ...config, updated_at: new Date().toISOString() }, { onConflict: "location_id" });
-    if (!error) toast.success("Данные сохранены");
-    else toast.error(error.message);
+  const handleTestPrint = async () => {
+    toast.info("Печать тестового чека...");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("fiscal-print", {
+        body: {
+          action: "print_receipt",
+          location_id: selectedLocation,
+          order_data: {
+            order_number: 999,
+            items: [
+              { name: "Тестовая позиция 1", quantity: 2, price: 100, total: 200 },
+              { name: "Тестовая позиция 2", quantity: 1, price: 150, total: 150 },
+            ],
+            subtotal: 350,
+            discount: 0,
+            total: 350,
+            payment_method: "cash",
+            cashier_name: "Тест",
+            date: new Date().toISOString(),
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success("Тестовый чек отправлен на печать");
+      } else {
+        toast.error(data?.error || "Ошибка печати");
+      }
+    } catch (error: any) {
+      console.error("Print error:", error);
+      toast.error(error.message || "Ошибка печати тестового чека");
+    }
   };
 
-  if (loading)
+  const getLocationName = () => {
+    return locations.find((l) => l.id === selectedLocation)?.name || "";
+  };
+
+  if (loading && locations.length === 0) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center font-mono text-emerald-500 italic uppercase tracking-widest">
-        Loading_Core_Manifest...
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     );
+  }
 
   return (
-    <div className="min-h-screen bg-[#020202] text-slate-300 p-4 md:p-8 font-sans pb-20">
-      <div className="max-w-[1400px] mx-auto space-y-6">
-        {/* HEADER */}
-        <div className="flex flex-col md:flex-row justify-between items-center bg-slate-900/40 p-6 rounded-2xl border border-slate-800 backdrop-blur-md">
+    <div className="space-y-6">
+      <PageHeader title="Настройки ККТ" description="Подключение кассового аппарата к точке продаж" />
+
+      {/* Location selector */}
+      <Card>
+        <CardContent className="p-4">
           <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-600 rounded-xl">
-              <Terminal className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-white uppercase italic tracking-tighter">HDM Driver Config</h1>
-              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
-                <MapPin className="h-3 w-3" />
-                <select
-                  className="bg-transparent border-none outline-none text-emerald-500"
-                  value={config.location_id}
-                  onChange={(e) => loadSettings(e.target.value)}
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id} className="bg-slate-900">
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+            <Label className="whitespace-nowrap">Точка:</Label>
+            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Выберите точку" />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Alert variant="default" className="border-amber-500/50 bg-amber-500/10">
+        <AlertTriangle className="h-4 w-4 text-amber-500" />
+        <AlertTitle>Универсальная интеграция</AlertTitle>
+        <AlertDescription>
+          Укажите API URL вашего кассового аппарата (например, как в Dines), логин и пароль для авторизации. Система
+          поддерживает АТОЛ, Штрих-М, Эвотор и произвольные API.
+        </AlertDescription>
+      </Alert>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Connection Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5" />
+              Подключение
+            </CardTitle>
+            <CardDescription>Параметры подключения к ККТ</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Использовать ККТ</Label>
+                <p className="text-sm text-muted-foreground">Включить фискализацию для точки {getLocationName()}</p>
               </div>
+              <Switch
+                checked={config.enabled}
+                onCheckedChange={(checked) => setConfig({ ...config, enabled: checked })}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Тип ККТ / Драйвер</Label>
+              <Select
+                value={config.driver}
+                onValueChange={(value: FiscalConfig["driver"]) => setConfig({ ...config, driver: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hdm">HDM (ISP930 и др. - Армения)</SelectItem>
+                  <SelectItem value="custom">Произвольный API (универсальный)</SelectItem>
+                  <SelectItem value="newland">Newland</SelectItem>
+                  <SelectItem value="aisino">Aisino</SelectItem>
+                  <SelectItem value="atol">АТОЛ</SelectItem>
+                  <SelectItem value="shtrih">Штрих-М</SelectItem>
+                  <SelectItem value="evotor">Эвотор</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>API URL *</Label>
+              <Input
+                value={config.api_url}
+                onChange={(e) => setConfig({ ...config, api_url: e.target.value })}
+                placeholder="https://api.your-fiscal.com или http://192.168.1.100:5555"
+              />
+              <p className="text-xs text-muted-foreground">Полный URL к API кассового аппарата</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>IP-адрес (альтернатива)</Label>
+                <Input
+                  value={config.ip_address}
+                  onChange={(e) => setConfig({ ...config, ip_address: e.target.value })}
+                  placeholder="192.168.1.100"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Порт</Label>
+                <Input
+                  value={config.port}
+                  onChange={(e) => setConfig({ ...config, port: e.target.value })}
+                  placeholder="5555"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>ID устройства / Серийный номер</Label>
+              <Input
+                value={config.device_id}
+                onChange={(e) => setConfig({ ...config, device_id: e.target.value })}
+                placeholder="Серийный номер ККТ"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Authentication */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Авторизация
+            </CardTitle>
+            <CardDescription>Данные для подключения к API</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label>{config.driver === "hdm" ? "ID кассира (CashierId)" : "Логин"}</Label>
+              <Input
+                value={config.api_login}
+                onChange={(e) => setConfig({ ...config, api_login: e.target.value })}
+                placeholder={config.driver === "hdm" ? "3" : "Логин от API"}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>{config.driver === "hdm" ? "ПИН кассира (CashierPin)" : "Пароль"}</Label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  value={config.api_password}
+                  onChange={(e) => setConfig({ ...config, api_password: e.target.value })}
+                  placeholder={config.driver === "hdm" ? "4321" : "Пароль от API"}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+
+            {/* HDM-specific fields */}
+            {config.driver === "hdm" && (
+              <>
+                <div className="space-y-2">
+                  <Label>Пароль ККМ (KkmPassword)</Label>
+                  <div className="relative">
+                    <Input
+                      type={showToken ? "text" : "password"}
+                      value={config.kkm_password}
+                      onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
+                      placeholder="Aa1111Bb"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0"
+                      onClick={() => setShowToken(!showToken)}
+                    >
+                      {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Ставка НДС (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={config.vat_rate}
+                      onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) || 20 })}
+                      placeholder="16.67"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Terminal ID</Label>
+                    <Input
+                      value={config.terminal_id}
+                      onChange={(e) => setConfig({ ...config, terminal_id: e.target.value })}
+                      placeholder="19065338"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Таймаут операции (мс)</Label>
+                    <Input
+                      type="number"
+                      value={config.default_timeout}
+                      onChange={(e) => setConfig({ ...config, default_timeout: parseInt(e.target.value) || 30000 })}
+                      placeholder="30000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Таймаут оплаты (мс)</Label>
+                    <Input
+                      type="number"
+                      value={config.payment_timeout}
+                      onChange={(e) => setConfig({ ...config, payment_timeout: parseInt(e.target.value) || 120000 })}
+                      placeholder="120000"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
+            {config.driver !== "hdm" && (
+              <div className="space-y-2">
+                <Label>API Токен (альтернатива)</Label>
+                <div className="relative">
+                  <Input
+                    type={showToken ? "text" : "password"}
+                    value={config.api_token}
+                    onChange={(e) => setConfig({ ...config, api_token: e.target.value })}
+                    placeholder="Bearer токен (если используется)"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0"
+                    onClick={() => setShowToken(!showToken)}
+                  >
+                    {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">Используйте либо логин/пароль, либо токен</p>
+              </div>
+            )}
+
+            <div className="pt-4 border-t space-y-4">
+              <h4 className="font-medium">Реквизиты организации</h4>
+
+              <div className="space-y-2">
+                <Label>ИНН</Label>
+                <Input
+                  value={config.inn}
+                  onChange={(e) => setConfig({ ...config, inn: e.target.value })}
+                  placeholder="1234567890"
+                  maxLength={12}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Название организации</Label>
+                <Input
+                  value={config.company_name}
+                  onChange={(e) => setConfig({ ...config, company_name: e.target.value })}
+                  placeholder="ООО Ресторан"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Имя оператора (кассира)</Label>
+                <Input
+                  value={config.operator_name}
+                  onChange={(e) => setConfig({ ...config, operator_name: e.target.value })}
+                  placeholder="Иванов И.И."
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Print Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Настройки печати</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-8">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label>Автоматическая печать</Label>
+                <p className="text-sm text-muted-foreground">Печатать чек сразу после оплаты</p>
+              </div>
+              <Switch
+                checked={config.auto_print_receipt}
+                onCheckedChange={(checked) => setConfig({ ...config, auto_print_receipt: checked })}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label>Печатать копию</Label>
+                <p className="text-sm text-muted-foreground">Второй экземпляр для клиента</p>
+              </div>
+              <Switch
+                checked={config.print_copy}
+                onCheckedChange={(checked) => setConfig({ ...config, print_copy: checked })}
+              />
             </div>
           </div>
-          <Button
-            onClick={save}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-10 h-12 rounded-xl text-[11px] tracking-widest shadow-xl transition-all"
-          >
-            <Save className="mr-2 h-4 w-4" /> SAVE TO DATABASE
-          </Button>
-        </div>
+        </CardContent>
+      </Card>
 
-        {/* CONNECTION CARD С КНОПКОЙ ПРОВЕРКИ */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl border-t-2 border-t-blue-500 shadow-xl">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-2 text-blue-500">
-                <Wifi className="h-4 w-4" />
-                <h3 className="text-[10px] font-black uppercase tracking-widest">Network</h3>
-              </div>
-
-              {/* ИНДИКАТОР СТАТУСА */}
-              <div
-                className={`flex items-center gap-2 px-2 py-1 rounded-md text-[8px] font-black ${
-                  connStatus === "online"
-                    ? "bg-emerald-500/10 text-emerald-500"
-                    : connStatus === "offline"
-                      ? "bg-red-500/10 text-red-500"
-                      : "bg-slate-800 text-slate-400"
-                }`}
-              >
-                <div
-                  className={`w-1.5 h-1.5 rounded-full ${connStatus === "online" ? "bg-emerald-500 animate-pulse" : "bg-current"}`}
-                />
-                {connStatus.toUpperCase()}
-              </div>
+      {/* Connection Status & Actions */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {connected ? (
+                <div className="flex items-center gap-2 text-green-600">
+                  <Wifi className="h-5 w-5" />
+                  <span className="font-medium">ККТ подключена</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <WifiOff className="h-5 w-5" />
+                  <span>ККТ не подключена</span>
+                </div>
+              )}
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-[9px] text-slate-500 uppercase">Host IP</Label>
-                  <Input
-                    value={config.Host}
-                    onChange={(e) => setConfig({ ...config, Host: e.target.value })}
-                    className="bg-slate-950 font-mono text-blue-400"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[9px] text-slate-500 uppercase">Port</Label>
-                  <Input
-                    value={config.Port}
-                    onChange={(e) => setConfig({ ...config, Port: e.target.value })}
-                    className="bg-slate-950 font-mono text-blue-400"
-                  />
-                </div>
-              </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={handleTestConnection} disabled={testing || !config.id}>
+                {testing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent mr-2" />
+                    Проверка...
+                  </>
+                ) : (
+                  <>
+                    <TestTube className="h-4 w-4 mr-2" />
+                    Тест подключения
+                  </>
+                )}
+              </Button>
 
-              {/* КНОПКА ПРОВЕРКИ */}
-              <Button
-                onClick={checkKkmStatus}
-                disabled={testing}
-                className="w-full bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-600/30 text-[9px] font-black h-9 flex gap-2"
-              >
-                {testing ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />}
-                {testing ? "SCANNING NETWORK..." : "TEST CONNECTION"}
+              {connected && (
+                <Button variant="outline" onClick={handleTestPrint}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Тестовый чек
+                </Button>
+              )}
+
+              <Button onClick={handleSave} disabled={saving}>
+                {saving ? (
+                  "Сохранение..."
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Сохранить
+                  </>
+                )}
               </Button>
             </div>
-          </Card>
-
-          {/* Остальные карточки (Cashier Auth, Logic Flags и т.д. - оставь как в прошлом коде) */}
-          {/* ... */}
-        </div>
-
-        {/* Здесь должен идти остальной код таблиц и параметров из предыдущего сообщения */}
-      </div>
+          </div>
+          {!config.id && (
+            <p className="text-sm text-muted-foreground mt-2">Сохраните настройки перед тестированием подключения</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
