@@ -68,12 +68,9 @@ const menuGroups: MenuGroup[] = [
     roles: ['admin', 'manager'],
     items: [
       { path: '/admin/goods-receipt', icon: Package, label: 'Приход (MIGO)', roles: ['admin', 'manager'] },
-      { path: '/admin/supply-docs', icon: FileText, label: 'Документы поставок', roles: ['admin', 'manager'] },
       { path: '/admin/stock-transfer', icon: Truck, label: 'Перемещение (MB1B)', roles: ['admin', 'manager'] },
-      { path: '/admin/transfer-docs', icon: FileText, label: 'Документы перемещений', roles: ['admin', 'manager'] },
       { path: '/admin/physical-inventory', icon: Warehouse, label: 'Инвентаризация (MI01)', roles: ['admin', 'manager'] },
-      { path: '/admin/stocktaking-docs', icon: FileText, label: 'Документы инвентаризации', roles: ['admin', 'manager'] },
-      { path: '/admin/movement-journal', icon: Clock, label: 'Журнал движений (MB51)', roles: ['admin', 'manager'] },
+      { path: '/admin/movement-journal', icon: Clock, label: 'Журнал документов (MB51)', roles: ['admin', 'manager'] },
     ],
   },
   {

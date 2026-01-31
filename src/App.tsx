@@ -39,9 +39,6 @@ import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
 import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
 import MaterialDocsPage from "./pages/admin/MaterialDocs";
 import StockTransferPage from "./pages/admin/StockTransfer";
-import SupplyDocsPage from "./pages/admin/SupplyDocs";
-import StocktakingDocsPage from "./pages/admin/StocktakingDocs";
-import TransferDocsPage from "./pages/admin/TransferDocs";
 import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
 import MovementJournalPage from "./pages/admin/MovementJournal";
 
@@ -95,9 +92,6 @@ function AppRoutes() {
         <Route path="stock-transfer" element={<StockTransferPage />} />
         <Route path="transfer" element={<StockTransferPage />} />
 
-        <Route path="supply-docs" element={<SupplyDocsPage />} />
-        <Route path="stocktaking-docs" element={<StocktakingDocsPage />} />
-        <Route path="transfer-docs" element={<TransferDocsPage />} />
         <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
         <Route path="movement-journal" element={<MovementJournalPage />} />
         <Route path="material-log" element={<MovementJournalPage />} />

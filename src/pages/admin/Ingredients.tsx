@@ -12,11 +12,18 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Tables } from '@/integrations/supabase/types';
 
-type Ingredient = Tables<'ingredients'>;
 type Unit = Tables<'units'>;
 
-interface IngredientWithUnit extends Ingredient {
-  unit?: Unit;
+interface IngredientWithUnit {
+  id: string;
+  name: string;
+  unit_id: string | null;
+  cost_per_unit: number;
+  min_stock: number | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  unit?: Unit | null;
 }
 
 export default function IngredientsPage() {
@@ -25,7 +32,7 @@ export default function IngredientsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editItem, setEditItem] = useState<Ingredient | null>(null);
+  const [editItem, setEditItem] = useState<IngredientWithUnit | null>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -68,11 +75,11 @@ export default function IngredientsPage() {
     setDialogOpen(true);
   };
 
-  const openEditDialog = (item: Ingredient) => {
+  const openEditDialog = (item: IngredientWithUnit) => {
     setEditItem(item);
     setFormData({
       name: item.name,
-      unit_id: item.unit_id,
+      unit_id: item.unit_id || '',
       cost_per_unit: item.cost_per_unit.toString(),
       min_stock: item.min_stock?.toString() || '',
       is_active: item.is_active,
