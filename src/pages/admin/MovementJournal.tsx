@@ -7,7 +7,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 
 interface Movement {
@@ -33,7 +43,7 @@ interface MaterialDoc {
   location_id: string | null;
   created_at: string;
   location?: { name: string };
-  items?: { ingredient?: { name: string }; quantity: number; price: number }[];
+  items?: { ingredient_id: string; ingredient?: { name: string }; quantity: number; price: number }[];
 }
 
 interface Stocktaking {
@@ -47,7 +57,13 @@ interface Stocktaking {
   created_at: string;
   completed_at: string | null;
   location?: { name: string };
-  items?: { ingredient?: { name: string }; system_quantity: number; actual_quantity: number; difference: number }[];
+  items?: {
+    ingredient_id: string;
+    ingredient?: { name: string };
+    system_quantity: number;
+    actual_quantity: number;
+    difference: number;
+  }[];
 }
 
 interface Transfer {
@@ -59,7 +75,7 @@ interface Transfer {
   completed_at: string | null;
   from_location?: { name: string };
   to_location?: { name: string };
-  items?: { ingredient?: { name: string }; quantity: number }[];
+  items?: { ingredient_id: string; ingredient?: { name: string }; quantity: number }[];
 }
 
 export default function MovementJournal() {
@@ -77,12 +93,7 @@ export default function MovementJournal() {
 
   const fetchAllData = async () => {
     setLoading(true);
-    await Promise.all([
-      fetchMovements(),
-      fetchMaterialDocs(),
-      fetchStocktakings(),
-      fetchTransfers(),
-    ]);
+    await Promise.all([fetchMovements(), fetchMaterialDocs(), fetchStocktakings(), fetchTransfers()]);
     setLoading(false);
   };
 
@@ -113,12 +124,13 @@ export default function MovementJournal() {
   const fetchTransfers = async () => {
     const { data } = await supabase
       .from("transfers")
-      .select("*, from_location:locations!transfers_from_location_id_fkey(name), to_location:locations!transfers_to_location_id_fkey(name)")
+      .select(
+        "*, from_location:locations!transfers_from_location_id_fkey(name), to_location:locations!transfers_to_location_id_fkey(name)",
+      )
       .order("created_at", { ascending: false });
     setTransfers((data as Transfer[]) || []);
   };
 
-  // View document details
   const viewDocument = async (doc: any, type: string) => {
     setDocType(type);
     if (type === "material") {
@@ -142,7 +154,6 @@ export default function MovementJournal() {
     }
   };
 
-  // Delete handlers
   const handleDeleteMovement = async (id: string) => {
     try {
       await supabase.from("stock_movements").delete().eq("id", id);
@@ -153,37 +164,84 @@ export default function MovementJournal() {
     }
   };
 
-  const handleDeleteMaterialDoc = async (id: string) => {
+  const handleDeleteMaterialDoc = async (doc: MaterialDoc) => {
     try {
-      await supabase.from("material_document_items").delete().eq("doc_id", id);
-      await supabase.from("material_documents").delete().eq("id", id);
-      toast.success("ДОКУМЕНТ УДАЛЁН");
+      setLoading(true);
+      const { data: items } = await supabase
+        .from("material_document_items")
+        .select("ingredient_id, quantity")
+        .eq("doc_id", doc.id);
+
+      if (items && doc.location_id) {
+        for (const item of items) {
+          await supabase.rpc("increment_inventory", {
+            loc_id: doc.location_id,
+            ing_id: item.ingredient_id,
+            val: -item.quantity,
+          });
+        }
+      }
+
+      await supabase.from("material_document_items").delete().eq("doc_id", doc.id);
+      await supabase.from("material_documents").delete().eq("id", doc.id);
+      toast.success("ПРИХОД УДАЛЕН, ОСТАТКИ СКОРРЕКТИРОВАНЫ");
       fetchMaterialDocs();
+      fetchMovements();
+    } catch (error: any) {
+      toast.error("ОШИБКА ПРИ ОТКАТЕ: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteStocktaking = async (st: Stocktaking) => {
+    try {
+      setLoading(true);
+      const { data: items } = await supabase
+        .from("stocktaking_items")
+        .select("ingredient_id, difference")
+        .eq("stocktaking_id", st.id);
+
+      if (items && st.location_id) {
+        for (const item of items) {
+          await supabase.rpc("increment_inventory", {
+            loc_id: st.location_id,
+            ing_id: item.ingredient_id,
+            val: -item.difference,
+          });
+        }
+      }
+
+      await supabase.from("stocktaking_items").delete().eq("stocktaking_id", st.id);
+      await supabase.from("stocktakings").delete().eq("id", st.id);
+      toast.success("ИНВЕНТАРИЗАЦИЯ УДАЛЕНА, ОСТАТКИ ВОССТАНОВЛЕНЫ");
+      fetchStocktakings();
+      fetchMovements();
     } catch (error: any) {
       toast.error("ОШИБКА: " + error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDeleteTransfer = async (transfer: Transfer) => {
     try {
-      // Get transfer items to rollback inventory
       const { data: items } = await supabase
         .from("transfer_items")
         .select("ingredient_id, quantity")
         .eq("transfer_id", transfer.id);
 
       if (items && transfer.status === "completed") {
-        // Rollback inventory
         for (const item of items) {
           await supabase.rpc("increment_inventory", {
             loc_id: transfer.from_location_id,
             ing_id: item.ingredient_id,
-            val: item.quantity, // Return to source
+            val: item.quantity,
           });
           await supabase.rpc("increment_inventory", {
             loc_id: transfer.to_location_id,
             ing_id: item.ingredient_id,
-            val: -item.quantity, // Remove from target
+            val: -item.quantity,
           });
         }
       }
@@ -192,6 +250,7 @@ export default function MovementJournal() {
       await supabase.from("transfers").delete().eq("id", transfer.id);
       toast.success("ПЕРЕМЕЩЕНИЕ УДАЛЕНО, ОСТАТКИ ВОЗВРАЩЕНЫ");
       fetchTransfers();
+      fetchMovements();
     } catch (error: any) {
       toast.error("ОШИБКА: " + error.message);
     }
@@ -220,14 +279,8 @@ export default function MovementJournal() {
     }
   };
 
-  // Filter movements by type
-  const invoices = movements.filter((m) => m.type === "MIGO_101");
-  const inventoryMovements = movements.filter((m) => m.type === "MI07_COUNT");
-  const transferMovements = movements.filter((m) => m.type === "MB1B_311");
-
   return (
     <div className="min-h-screen bg-background text-foreground p-4 font-sans">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6 border-b pb-4">
         <div className="flex items-center gap-3">
           <History className="text-amber-500" size={24} />
@@ -240,14 +293,14 @@ export default function MovementJournal() {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" size="sm" className="font-bold text-xs">
-                <Trash2 size={14} className="mr-1" /> ОЧИСТИТЬ ВСЁ
+                <Trash2 size={14} className="mr-1" /> ОЧИСТИТЬ ЖУРНАЛ
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Очистить журнал движений?</AlertDialogTitle>
+                <AlertDialogTitle>Очистить историю движений?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Все записи о движениях будут удалены. Это действие необратимо.
+                  Это удалит только записи в журнале (ленту), сами документы останутся.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -277,28 +330,12 @@ export default function MovementJournal() {
           </TabsTrigger>
         </TabsList>
 
-        {/* All Movements Tab */}
-        <TabsContent value="all">
-          {renderMovementsTable(movements)}
-        </TabsContent>
-
-        {/* Receipts Tab */}
-        <TabsContent value="receipts">
-          {renderMaterialDocsTable()}
-        </TabsContent>
-
-        {/* Stocktakings Tab */}
-        <TabsContent value="stocktakings">
-          {renderStocktakingsTable()}
-        </TabsContent>
-
-        {/* Transfers Tab */}
-        <TabsContent value="transfers">
-          {renderTransfersTable()}
-        </TabsContent>
+        <TabsContent value="all">{renderMovementsTable(movements)}</TabsContent>
+        <TabsContent value="receipts">{renderMaterialDocsTable()}</TabsContent>
+        <TabsContent value="stocktakings">{renderStocktakingsTable()}</TabsContent>
+        <TabsContent value="transfers">{renderTransfersTable()}</TabsContent>
       </Tabs>
 
-      {/* Document Detail Dialog */}
       <Dialog open={!!selectedDoc} onOpenChange={() => setSelectedDoc(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -315,17 +352,13 @@ export default function MovementJournal() {
   );
 
   function renderMovementsTable(data: Movement[]) {
-    if (loading) {
+    if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
-    }
-
-    if (data.length === 0) {
-      return <div className="text-center py-20 text-muted-foreground">НЕТ ЗАПИСЕЙ</div>;
-    }
+    if (data.length === 0) return <div className="text-center py-20 text-muted-foreground">НЕТ ЗАПИСЕЙ</div>;
 
     return (
       <Card>
@@ -348,7 +381,9 @@ export default function MovementJournal() {
                   {new Date(m.created_at).toLocaleString("ru-RU")}
                 </TableCell>
                 <TableCell className="font-bold uppercase">{m.ingredient?.name}</TableCell>
-                <TableCell className={`text-right font-mono font-bold ${m.quantity > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                <TableCell
+                  className={`text-right font-mono font-bold ${m.quantity > 0 ? "text-emerald-500" : "text-red-500"}`}
+                >
                   {m.quantity > 0 ? `+${m.quantity}` : m.quantity}
                 </TableCell>
                 <TableCell className="text-center text-xs text-muted-foreground uppercase">
@@ -360,25 +395,14 @@ export default function MovementJournal() {
                   {m.vendor_inn && <div className="text-xs text-blue-400">ИНН: {m.vendor_inn}</div>}
                 </TableCell>
                 <TableCell className="text-center">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500">
-                        <Trash2 size={14} />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Удалить запись?</AlertDialogTitle>
-                        <AlertDialogDescription>Запись будет удалена из журнала.</AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Отмена</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDeleteMovement(m.id)} className="bg-red-600">
-                          Удалить
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteMovement(m.id)}
+                    className="h-7 w-7 p-0 text-red-500"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -389,27 +413,20 @@ export default function MovementJournal() {
   }
 
   function renderMaterialDocsTable() {
-    if (loading) {
+    if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
-    }
-
-    if (materialDocs.length === 0) {
-      return <div className="text-center py-20 text-muted-foreground">НЕТ ДОКУМЕНТОВ ПРИХОДА</div>;
-    }
-
     return (
       <Card>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs font-bold">Дата</TableHead>
-              <TableHead className="text-xs font-bold">Номер документа</TableHead>
+              <TableHead className="text-xs font-bold">Номер</TableHead>
               <TableHead className="text-xs font-bold">Поставщик</TableHead>
-              <TableHead className="text-xs font-bold">ИНН</TableHead>
               <TableHead className="text-center text-xs font-bold">Склад</TableHead>
               <TableHead className="text-right text-xs font-bold">Сумма</TableHead>
               <TableHead className="text-center text-xs font-bold w-24">Действия</TableHead>
@@ -423,12 +440,16 @@ export default function MovementJournal() {
                 </TableCell>
                 <TableCell className="font-bold">{doc.doc_number || "—"}</TableCell>
                 <TableCell className="uppercase">{doc.supplier_name || "—"}</TableCell>
-                <TableCell className="text-xs text-blue-400">{doc.vendor_inn || "—"}</TableCell>
                 <TableCell className="text-center text-xs uppercase">{doc.location?.name}</TableCell>
                 <TableCell className="text-right font-bold">₽ {Number(doc.total_amount || 0).toFixed(2)}</TableCell>
                 <TableCell className="text-center">
                   <div className="flex gap-1 justify-center">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => viewDocument(doc, "material")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => viewDocument(doc, "material")}
+                    >
                       <Eye size={14} />
                     </Button>
                     <AlertDialog>
@@ -439,13 +460,15 @@ export default function MovementJournal() {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Удалить документ?</AlertDialogTitle>
-                          <AlertDialogDescription>Документ и все его позиции будут удалены.</AlertDialogDescription>
+                          <AlertDialogTitle>Удалить приход?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Это уменьшит остатки на складе на количество из этого документа.
+                          </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Отмена</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeleteMaterialDoc(doc.id)} className="bg-red-600">
-                            Удалить
+                          <AlertDialogAction onClick={() => handleDeleteMaterialDoc(doc)} className="bg-red-600">
+                            Удалить с откатом
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -461,18 +484,12 @@ export default function MovementJournal() {
   }
 
   function renderStocktakingsTable() {
-    if (loading) {
+    if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
-    }
-
-    if (stocktakings.length === 0) {
-      return <div className="text-center py-20 text-muted-foreground">НЕТ ДОКУМЕНТОВ ИНВЕНТАРИЗАЦИИ</div>;
-    }
-
     return (
       <Card>
         <Table>
@@ -480,11 +497,10 @@ export default function MovementJournal() {
             <TableRow>
               <TableHead className="text-xs font-bold">Дата</TableHead>
               <TableHead className="text-center text-xs font-bold">Склад</TableHead>
-              <TableHead className="text-center text-xs font-bold">Позиций</TableHead>
               <TableHead className="text-center text-xs font-bold text-emerald-500">Излишки</TableHead>
               <TableHead className="text-center text-xs font-bold text-red-500">Недостачи</TableHead>
               <TableHead className="text-center text-xs font-bold">Статус</TableHead>
-              <TableHead className="text-center text-xs font-bold w-16">...</TableHead>
+              <TableHead className="text-center text-xs font-bold w-24">Действия</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -494,18 +510,45 @@ export default function MovementJournal() {
                   {new Date(st.created_at).toLocaleDateString("ru-RU")}
                 </TableCell>
                 <TableCell className="text-center uppercase">{st.location?.name}</TableCell>
-                <TableCell className="text-center font-bold">{st.total_items}</TableCell>
                 <TableCell className="text-center font-bold text-emerald-500">+{st.surplus_count}</TableCell>
                 <TableCell className="text-center font-bold text-red-500">-{st.shortage_count}</TableCell>
                 <TableCell className="text-center">
                   <Badge variant={st.status === "completed" ? "default" : "secondary"}>
-                    {st.status === "completed" ? "ПРОВЕДЕНО" : st.status.toUpperCase()}
+                    {st.status === "completed" ? "ПРОВЕДЕНО" : "ЧЕРНОВИК"}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-center">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => viewDocument(st, "stocktaking")}>
-                    <Eye size={14} />
-                  </Button>
+                  <div className="flex gap-1 justify-center">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => viewDocument(st, "stocktaking")}
+                    >
+                      <Eye size={14} />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-red-500">
+                          <Trash2 size={14} />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Удалить инвентаризацию?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Результаты подсчета будут отменены, остатки вернутся к исходным значениям.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Отмена</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteStocktaking(st)} className="bg-red-600">
+                            Удалить с откатом
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -516,18 +559,12 @@ export default function MovementJournal() {
   }
 
   function renderTransfersTable() {
-    if (loading) {
+    if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
-    }
-
-    if (transfers.length === 0) {
-      return <div className="text-center py-20 text-muted-foreground">НЕТ ДОКУМЕНТОВ ПЕРЕМЕЩЕНИЯ</div>;
-    }
-
     return (
       <Card>
         <Table>
@@ -549,13 +586,16 @@ export default function MovementJournal() {
                 <TableCell className="uppercase font-bold text-red-400">{tr.from_location?.name}</TableCell>
                 <TableCell className="uppercase font-bold text-emerald-400">{tr.to_location?.name}</TableCell>
                 <TableCell className="text-center">
-                  <Badge variant={tr.status === "completed" ? "default" : "secondary"}>
-                    {tr.status === "completed" ? "ВЫПОЛНЕНО" : tr.status.toUpperCase()}
-                  </Badge>
+                  <Badge>{tr.status === "completed" ? "ВЫПОЛНЕНО" : "ОЖИДАЕТ"}</Badge>
                 </TableCell>
                 <TableCell className="text-center">
                   <div className="flex gap-1 justify-center">
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => viewDocument(tr, "transfer")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => viewDocument(tr, "transfer")}
+                    >
                       <Eye size={14} />
                     </Button>
                     <AlertDialog>
@@ -567,9 +607,6 @@ export default function MovementJournal() {
                       <AlertDialogContent>
                         <AlertDialogHeader>
                           <AlertDialogTitle>Удалить перемещение?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Документ будет удалён, а остатки возвращены на исходные места.
-                          </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Отмена</AlertDialogCancel>
@@ -591,132 +628,75 @@ export default function MovementJournal() {
 
   function renderDocumentDetail() {
     if (!selectedDoc) return null;
-
-    if (docType === "material") {
-      return (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4 text-sm border-b pb-4">
+          {docType === "material" && (
+            <>
+              <div>
+                <span className="text-muted-foreground">Номер:</span>{" "}
+                <span className="ml-2 font-bold">{selectedDoc.doc_number || "—"}</span>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Поставщик:</span>{" "}
+                <span className="ml-2 font-bold uppercase">{selectedDoc.supplier_name || "—"}</span>
+              </div>
+            </>
+          )}
+          {docType === "stocktaking" && (
             <div>
-              <span className="text-muted-foreground">Номер:</span>
-              <span className="ml-2 font-bold">{selectedDoc.doc_number || "—"}</span>
+              <span className="text-muted-foreground">Склад:</span>{" "}
+              <span className="ml-2 font-bold uppercase">{selectedDoc.location?.name}</span>
             </div>
-            <div>
-              <span className="text-muted-foreground">Дата:</span>
-              <span className="ml-2">{new Date(selectedDoc.created_at).toLocaleDateString("ru-RU")}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Поставщик:</span>
-              <span className="ml-2 font-bold uppercase">{selectedDoc.supplier_name || "—"}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">ИНН:</span>
-              <span className="ml-2 text-blue-400">{selectedDoc.vendor_inn || "—"}</span>
-            </div>
+          )}
+          <div>
+            <span className="text-muted-foreground">Дата:</span>{" "}
+            <span className="ml-2">{new Date(selectedDoc.created_at).toLocaleDateString("ru-RU")}</span>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Товар</TableHead>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Товар</TableHead>
+              {docType === "stocktaking" ? (
+                <>
+                  <TableHead className="text-right">Книжный</TableHead>
+                  <TableHead className="text-right">Факт</TableHead>
+                  <TableHead className="text-right">Разница</TableHead>
+                </>
+              ) : (
                 <TableHead className="text-right">Кол-во</TableHead>
-                <TableHead className="text-right">Цена</TableHead>
-                <TableHead className="text-right">Сумма</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {selectedDoc.items?.map((item: any, idx: number) => (
-                <TableRow key={idx}>
-                  <TableCell className="font-bold uppercase">{item.ingredient?.name}</TableCell>
+              )}
+              {docType === "material" && <TableHead className="text-right">Сумма</TableHead>}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {selectedDoc.items?.map((item: any, idx: number) => (
+              <TableRow key={idx}>
+                <TableCell className="font-bold uppercase">{item.ingredient?.name}</TableCell>
+                {docType === "stocktaking" ? (
+                  <>
+                    <TableCell className="text-right text-muted-foreground">{item.system_quantity}</TableCell>
+                    <TableCell className="text-right">{item.actual_quantity}</TableCell>
+                    <TableCell
+                      className={`text-right font-bold ${item.difference > 0 ? "text-emerald-500" : item.difference < 0 ? "text-red-500" : ""}`}
+                    >
+                      {item.difference > 0 ? `+${item.difference}` : item.difference}
+                    </TableCell>
+                  </>
+                ) : (
                   <TableCell className="text-right">{item.quantity}</TableCell>
-                  <TableCell className="text-right">₽ {Number(item.price || 0).toFixed(2)}</TableCell>
+                )}
+                {docType === "material" && (
                   <TableCell className="text-right font-bold">
                     ₽ {(item.quantity * (item.price || 0)).toFixed(2)}
                   </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="text-right font-bold text-lg">
-            ИТОГО: ₽ {Number(selectedDoc.total_amount || 0).toFixed(2)}
-          </div>
-        </div>
-      );
-    }
-
-    if (docType === "stocktaking") {
-      return (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Склад:</span>
-              <span className="ml-2 font-bold uppercase">{selectedDoc.location?.name}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Дата:</span>
-              <span className="ml-2">{new Date(selectedDoc.created_at).toLocaleDateString("ru-RU")}</span>
-            </div>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Товар</TableHead>
-                <TableHead className="text-right">Книжный</TableHead>
-                <TableHead className="text-right">Факт</TableHead>
-                <TableHead className="text-right">Разница</TableHead>
+                )}
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {selectedDoc.items?.map((item: any, idx: number) => {
-                const diff = item.difference || 0;
-                return (
-                  <TableRow key={idx}>
-                    <TableCell className="font-bold uppercase">{item.ingredient?.name}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{item.system_quantity}</TableCell>
-                    <TableCell className="text-right">{item.actual_quantity}</TableCell>
-                    <TableCell className={`text-right font-bold ${diff > 0 ? "text-emerald-500" : diff < 0 ? "text-red-500" : ""}`}>
-                      {diff > 0 ? `+${diff}` : diff}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      );
-    }
-
-    if (docType === "transfer") {
-      return (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Откуда:</span>
-              <span className="ml-2 font-bold text-red-400 uppercase">{selectedDoc.from_location?.name}</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Куда:</span>
-              <span className="ml-2 font-bold text-emerald-400 uppercase">{selectedDoc.to_location?.name}</span>
-            </div>
-          </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Товар</TableHead>
-                <TableHead className="text-right">Количество</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {selectedDoc.items?.map((item: any, idx: number) => (
-                <TableRow key={idx}>
-                  <TableCell className="font-bold uppercase">{item.ingredient?.name}</TableCell>
-                  <TableCell className="text-right font-bold">{item.quantity}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      );
-    }
-
-    return null;
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
   }
 }
