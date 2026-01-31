@@ -186,7 +186,8 @@ export type Database = {
           is_active: boolean
           min_stock: number | null
           name: string
-          unit_id: string
+          unit: string | null
+          unit_id: string | null
           updated_at: string
         }
         Insert: {
@@ -196,7 +197,8 @@ export type Database = {
           is_active?: boolean
           min_stock?: number | null
           name: string
-          unit_id: string
+          unit?: string | null
+          unit_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -206,7 +208,8 @@ export type Database = {
           is_active?: boolean
           min_stock?: number | null
           name?: string
-          unit_id?: string
+          unit?: string | null
+          unit_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -923,6 +926,41 @@ export type Database = {
           },
           {
             foreignKeyName: "stock_movements_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      stocktaking_docs: {
+        Row: {
+          created_at: string | null
+          id: string
+          location_id: string | null
+          status: string | null
+          total_difference: number | null
+          total_items: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          location_id?: string | null
+          status?: string | null
+          total_difference?: number | null
+          total_items?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          location_id?: string | null
+          status?: string | null
+          total_difference?: number | null
+          total_items?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stocktaking_docs_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
             referencedRelation: "locations"
