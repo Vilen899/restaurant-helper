@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Save, Settings, Wifi, Hash, Zap, CreditCard } from "lucide-react";
+import { Save, Cpu, Wifi, Hash, Zap, CreditCard, ShieldCheck, Activity } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +77,6 @@ export default function FiscalSettingsPage() {
         const { data, error } = await supabase.from("fiscal_settings").select("*").maybeSingle();
         if (error) throw error;
         if (data) {
-          // Принудительно приводим data к any, чтобы обойти ошибку TS2339
           const rawData = data as any;
           setConfig({
             ...initialConfig,
@@ -103,170 +102,234 @@ export default function FiscalSettingsPage() {
       } as any);
 
       if (error) throw error;
-      toast.success("Конфигурация iiko HDM сохранена");
+      toast.success("System configuration updated successfully");
     } catch (err: any) {
-      toast.error("Ошибка сохранения: " + err.message);
+      toast.error("System error: " + err.message);
     }
   };
 
-  if (loading) return <div className="p-10 text-center">Загрузка iiko config...</div>;
+  if (loading)
+    return (
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center text-blue-400 font-mono">
+        INITIALIZING SYSTEM...
+      </div>
+    );
 
   return (
-    <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <div className="flex justify-between items-center bg-white p-5 rounded-xl border shadow-sm">
-        <h1 className="text-2xl font-black flex items-center gap-2 text-slate-800">
-          <Settings className="text-blue-600 h-6 w-6" /> IIKO HDM ARMENIA
-        </h1>
-        <Button onClick={save} className="bg-blue-600 hover:bg-blue-700 h-11 px-8">
-          <Save className="mr-2 h-4 w-4" /> Save XML
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="bg-slate-50 border-b py-3 font-bold text-xs uppercase text-slate-500">
-            <div className="flex items-center gap-2">
-              <Wifi className="h-4 w-4" /> Network Access
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 p-4 md:p-8 font-sans">
+      <div className="max-w-7xl mx-auto space-y-8">
+        {/* HEADER AREA */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-slate-800/50 p-6 rounded-2xl border border-slate-700 backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/50">
+              <Cpu className="h-8 w-8 text-white" />
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Host</Label>
-                <Input value={config.host} onChange={(e) => setConfig({ ...config, host: e.target.value })} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Port</Label>
-                <Input value={config.port} onChange={(e) => setConfig({ ...config, port: e.target.value })} />
+            <div>
+              <h1 className="text-3xl font-black tracking-tighter text-white uppercase">
+                HDM ARMENIA <span className="text-blue-500">PRO</span>
+              </h1>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">System Engine Active</p>
               </div>
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Kkm Password</Label>
-              <Input
-                type="password"
-                value={config.kkm_password}
-                onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="bg-slate-50 border-b py-3 font-bold text-xs uppercase text-slate-500">
-            <div className="flex items-center gap-2">
-              <Hash className="h-4 w-4" /> Fiscal & Tax
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Cashier ID</Label>
-                <Input
-                  value={config.cashier_id}
-                  onChange={(e) => setConfig({ ...config, cashier_id: e.target.value })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Cashier PIN</Label>
-                <Input
-                  value={config.cashier_pin}
-                  onChange={(e) => setConfig({ ...config, cashier_pin: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">VAT Rate (%)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                value={config.vat_rate}
-                onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) })}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="bg-slate-50 border-b py-3 font-bold text-xs uppercase text-slate-500">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4" /> Generation
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">ADG Code Len</Label>
-                <Input
-                  type="number"
-                  value={config.adg_length}
-                  onChange={(e) => setConfig({ ...config, adg_length: parseInt(e.target.value) })}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Fast Code Len</Label>
-                <Input
-                  type="number"
-                  value={config.fast_code_length}
-                  onChange={(e) => setConfig({ ...config, fast_code_length: parseInt(e.target.value) })}
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Default ADG</Label>
-              <Input
-                value={config.default_adg}
-                onChange={(e) => setConfig({ ...config, default_adg: e.target.value })}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { label: "Use Default ADG", key: "use_default_adg" },
-          { label: "Use Discount in KKM", key: "use_discount" },
-          { label: "Use Kitchen Names", key: "use_kitchen_name" },
-        ].map((item) => (
-          <div key={item.key} className="flex items-center justify-between p-4 bg-white rounded-xl border shadow-sm">
-            <Label className="text-sm font-bold">{item.label}</Label>
-            <Switch
-              checked={(config as any)[item.key]}
-              onCheckedChange={(v) => setConfig({ ...config, [item.key]: v })}
-            />
           </div>
-        ))}
-      </div>
-
-      <Card className="shadow-md overflow-hidden border-slate-200">
-        <CardHeader className="bg-slate-800 text-white py-3">
-          <CardTitle className="text-xs uppercase flex items-center gap-2">
-            <CreditCard className="h-4 w-4" /> Payment Types mapping
-          </CardTitle>
-        </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-slate-600 border-b">
-              <tr>
-                <th className="text-left p-4">Name</th>
-                <th className="text-left p-4">External ID</th>
-                <th className="text-center p-4">ExtPOS</th>
-                <th className="text-right p-4">Type</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {(config.payment_types || []).map((pt, idx) => (
-                <tr key={pt.Id || idx}>
-                  <td className="p-4 font-semibold">{pt.Name}</td>
-                  <td className="p-4 font-mono text-xs text-slate-400">{pt.Id}</td>
-                  <td className="p-4 text-center">{pt.UseExtPos ? "✅" : "❌"}</td>
-                  <td className="p-4 text-right uppercase text-[10px] font-black text-blue-600">{pt.PaymentType}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Button
+            onClick={save}
+            className="bg-blue-600 hover:bg-blue-500 text-white font-bold h-12 px-10 rounded-xl transition-all active:scale-95 shadow-xl shadow-blue-600/20"
+          >
+            <Save className="mr-2 h-5 w-5" /> SYNC CONFIG
+          </Button>
         </div>
-      </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* NETWORK CONFIG */}
+          <Card className="bg-slate-900/50 border-slate-800 shadow-2xl">
+            <CardHeader className="border-b border-slate-800/50 py-4 px-6 bg-slate-800/20">
+              <CardTitle className="text-[11px] font-black uppercase tracking-widest flex items-center gap-2 text-blue-400">
+                <Wifi className="h-4 w-4" /> Link Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Host Endpoint</Label>
+                  <Input
+                    className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                    value={config.host}
+                    onChange={(e) => setConfig({ ...config, host: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Port ID</Label>
+                  <Input
+                    className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                    value={config.port}
+                    onChange={(e) => setConfig({ ...config, port: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Access Password</Label>
+                <Input
+                  type="password"
+                  className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                  value={config.kkm_password}
+                  onChange={(e) => setConfig({ ...config, kkm_password: e.target.value })}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* FISCAL CONFIG */}
+          <Card className="bg-slate-900/50 border-slate-800 shadow-2xl">
+            <CardHeader className="border-b border-slate-800/50 py-4 px-6 bg-slate-800/20">
+              <CardTitle className="text-[11px] font-black uppercase tracking-widest flex items-center gap-2 text-purple-400">
+                <Hash className="h-4 w-4" /> Fiscal Matrix
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Officer ID</Label>
+                  <Input
+                    className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                    value={config.cashier_id}
+                    onChange={(e) => setConfig({ ...config, cashier_id: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Officer PIN</Label>
+                  <Input
+                    className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                    value={config.cashier_pin}
+                    onChange={(e) => setConfig({ ...config, cashier_pin: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Tax Coefficient (%)</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                  value={config.vat_rate}
+                  onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) })}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* GEN LOGIC */}
+          <Card className="bg-slate-900/50 border-slate-800 shadow-2xl">
+            <CardHeader className="border-b border-slate-800/50 py-4 px-6 bg-slate-800/20">
+              <CardTitle className="text-[11px] font-black uppercase tracking-widest flex items-center gap-2 text-amber-400">
+                <Zap className="h-4 w-4" /> Code Logic
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6 space-y-5">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">ADG Length</Label>
+                  <Input
+                    type="number"
+                    className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                    value={config.adg_length}
+                    onChange={(e) => setConfig({ ...config, adg_length: parseInt(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Fast Length</Label>
+                  <Input
+                    type="number"
+                    className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                    value={config.fast_code_length}
+                    onChange={(e) => setConfig({ ...config, fast_code_length: parseInt(e.target.value) })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">System ADG Base</Label>
+                <Input
+                  className="bg-slate-950 border-slate-800 focus:border-blue-500 text-white font-mono"
+                  value={config.default_adg}
+                  onChange={(e) => setConfig({ ...config, default_adg: e.target.value })}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* SWITCHES BAR */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { label: "Bypass Global ADG", key: "use_default_adg", icon: <ShieldCheck className="h-4 w-4" /> },
+            { label: "Calculate Discounts", key: "use_discount", icon: <Activity className="h-4 w-4" /> },
+            { label: "Kitchen Data Source", key: "use_kitchen_name", icon: <Cpu className="h-4 w-4" /> },
+          ].map((item) => (
+            <div
+              key={item.key}
+              className="flex items-center justify-between p-5 bg-slate-900/50 border border-slate-800 rounded-2xl shadow-xl transition-all hover:bg-slate-800/40"
+            >
+              <div className="flex items-center gap-3">
+                <div className="text-blue-500">{item.icon}</div>
+                <Label className="text-sm font-black text-slate-300 uppercase tracking-tight cursor-pointer">
+                  {item.label}
+                </Label>
+              </div>
+              <Switch
+                className="data-[state=checked]:bg-blue-600"
+                checked={(config as any)[item.key]}
+                onCheckedChange={(v) => setConfig({ ...config, [item.key]: v })}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* PAYMENT TABLE */}
+        <Card className="bg-slate-900 border-slate-800 shadow-2xl overflow-hidden rounded-2xl">
+          <CardHeader className="bg-slate-950/50 border-b border-slate-800 py-5 px-8 flex flex-row justify-between items-center">
+            <CardTitle className="text-[12px] uppercase font-black tracking-[0.2em] flex items-center gap-3 text-slate-400">
+              <CreditCard className="h-5 w-5 text-blue-500" /> Payment Mapping Registry
+            </CardTitle>
+            <span className="text-[10px] bg-blue-900/30 text-blue-400 px-3 py-1 rounded-full border border-blue-800 font-bold uppercase tracking-widest">
+              Global Sync Active
+            </span>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-950/80 text-slate-500 border-b border-slate-800">
+                <tr>
+                  <th className="text-left p-6 font-black uppercase tracking-widest text-[10px]">Registry Name</th>
+                  <th className="text-left p-6 font-black uppercase tracking-widest text-[10px]">Reference UUID</th>
+                  <th className="text-center p-6 font-black uppercase tracking-widest text-[10px]">
+                    External Terminal
+                  </th>
+                  <th className="text-right p-6 font-black uppercase tracking-widest text-[10px]">Protocol</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 bg-slate-900/30">
+                {(config.payment_types || []).map((pt, idx) => (
+                  <tr key={pt.Id || idx} className="hover:bg-blue-900/10 transition-colors group">
+                    <td className="p-6 font-black text-white group-hover:text-blue-400 transition-colors">{pt.Name}</td>
+                    <td className="p-6 font-mono text-[11px] text-slate-500 tracking-tighter">{pt.Id}</td>
+                    <td className="p-6 text-center">
+                      <div
+                        className={`mx-auto w-16 py-1 rounded font-black text-[9px] uppercase tracking-widest ${pt.UseExtPos ? "bg-green-900/30 text-green-500 border border-green-800" : "bg-slate-800 text-slate-500 border border-slate-700"}`}
+                      >
+                        {pt.UseExtPos ? "LINKED" : "OFFLINE"}
+                      </div>
+                    </td>
+                    <td className="p-6 text-right uppercase text-[10px] font-black text-blue-400 bg-blue-900/5">
+                      {pt.PaymentType}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
