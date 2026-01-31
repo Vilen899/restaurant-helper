@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Store, Calendar, Box } from "lucide-react";
+import { Search, Store, Calendar, Box, ArrowDownLeft, ArrowUpRight, Calculator } from "lucide-react";
 
 export default function InventoryPage() {
   const [stock, setStock] = useState<any[]>([]);
@@ -27,13 +27,11 @@ export default function InventoryPage() {
   }, [selectedLoc, dates]);
 
   const loadData = async () => {
-    // 1. Текущий остаток
     const { data: inv } = await supabase
       .from("inventory")
       .select(`quantity, ingredient:ingredients(id, name, unit)`)
       .eq("location_id", selectedLoc);
 
-    // 2. Движение за период (Приходы и Продажи)
     const { data: moves } = await supabase
       .from("material_docs")
       .select("*")
@@ -66,21 +64,28 @@ export default function InventoryPage() {
   const filtered = stock.filter((item) => item.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="p-4 bg-white min-h-screen text-zinc-800 font-sans">
-      {/* ПАНЕЛЬ ФИЛЬТРОВ */}
-      <div className="flex flex-wrap items-center gap-4 mb-6 border-b pb-4">
-        <div className="flex items-center gap-2">
-          <Box size={18} className="text-zinc-900" />
-          <h1 className="text-sm font-black uppercase tracking-tighter">Складской учет</h1>
+    <div className="p-6 bg-[#09090b] min-h-screen text-zinc-100 font-sans">
+      {/* ВЕРХНЯЯ ПАНЕЛЬ С ГЛЯНЦЕВЫМ ЭФФЕКТОМ */}
+      <div className="mb-8 flex flex-col md:flex-row items-center justify-between gap-6 bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800 shadow-2xl backdrop-blur-md">
+        <div className="flex items-center gap-4">
+          <div className="bg-amber-500 p-3 rounded-xl shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+            <Box size={24} className="text-black" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black uppercase tracking-tighter text-white">Складской Хаб</h1>
+            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.2em]">
+              Мониторинг остатков и трафика
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 ml-auto">
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase">Точка:</span>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-zinc-500 uppercase ml-1">Локация</span>
             <select
               value={selectedLoc}
               onChange={(e) => setSelectedLoc(e.target.value)}
-              className="text-xs border rounded h-8 px-2 bg-zinc-50 font-bold"
+              className="bg-zinc-800 border-zinc-700 text-zinc-200 text-xs font-bold rounded-lg h-10 px-3 outline-none focus:ring-2 focus:ring-amber-500/50 transition-all cursor-pointer"
             >
               {locations.map((l) => (
                 <option key={l.id} value={l.id}>
@@ -90,72 +95,99 @@ export default function InventoryPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase">С:</span>
-            <input
-              type="date"
-              value={dates.from}
-              onChange={(e) => setDates({ ...dates, from: e.target.value })}
-              className="text-xs border rounded h-8 px-2 bg-zinc-50 font-bold"
-            />
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-zinc-500 uppercase ml-1">Период</span>
+            <div className="flex items-center bg-zinc-800 rounded-lg border border-zinc-700 h-10 px-2">
+              <input
+                type="date"
+                value={dates.from}
+                onChange={(e) => setDates({ ...dates, from: e.target.value })}
+                className="bg-transparent text-xs font-bold outline-none text-zinc-300"
+              />
+              <span className="mx-2 text-zinc-600">—</span>
+              <input
+                type="date"
+                value={dates.to}
+                onChange={(e) => setDates({ ...dates, to: e.target.value })}
+                className="bg-transparent text-xs font-bold outline-none text-zinc-300"
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold text-zinc-400 uppercase">По:</span>
-            <input
-              type="date"
-              value={dates.to}
-              onChange={(e) => setDates({ ...dates, to: e.target.value })}
-              className="text-xs border rounded h-8 px-2 bg-zinc-50 font-bold"
-            />
-          </div>
-
-          <div className="relative">
-            <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-zinc-400" />
-            <input
-              placeholder="Поиск..."
-              className="pl-8 text-xs border rounded h-8 w-40 outline-none"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-black text-zinc-500 uppercase ml-1">Поиск</span>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 text-zinc-500" size={14} />
+              <input
+                placeholder="Найти товар..."
+                className="pl-9 bg-zinc-800 border-zinc-700 text-zinc-200 text-xs font-bold rounded-lg h-10 w-44 outline-none focus:ring-2 focus:ring-amber-500/50"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* ТАБЛИЦА */}
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="bg-zinc-900 text-white">
-            <th className="text-left p-2 text-[10px] font-bold uppercase tracking-widest">Товар</th>
-            <th className="text-right p-2 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
-              Приход (+)
-            </th>
-            <th className="text-right p-2 text-[10px] font-bold uppercase tracking-widest text-red-400">Расход (-)</th>
-            <th className="text-right p-2 text-[10px] font-bold uppercase tracking-widest underline">
-              Текущий остаток
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((item, i) => (
-            <tr key={i} className="border-b hover:bg-zinc-50 h-10 transition-colors">
-              <td className="p-2 text-xs font-bold uppercase text-zinc-700">{item.name}</td>
-              <td className="p-2 text-right text-xs font-bold text-emerald-600">
-                {item.received > 0 ? `+${item.received}` : "0"}{" "}
-                <span className="text-[9px] text-zinc-400">{item.unit}</span>
-              </td>
-              <td className="p-2 text-right text-xs font-bold text-red-500">
-                {item.sold > 0 ? `-${item.sold}` : "0"} <span className="text-[9px] text-zinc-400">{item.unit}</span>
-              </td>
-              <td className="p-2 text-right">
-                <span className="font-mono font-black text-sm bg-zinc-100 px-2 py-0.5 rounded border border-zinc-200">
-                  {item.current} {item.unit}
-                </span>
-              </td>
+      {/* ТАБЛИЦА СТЕКЛЯННАЯ */}
+      <div className="bg-zinc-900/30 rounded-2xl border border-zinc-800 shadow-xl overflow-hidden backdrop-blur-sm">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-zinc-800/50 border-b border-zinc-700">
+              <th className="text-left p-4 text-[11px] font-black uppercase text-zinc-400 tracking-widest">
+                Номенклатура
+              </th>
+              <th className="text-right p-4 text-[11px] font-black uppercase text-emerald-500 tracking-widest">
+                Приход
+              </th>
+              <th className="text-right p-4 text-[11px] font-black uppercase text-red-500 tracking-widest">Расход</th>
+              <th className="text-right p-4 text-[11px] font-black uppercase text-amber-500 tracking-widest underline underline-offset-8">
+                Фактический Остаток
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/50">
+            {filtered.map((item, i) => (
+              <tr key={i} className="hover:bg-white/[0.02] transition-colors group h-14">
+                <td className="p-4 uppercase">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-zinc-200 group-hover:text-amber-500 transition-colors">
+                      {item.name}
+                    </span>
+                    <span className="text-[9px] text-zinc-600 font-black tracking-tighter">SKU-ING-{i + 100}</span>
+                  </div>
+                </td>
+                <td className="p-4 text-right">
+                  <div className="inline-flex items-center gap-1.5 text-emerald-500 font-mono text-xs font-bold bg-emerald-500/5 px-2 py-1 rounded-md border border-emerald-500/10">
+                    <ArrowUpRight size={12} /> {item.received}
+                  </div>
+                </td>
+                <td className="p-4 text-right">
+                  <div className="inline-flex items-center gap-1.5 text-red-500 font-mono text-xs font-bold bg-red-500/5 px-2 py-1 rounded-md border border-red-500/10">
+                    <ArrowDownLeft size={12} /> {item.sold}
+                  </div>
+                </td>
+                <td className="p-4 text-right">
+                  <span className="text-lg font-mono font-black text-white bg-zinc-800 px-3 py-1.5 rounded-xl border border-zinc-700 shadow-inner">
+                    {item.current} <span className="text-[10px] text-zinc-500 ml-1">{item.unit}</span>
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ФУТЕР-ИНФО */}
+      <div className="mt-6 flex items-center justify-between px-2">
+        <div className="flex items-center gap-4 text-zinc-600">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-[10px] font-bold uppercase tracking-widest">Система синхронизирована</span>
+          </div>
+        </div>
+        <p className="text-[10px] text-zinc-700 font-black uppercase tracking-[0.3em]">Smart Inventory Pro v2.0</p>
+      </div>
     </div>
   );
 }
