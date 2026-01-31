@@ -10,6 +10,7 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
+  ListTree,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,21 +24,23 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
-// Интерфейс полностью совпадает с твоим XML конфигом iiko
+// Типы драйверов для TypeScript
+type FiscalDriver = "hdm_iiko" | "custom" | "hdm" | "atol" | "shtrih" | "evotor";
+
 interface FiscalConfig {
   id?: string;
   location_id: string;
   enabled: boolean;
-  driver: "hdm_iiko" | "custom" | "hdm" | "atol" | "shtrih" | "evotor";
+  driver: FiscalDriver;
   api_url: string;
-  api_login: string; // CashierId
-  api_password: string; // CashierPin
+  api_login: string; // Будет использоваться как CashierId
+  api_password: string; // Будет использоваться как CashierPin
   kkm_password: string; // KkmPassword
-  vat_rate: number; // VatRate
-  default_adg: string; // DefaultAdg
+  vat_rate: number;
+  default_adg: string;
   use_default_adg: boolean;
-  subcharge_name: string; // SubchargeAsDishName
-  subcharge_code: string; // SubchargeAsDishCode
+  subcharge_name: string;
+  subcharge_code: string;
   default_timeout: number;
   payment_timeout: number;
   use_kitchen_name: boolean;
@@ -70,7 +73,6 @@ export default function FiscalSettingsPage() {
   const [config, setConfig] = useState<FiscalConfig>(defaultConfig);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<string>("");
-  const [connected, setConnected] = useState(false);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -81,9 +83,7 @@ export default function FiscalSettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (selectedLocation) {
-      fetchSettings(selectedLocation);
-    }
+    if (selectedLocation) fetchSettings(selectedLocation);
   }, [selectedLocation]);
 
   const fetchLocations = async () => {
@@ -94,6 +94,8 @@ export default function FiscalSettingsPage() {
       if (data && data.length > 0) setSelectedLocation(data[0].id);
     } catch (error) {
       toast.error("Ошибка загрузки точек");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -109,11 +111,10 @@ export default function FiscalSettingsPage() {
       if (error) throw error;
 
       if (data) {
-        // Решение ошибки TS2345: смешиваем дефолты с данными из БД
         setConfig({
           ...defaultConfig,
           ...data,
-          driver: data.driver || "hdm_iiko",
+          driver: (data.driver as FiscalDriver) || "hdm_iiko",
         });
       } else {
         setConfig({ ...defaultConfig, location_id: locationId });
@@ -144,20 +145,55 @@ export default function FiscalSettingsPage() {
     }
   };
 
-  const handleTestConnection = async () => {
+  // Функция отправки тестового чека напрямую на iiko плагин
+  const handleTestPrint = async () => {
+    if (!config.api_url) return toast.error("Укажите адрес хоста");
+
     setTesting(true);
+    toast.info("Отправка тестового чека на ККМ...");
+
+    const testOrder = {
+      CashierId: config.api_login,
+      CashierPin: config.api_password,
+      KkmPassword: config.kkm_password,
+      OperationType: "Sale",
+      Items: [
+        {
+          Name: "Тестовая позиция",
+          Price: 100,
+          Quantity: 1,
+          TaxPercent: config.vat_rate,
+          AdgCode: config.default_adg,
+        },
+      ],
+      Payments: [
+        {
+          Amount: 100,
+          PaymentType: "Cash",
+        },
+      ],
+      UseDefaultAdg: config.use_default_adg,
+    };
+
     try {
-      // Здесь будет вызов либо Edge Function, либо прямой запрос к локальному IP
-      toast.info(`Проверка связи с ${config.api_url}...`);
-      // Имитация теста
-      setTimeout(() => {
-        setConnected(true);
-        setTesting(false);
-        toast.success("Соединение с iiko плагином установлено!");
-      }, 1500);
-    } catch (e) {
+      // Пытаемся отправить запрос на локальный IP.
+      // Важно: плагин на кассе должен поддерживать CORS.
+      const response = await fetch(`${config.api_url}/print_receipt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(testOrder),
+      });
+
+      if (response.ok) {
+        toast.success("Чек успешно напечатан!");
+      } else {
+        throw new Error("Касса отклонила запрос");
+      }
+    } catch (error: any) {
+      console.error("Print error:", error);
+      toast.error(`Ошибка: ${error.message}. Проверьте соединение с ${config.api_url}`);
+    } finally {
       setTesting(false);
-      toast.error("Касса не отвечает. Проверьте сеть.");
     }
   };
 
@@ -170,15 +206,12 @@ export default function FiscalSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Интеграция iiko KKM"
-        description="Настройка связи с фискальным регистратором через плагин HDM"
-      />
+      <PageHeader title="Интеграция iiko KKM" description="Параметры связи с фискальным регистратором (HDM Armenia)" />
 
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Label className="font-bold">Точка продаж:</Label>
+            <Label className="font-bold text-lg">Рабочая точка:</Label>
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
               <SelectTrigger className="w-64 bg-background">
                 <SelectValue />
@@ -195,26 +228,27 @@ export default function FiscalSettingsPage() {
           <div className="flex items-center gap-2">
             {config.enabled ? (
               <span className="flex items-center gap-1 text-green-600 font-medium bg-green-50 px-3 py-1 rounded-full border border-green-200">
-                <ShieldCheck className="h-4 w-4" /> Система активна
+                <ShieldCheck className="h-4 w-4" /> Модуль активен
               </span>
             ) : (
-              <span className="text-muted-foreground bg-gray-100 px-3 py-1 rounded-full border">Выключена</span>
+              <span className="text-muted-foreground bg-gray-100 px-3 py-1 rounded-full border">Модуль отключен</span>
             )}
           </div>
         </CardContent>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Connection & Auth */}
+        {/* Блок Сети */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-primary">
-              <Settings className="h-5 w-5" /> Авторизация и Сеть
+              <Settings className="h-5 w-5" /> Сеть и Авторизация
             </CardTitle>
+            <CardDescription>Настройки из XML-конфигурации iiko</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Host Address (IP:Port)</Label>
+              <Label>Адрес плагина (Host:Port)</Label>
               <Input
                 value={config.api_url}
                 onChange={(e) => setConfig({ ...config, api_url: e.target.value })}
@@ -256,17 +290,18 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Taxes & ADG */}
+        {/* Блок Налогов */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-primary">
-              <ListTree className="h-5 w-5" /> Налоги и ADG коды
+              <ListTree className="h-5 w-5" /> Коды и Налоги (ADG)
             </CardTitle>
+            <CardDescription>Специфические параметры для Армении</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Ставка НДС (VatRate %)</Label>
+                <Label>НДС % (VatRate)</Label>
                 <Input
                   type="number"
                   step="0.01"
@@ -285,7 +320,7 @@ export default function FiscalSettingsPage() {
             <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/20">
               <div className="space-y-0.5">
                 <Label>Use Default ADG</Label>
-                <p className="text-xs text-muted-foreground">Применять код ко всем товарам</p>
+                <p className="text-xs text-muted-foreground">Всегда использовать ADG по умолчанию</p>
               </div>
               <Switch
                 checked={config.use_default_adg}
@@ -293,7 +328,7 @@ export default function FiscalSettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Имя услуги (Subcharge Name)</Label>
+              <Label>Услуга (Subcharge Name)</Label>
               <Input
                 value={config.subcharge_name}
                 onChange={(e) => setConfig({ ...config, subcharge_name: e.target.value })}
@@ -302,36 +337,36 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* Operational Settings */}
+        {/* Настройки работы */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-sm font-bold uppercase">Дополнительные параметры</CardTitle>
+            <CardTitle className="text-sm font-bold uppercase tracking-widest">Операционные настройки</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label>Скидки в ККМ</Label>
+                <Label>Разрешить скидки</Label>
                 <Switch
                   checked={config.use_discount}
                   onCheckedChange={(v) => setConfig({ ...config, use_discount: v })}
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label>Имена из кухни</Label>
+                <Label>Кухонные названия</Label>
                 <Switch
                   checked={config.use_kitchen_name}
                   onCheckedChange={(v) => setConfig({ ...config, use_kitchen_name: v })}
                 />
               </div>
               <div className="flex items-center justify-between text-primary font-bold">
-                <Label>Включить ККТ</Label>
+                <Label>Включить фискализацию</Label>
                 <Switch checked={config.enabled} onCheckedChange={(v) => setConfig({ ...config, enabled: v })} />
               </div>
             </div>
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Таймаут оплаты (мс)</Label>
+                <Label>Таймаут ККМ (мс)</Label>
                 <Input
                   type="number"
                   value={config.payment_timeout}
@@ -339,7 +374,7 @@ export default function FiscalSettingsPage() {
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label>Авто-печать чека</Label>
+                <Label>Авто-печать</Label>
                 <Switch
                   checked={config.auto_print_receipt}
                   onCheckedChange={(v) => setConfig({ ...config, auto_print_receipt: v })}
@@ -348,12 +383,12 @@ export default function FiscalSettingsPage() {
             </div>
 
             <div className="flex flex-col gap-3 justify-end">
-              <Button variant="outline" onClick={handleTestConnection} disabled={testing}>
+              <Button variant="outline" onClick={handleTestPrint} disabled={testing}>
                 {testing ? (
-                  "Проверка..."
+                  "Печать..."
                 ) : (
                   <>
-                    <Wifi className="h-4 w-4 mr-2" /> Тест связи
+                    <Printer className="h-4 w-4 mr-2" /> Пробный чек
                   </>
                 )}
               </Button>
@@ -370,6 +405,15 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Alert className="bg-amber-50 border-amber-200">
+        <AlertTriangle className="h-4 w-4 text-amber-600" />
+        <AlertTitle className="text-amber-800 font-bold">Внимание</AlertTitle>
+        <AlertDescription className="text-amber-700">
+          Печать чеков происходит напрямую с устройства кассира на локальный IP адрес кассы. Убедитесь, что компьютер
+          кассира находится в той же сети, что и ККМ ({config.api_url}).
+        </AlertDescription>
+      </Alert>
     </div>
   );
 }
