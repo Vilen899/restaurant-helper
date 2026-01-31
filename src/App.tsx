@@ -35,12 +35,14 @@ import DiscountsPage from "./pages/admin/Discounts";
 import CustomerDisplaySettingsPage from "./pages/admin/CustomerDisplaySettings";
 import CashierSettingsPage from "./pages/admin/CashierSettings";
 import NegativeSalesReportPage from "./pages/admin/NegativeSalesReport";
-import MaterialDocsPage from "./pages/admin/MaterialDocs";
 
-// НАШИ НОВЫЕ СТРАНИЦЫ
+// WAREHOUSE & LOGISTICS
 import InventoryPage from "./pages/admin/Inventory";
 import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
-import StockTransferPage from "./pages/admin/StockTransfer"; // Пока старая, жду код на замену
+import MaterialDocsPage from "./pages/admin/MaterialDocs";
+import StockTransferPage from "./pages/admin/StockTransfer";
+import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
+import MovementJournalPage from "./pages/admin/MovementJournal"; // Проверь, что файл называется именно так
 
 const queryClient = new QueryClient();
 
@@ -64,25 +66,26 @@ function AppRoutes() {
         }
       >
         <Route index element={<AdminDashboard />} />
+
+        {/* СКЛАДСКИЕ ОПЕРАЦИИ */}
+        <Route path="inventory" element={<InventoryPage />} />
+        <Route path="goods-receipt" element={<GoodsReceiptPage />} />
+        <Route path="migo" element={<GoodsReceiptPage />} />
+        <Route path="stock-transfer" element={<StockTransferPage />} />
+        <Route path="transfer" element={<StockTransferPage />} />
+        <Route path="physical-inventory" element={<PhysicalInventoryPage />} />
+
+        {/* ЖУРНАЛ ДВИЖЕНИЙ И ДОКУМЕНТОВ */}
+        <Route path="movement-journal" element={<MovementJournalPage />} />
+        <Route path="material-log" element={<MovementJournalPage />} />
+        <Route path="material-docs" element={<MaterialDocsPage />} />
+
+        {/* СПРАВОЧНИКИ И НАСТРОЙКИ */}
         <Route path="menu" element={<MenuPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="recipes" element={<RecipesPage />} />
         <Route path="semi-finished" element={<SemiFinishedPage />} />
         <Route path="ingredients" element={<IngredientsPage />} />
-
-        {/* --- СКЛАД (НОВЫЙ СТИЛЬ) --- */}
-        <Route path="inventory" element={<InventoryPage />} />
-        <Route path="goods-receipt" element={<GoodsReceiptPage />} />
-        <Route path="migo" element={<GoodsReceiptPage />} />
-
-        {/* Перемещение (пока старое, заменим позже) */}
-        <Route path="stock-transfer" element={<StockTransferPage />} />
-        <Route path="transfer" element={<StockTransferPage />} />
-
-        {/* Инвентаризацию тоже пока на отчет перекинули, чтобы не видеть MI01 */}
-        <Route path="physical-inventory" element={<InventoryPage />} />
-
-        {/* Остальные админские страницы */}
         <Route path="locations" element={<LocationsPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="reports" element={<ReportsPage />} />
@@ -95,7 +98,6 @@ function AppRoutes() {
         <Route path="customer-display" element={<CustomerDisplaySettingsPage />} />
         <Route path="cashier-settings" element={<CashierSettingsPage />} />
         <Route path="reports/negative-sales" element={<NegativeSalesReportPage />} />
-        <Route path="material-docs" element={<MaterialDocsPage />} />
       </Route>
 
       <Route path="*" element={<NotFound />} />
