@@ -48,17 +48,40 @@ export default function FiscalSettingsPage() {
 
   useEffect(() => {
     async function load() {
-      const { data } = await supabase.from("fiscal_settings").select("*").maybeSingle();
-      if (data) setConfig({ ...initialConfig, ...data });
-      setLoading(false);
+      try {
+        const { data, error } = await supabase.from("fiscal_settings").select("*").maybeSingle();
+
+        if (error) throw error;
+        if (data) {
+          // Маппим данные из базы обратно в наш конфиг
+          setConfig({ ...initialConfig, ...data });
+        }
+      } catch (err) {
+        console.error("Load error:", err);
+      } finally {
+        setLoading(false);
+      }
     }
     load();
   }, []);
 
   const save = async () => {
-    const { error } = await supabase.from("fiscal_settings").upsert({ ...config, id: 1 });
-    if (!error) toast.success("Конфигурация XML сохранена");
-    else toast.error("Ошибка записи в базу");
+    try {
+      // Используем upsert с явным указанием он-конфликта по ID или просто вставку
+      // Чтобы избежать ошибки TS2769, передаем объект как any,
+      // так как имена в базе могут отличаться от имен в интерфейсе
+      const { error } = await supabase.from("fiscal_settings").upsert({
+        ...config,
+        id: 1, // Фиксированный ID для единственной записи настроек
+        updated_at: new Date().toISOString(),
+      } as any);
+
+      if (error) throw error;
+      toast.success("Конфигурация XML сохранена");
+    } catch (error: any) {
+      console.error("Save error:", error);
+      toast.error("Ошибка записи: " + error.message);
+    }
   };
 
   if (loading) return <div className="p-10 text-center text-lg">Загрузка iiko config...</div>;
@@ -75,10 +98,9 @@ export default function FiscalSettingsPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* КАРТА 1: Сеть и Связь */}
         <Card className="border-t-4 border-t-blue-500 shadow-md">
           <CardHeader>
-            <CardTitle className="text-sm uppercase flex items-center gap-2">
+            <CardTitle className="text-sm uppercase flex items-center gap-2 text-slate-600 font-bold">
               <Wifi className="h-4 w-4" /> Связь (Host/Port)
             </CardTitle>
           </CardHeader>
@@ -102,10 +124,9 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* КАРТА 2: Персонал и Налоги */}
         <Card className="border-t-4 border-t-purple-500 shadow-md">
           <CardHeader>
-            <CardTitle className="text-sm uppercase flex items-center gap-2">
+            <CardTitle className="text-sm uppercase flex items-center gap-2 text-slate-600 font-bold">
               <Hash className="h-4 w-4" /> Кассир и НДС
             </CardTitle>
           </CardHeader>
@@ -130,6 +151,7 @@ export default function FiscalSettingsPage() {
               <Label>VatRate (НДС %)</Label>
               <Input
                 type="number"
+                step="0.01"
                 value={config.vat_rate}
                 onChange={(e) => setConfig({ ...config, vat_rate: parseFloat(e.target.value) })}
               />
@@ -144,10 +166,9 @@ export default function FiscalSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* КАРТА 3: Генерация кодов */}
         <Card className="border-t-4 border-t-amber-500 shadow-md">
           <CardHeader>
-            <CardTitle className="text-sm uppercase flex items-center gap-2">
+            <CardTitle className="text-sm uppercase flex items-center gap-2 text-slate-600 font-bold">
               <Zap className="h-4 w-4" /> Генерация кодов
             </CardTitle>
           </CardHeader>
@@ -190,18 +211,18 @@ export default function FiscalSettingsPage() {
 
       <Card className="bg-slate-50 border shadow-inner">
         <CardContent className="p-4 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="flex items-center justify-between p-2 bg-white rounded border">
+          <div className="flex items-center justify-between p-3 bg-white rounded border shadow-sm">
             <Label className="font-semibold cursor-pointer">Use Default ADG</Label>
             <Switch
               checked={config.use_default_adg}
               onCheckedChange={(v) => setConfig({ ...config, use_default_adg: v })}
             />
           </div>
-          <div className="flex items-center justify-between p-2 bg-white rounded border">
+          <div className="flex items-center justify-between p-3 bg-white rounded border shadow-sm">
             <Label className="font-semibold cursor-pointer">Use Discount</Label>
             <Switch checked={config.use_discount} onCheckedChange={(v) => setConfig({ ...config, use_discount: v })} />
           </div>
-          <div className="flex items-center justify-between p-2 bg-white rounded border">
+          <div className="flex items-center justify-between p-3 bg-white rounded border shadow-sm">
             <Label className="font-semibold cursor-pointer">Use Kitchen Name</Label>
             <Switch
               checked={config.use_kitchen_name}
