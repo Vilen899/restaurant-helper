@@ -1,191 +1,182 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { PackagePlus, History, Calculator, Save, Trash2, ClipboardCheck, ArrowLeftRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useNavigate } from "react-router-dom";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Box, ArrowDown, ArrowUp, History, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-export default function InventoryDashboard() {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+export default function InventoryPage() {
+  const [stock, setStock] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
-  const [allIngredients, setAllIngredients] = useState<any[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<string>("");
-  const [stockData, setStockData] = useState<any[]>([]);
+  const [selectedLoc, setSelectedLoc] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [dates, setDates] = useState({
+    from: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split("T")[0],
+    to: new Date().toISOString().split("T")[0],
+  });
 
   useEffect(() => {
-    loadInitialData();
+    fetchLocations();
   }, []);
 
-  const loadInitialData = async () => {
-    const { data: locs } = await supabase.from("locations").select("id, name");
-    const { data: ings } = await (supabase.from("ingredients").select("id, name, unit") as any);
-    setLocations(locs || []);
-    setAllIngredients(ings || []);
+  useEffect(() => {
+    if (selectedLoc) loadData();
+  }, [selectedLoc, dates]);
+
+  const fetchLocations = async () => {
+    const { data } = await supabase.from("locations").select("*");
+    setLocations(data || []);
+    if (data?.length) setSelectedLoc(data[0].id);
   };
 
-  const loadStockForLocation = async (locId: string) => {
-    if (!locId) return;
-    setSelectedLocation(locId);
-    setLoading(true);
-    try {
-      const { data } = await (supabase.from("inventory" as any) as any)
-        .select(`quantity, ingredient_id, ingredient:ingredients(name, unit)`)
-        .eq("location_id", locId);
+  const loadData = async () => {
+    // 1. Получаем остатки
+    const { data: inventory } = await supabase
+      .from("inventory")
+      .select(`quantity, ingredient:ingredients(id, name, unit)`)
+      .eq("location_id", selectedLoc);
 
-      const formatted = (data || []).map((item: any) => ({
-        id: item.ingredient_id,
-        name: item.ingredient?.name || "НЕИЗВЕСТНО",
-        unit: item.ingredient?.unit || "шт",
-        systemQty: Number(item.quantity) || 0,
-        factQty: Number(item.quantity) || 0,
-      }));
-      setStockData(formatted);
-    } finally {
-      setLoading(false);
-    }
+    // 2. Получаем все движения за период
+    const { data: movements } = await supabase
+      .from("material_docs")
+      .select("*")
+      .eq("location_id", selectedLoc)
+      .gte("created_at", dates.from)
+      .lte("created_at", dates.to + "T23:59:59");
+
+    // Группируем данные
+    const combined = inventory?.map((item: any) => {
+      const ingredientId = item.ingredient?.id;
+      const received =
+        movements
+          ?.filter((m) => m.ingredient_id === ingredientId && m.type === "receipt")
+          .reduce((sum, m) => sum + Number(m.quantity), 0) || 0;
+      const sold =
+        movements
+          ?.filter((m) => m.ingredient_id === ingredientId && m.type === "sale")
+          .reduce((sum, m) => sum + Number(m.quantity), 0) || 0;
+
+      return {
+        name: item.ingredient?.name,
+        unit: item.ingredient?.unit,
+        received,
+        sold,
+        current: item.quantity,
+      };
+    });
+
+    setStock(combined || []);
   };
 
-  const handleFactChange = (id: string, value: string) => {
-    const val = parseFloat(value) || 0;
-    setStockData((prev) => prev.map((item) => (item.id === id ? { ...item, factQty: val } : item)));
-  };
-
-  const handlePostDifferences = async () => {
-    if (!selectedLocation || stockData.length === 0) return toast.error("ПУСТО");
-    setLoading(true);
-    try {
-      // 1. Создаем шапку документа
-      const { data: doc, error: docError } = await (supabase.from("stocktaking_docs" as any) as any)
-        .insert([
-          {
-            location_id: selectedLocation,
-            status: "completed",
-            total_items: stockData.length,
-            total_difference: stockData.reduce((acc, item) => acc + (item.factQty - item.systemQty), 0),
-          },
-        ])
-        .select()
-        .single();
-
-      if (docError) throw docError;
-
-      // 2. Создаем позиции документа
-      const itemsToInsert = stockData.map((item) => ({
-        stocktaking_id: doc.id,
-        ingredient_id: item.id,
-        system_qty: item.systemQty,
-        fact_qty: item.factQty,
-        difference: item.factQty - item.systemQty,
-      }));
-
-      await (supabase.from("stocktaking_items" as any) as any).insert(itemsToInsert);
-
-      // 3. Обновляем склад (UPSERT)
-      for (const item of stockData) {
-        await (supabase.from("inventory" as any) as any).upsert(
-          {
-            location_id: selectedLocation,
-            ingredient_id: item.id,
-            quantity: item.factQty,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "location_id,ingredient_id" },
-        );
-      }
-
-      toast.success("ПРОВЕДЕНО УСПЕШНО");
-      setStockData([]);
-      setSelectedLocation("");
-    } catch (e: any) {
-      toast.error(e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const filteredStock = stock.filter((item) => item.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
-    <div className="p-6 bg-black min-h-screen text-white uppercase font-sans">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Button
-          onClick={() => navigate("/admin/migo")}
-          className="bg-emerald-600 h-16 rounded-none font-black border-b-4 border-emerald-900 italic"
-        >
-          <PackagePlus className="mr-2" /> ПРИХОД
-        </Button>
-        <Button
-          onClick={() => navigate("/admin/material-docs")}
-          className="bg-zinc-800 h-16 rounded-none font-black border-b-4 border-zinc-950 italic"
-        >
-          <History className="mr-2" /> ЖУРНАЛ
-        </Button>
-      </div>
-
-      <div className="bg-zinc-900/50 border-2 border-white p-6">
-        <h1 className="text-3xl font-black italic mb-6 flex items-center gap-3">
-          <ClipboardCheck className="text-amber-500" /> MI01: ИНВЕНТАРИЗАЦИЯ
-        </h1>
-
-        <div className="mb-6 w-full md:w-1/3">
-          <label className="text-[10px] font-black mb-1 block">ВЫБЕРИТЕ СКЛАД:</label>
-          <Select value={selectedLocation} onValueChange={loadStockForLocation}>
-            <SelectTrigger className="bg-white text-black font-black rounded-none h-12">
-              <SelectValue placeholder="ВЫБРАТЬ..." />
+    <div className="p-4 space-y-4 bg-zinc-50 min-h-screen">
+      {/* ПАНЕЛЬ УПРАВЛЕНИЯ */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-white p-4 rounded-lg border shadow-sm items-end">
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold uppercase text-zinc-400">Выберите точку</label>
+          <Select value={selectedLoc} onValueChange={setSelectedLoc}>
+            <SelectTrigger className="h-9 border-zinc-200">
+              <SelectValue placeholder="Склад..." />
             </SelectTrigger>
             <SelectContent>
-              {locations.map((loc) => (
-                <SelectItem key={loc.id} value={loc.id}>
-                  {loc.name}
+              {locations.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
 
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold uppercase text-zinc-400">Период С</label>
+          <Input
+            type="date"
+            value={dates.from}
+            onChange={(e) => setDates({ ...dates, from: e.target.value })}
+            className="h-9"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold uppercase text-zinc-400">По</label>
+          <Input
+            type="date"
+            value={dates.to}
+            onChange={(e) => setDates({ ...dates, to: e.target.value })}
+            className="h-9"
+          />
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-zinc-400" />
+          <Input
+            placeholder="Поиск товара..."
+            className="pl-9 h-9"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* ТАБЛИЦА ОСТАТКОВ */}
+      <Card className="rounded-lg border-none shadow-sm overflow-hidden">
+        <CardHeader className="bg-white border-b py-3">
+          <CardTitle className="text-sm font-bold flex items-center gap-2">
+            <Box size={16} className="text-amber-500" /> ТЕКУЩИЕ ОСТАТКИ И ДВИЖЕНИЕ
+          </CardTitle>
+        </CardHeader>
         <Table>
-          <TableHeader className="bg-white">
-            <TableRow className="hover:bg-white border-none h-12">
-              <TableHead className="text-black font-black">МАТЕРИАЛ</TableHead>
-              <TableHead className="text-black font-black text-right">СИСТЕМА</TableHead>
-              <TableHead className="text-black font-black text-right">ФАКТ</TableHead>
-              <TableHead className="text-black font-black text-right">РАЗНИЦА</TableHead>
+          <TableHeader className="bg-zinc-50">
+            <TableRow>
+              <TableHead className="text-[10px] font-bold uppercase">Наименование</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase text-emerald-600">Приход (+)</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase text-red-500">Расход (-)</TableHead>
+              <TableHead className="text-right text-[10px] font-bold uppercase">Фактический остаток</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
-            {stockData.map((item) => (
-              <TableRow key={item.id} className="border-b border-white/10 h-14">
-                <TableCell className="font-black italic uppercase">{item.name}</TableCell>
-                <TableCell className="text-right font-mono text-zinc-400">{item.systemQty.toFixed(2)}</TableCell>
-                <TableCell className="text-right">
-                  <Input
-                    type="number"
-                    className="w-24 ml-auto bg-white text-black font-black text-right rounded-none h-8"
-                    value={item.factQty}
-                    onChange={(e) => handleFactChange(item.id, e.target.value)}
-                  />
-                </TableCell>
-                <TableCell
-                  className={`text-right font-mono font-black ${item.factQty - item.systemQty >= 0 ? "text-emerald-500" : "text-red-500"}`}
-                >
-                  {(item.factQty - item.systemQty).toFixed(2)}
+          <TableBody className="bg-white">
+            {filteredStock.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="h-32 text-center text-zinc-400">
+                  Нет данных за этот период
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (
+              filteredStock.map((item, idx) => (
+                <TableRow key={idx} className="hover:bg-zinc-50 border-b border-zinc-100 h-11">
+                  <TableCell className="font-bold text-xs uppercase text-zinc-700">{item.name}</TableCell>
+                  <TableCell className="text-right text-xs font-medium text-emerald-600">
+                    {item.received > 0 && `+${item.received}`} {item.unit}
+                  </TableCell>
+                  <TableCell className="text-right text-xs font-medium text-red-500">
+                    {item.sold > 0 && `-${item.sold}`} {item.unit}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Badge
+                      variant="secondary"
+                      className="font-mono font-bold text-sm bg-zinc-100 text-zinc-900 border-none"
+                    >
+                      {item.current} {item.unit}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
           </TableBody>
         </Table>
+      </Card>
 
-        <div className="mt-8 flex justify-end">
-          <Button
-            disabled={loading || !selectedLocation}
-            onClick={handlePostDifferences}
-            className="bg-white text-black hover:bg-zinc-200 px-12 h-14 font-black rounded-none italic border-b-4 border-zinc-400"
-          >
-            <Save className="mr-2" /> СОХРАНИТЬ РЕЗУЛЬТАТЫ
-          </Button>
-        </div>
+      {/* ПОДСКАЗКА */}
+      <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg">
+        <p className="text-[11px] text-amber-700 leading-relaxed uppercase font-medium">
+          * ОСТАТОК ОБНОВЛЯЕТСЯ АВТОМАТИЧЕСКИ ПРИ СОЗДАНИИ ИЛИ УДАЛЕНИИ ДОКУМЕНТОВ ПРИХОДА/ПРОДАЖИ.
+        </p>
       </div>
     </div>
   );
