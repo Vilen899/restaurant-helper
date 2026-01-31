@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Trash2,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,7 +41,7 @@ const XML_DEFAULTS = {
   BonusPaymentName: "",
   C16CardIdTransfer: false,
   SubchargeAsDishCode: "999999",
-  SubchargeAsDishName: "Հանրային սննդи կազմակերպում",
+  SubchargeAsDishName: "Հանրային սննդի կազմակերպում",
   SubchargeAsDishAdgCode: "56.10",
   SubchargeAsDishUnit: "հատ․",
   DefaultOperationTimeout: 30000,
@@ -89,6 +90,10 @@ export default function FiscalSettingsPage() {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  // States для теста соединения
+  const [isTesting, setIsTesting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<"idle" | "online" | "offline">("idle");
+
   useEffect(() => {
     async function init() {
       const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
@@ -104,6 +109,7 @@ export default function FiscalSettingsPage() {
 
   async function loadSettings(locId) {
     setLoading(true);
+    setConnectionStatus("idle");
     const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
     if (data) {
       setConfig({ ...XML_DEFAULTS, ...data, location_id: locId });
@@ -112,6 +118,31 @@ export default function FiscalSettingsPage() {
     }
     setLoading(false);
   }
+
+  // ФУНКЦИЯ ПРОВЕРКИ СОЕДИНЕНИЯ
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setConnectionStatus("idle");
+    try {
+      // Пробуем достучаться до драйвера по HTTP (обычно кассы отвечают по этому протоколу)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // Таймаут 5 секунд
+
+      const response = await fetch(`http://${config.Host}:${config.Port}/api/v1/status`, {
+        method: "GET",
+        signal: controller.signal,
+        mode: "no-cors", // Используем no-cors для обхода ограничений браузера при прямом пинге
+      });
+
+      setConnectionStatus("online");
+      toast.success("Связь с ККМ установлена (Network OK)");
+    } catch (error) {
+      setConnectionStatus("offline");
+      toast.error("Касса не отвечает. Проверьте IP, порт и сеть.");
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const save = async () => {
     const { error } = await supabase.from("fiscal_settings").upsert(
@@ -127,7 +158,7 @@ export default function FiscalSettingsPage() {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center font-mono text-emerald-500 uppercase italic">
+      <div className="min-h-screen bg-black flex items-center justify-center font-mono text-emerald-500 uppercase italic tracking-widest">
         Parsing_XML_Config...
       </div>
     );
@@ -169,11 +200,27 @@ export default function FiscalSettingsPage() {
 
         {/* SECTION 1: NETWORK & AUTH */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl border-t-2 border-t-blue-500 shadow-xl">
-            <div className="flex items-center gap-2 mb-6 text-blue-500">
-              <Wifi className="h-4 w-4" />
-              <h3 className="text-[10px] font-black uppercase tracking-widest">Connection</h3>
+          <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl border-t-2 border-t-blue-500 shadow-xl relative overflow-hidden">
+            <div className="flex justify-between items-center mb-6">
+              <div className="flex items-center gap-2 text-blue-500">
+                <Wifi className="h-4 w-4" />
+                <h3 className="text-[10px] font-black uppercase tracking-widest">Connection</h3>
+              </div>
+
+              {/* Статус связи */}
+              <div
+                className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${
+                  connectionStatus === "online"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : connectionStatus === "offline"
+                      ? "bg-red-500/20 text-red-400"
+                      : "bg-slate-800 text-slate-500"
+                }`}
+              >
+                {connectionStatus === "idle" ? "Not Tested" : connectionStatus}
+              </div>
             </div>
+
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -201,6 +248,17 @@ export default function FiscalSettingsPage() {
                   className="bg-slate-950 text-emerald-500"
                 />
               </div>
+
+              {/* Кнопка Теста */}
+              <Button
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                variant="outline"
+                className="w-full border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 text-[10px] font-bold h-9 gap-2"
+              >
+                {isTesting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />}
+                {isTesting ? "TESTING..." : "TEST KKM CONNECTION"}
+              </Button>
             </div>
           </Card>
 
