@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw } from "lucide-react";
+import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 interface Movement {
   id: string;
@@ -279,6 +280,71 @@ export default function MovementJournal() {
     }
   };
 
+  const exportToExcel = (type: "movements" | "receipts" | "stocktakings" | "transfers") => {
+    let data: any[] = [];
+    let fileName = "";
+
+    switch (type) {
+      case "movements":
+        fileName = `Движения_${new Date().toLocaleDateString("ru-RU")}`;
+        data = movements.map((m) => ({
+          "Дата/Время": new Date(m.created_at).toLocaleString("ru-RU"),
+          "Материал": m.ingredient?.name || "",
+          "Количество": m.quantity,
+          "Склад": m.location?.name || "",
+          "Тип": m.type === "MIGO_101" ? "ПРИХОД" : m.type === "MI07_COUNT" ? "ИНВЕНТАРИЗАЦИЯ" : m.type === "MB1B_311" ? "ПЕРЕМЕЩЕНИЕ" : m.type,
+          "Документ": m.reference || "",
+          "ИНН поставщика": m.vendor_inn || "",
+        }));
+        break;
+      case "receipts":
+        fileName = `Приходы_${new Date().toLocaleDateString("ru-RU")}`;
+        data = materialDocs.map((doc) => ({
+          "Дата": new Date(doc.created_at).toLocaleDateString("ru-RU"),
+          "Номер документа": doc.doc_number || "",
+          "Поставщик": doc.supplier_name || "",
+          "ИНН": doc.vendor_inn || "",
+          "Склад": doc.location?.name || "",
+          "Сумма": Number(doc.total_amount || 0),
+        }));
+        break;
+      case "stocktakings":
+        fileName = `Инвентаризации_${new Date().toLocaleDateString("ru-RU")}`;
+        data = stocktakings.map((st) => ({
+          "Дата": new Date(st.created_at).toLocaleDateString("ru-RU"),
+          "Склад": st.location?.name || "",
+          "Статус": st.status === "completed" ? "Завершена" : st.status,
+          "Всего позиций": st.total_items,
+          "С расхождением": st.items_with_difference,
+          "Излишки": st.surplus_count,
+          "Недостача": st.shortage_count,
+          "Дата завершения": st.completed_at ? new Date(st.completed_at).toLocaleDateString("ru-RU") : "",
+        }));
+        break;
+      case "transfers":
+        fileName = `Перемещения_${new Date().toLocaleDateString("ru-RU")}`;
+        data = transfers.map((tr) => ({
+          "Дата создания": new Date(tr.created_at).toLocaleDateString("ru-RU"),
+          "Со склада": tr.from_location?.name || "",
+          "На склад": tr.to_location?.name || "",
+          "Статус": tr.status === "completed" ? "Завершено" : tr.status === "pending" ? "Ожидает" : tr.status === "in_transit" ? "В пути" : tr.status,
+          "Дата завершения": tr.completed_at ? new Date(tr.completed_at).toLocaleDateString("ru-RU") : "",
+        }));
+        break;
+    }
+
+    if (data.length === 0) {
+      toast.error("Нет данных для экспорта");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Данные");
+    XLSX.writeFile(wb, `${fileName}.xlsx`);
+    toast.success("Файл экспортирован");
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground p-4 font-sans">
       <div className="flex items-center justify-between mb-6 border-b pb-4">
@@ -330,10 +396,38 @@ export default function MovementJournal() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="all">{renderMovementsTable(movements)}</TabsContent>
-        <TabsContent value="receipts">{renderMaterialDocsTable()}</TabsContent>
-        <TabsContent value="stocktakings">{renderStocktakingsTable()}</TabsContent>
-        <TabsContent value="transfers">{renderTransfersTable()}</TabsContent>
+        <TabsContent value="all">
+          <div className="flex justify-end mb-2">
+            <Button onClick={() => exportToExcel("movements")} variant="outline" size="sm" className="font-bold text-xs">
+              <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
+            </Button>
+          </div>
+          {renderMovementsTable(movements)}
+        </TabsContent>
+        <TabsContent value="receipts">
+          <div className="flex justify-end mb-2">
+            <Button onClick={() => exportToExcel("receipts")} variant="outline" size="sm" className="font-bold text-xs">
+              <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
+            </Button>
+          </div>
+          {renderMaterialDocsTable()}
+        </TabsContent>
+        <TabsContent value="stocktakings">
+          <div className="flex justify-end mb-2">
+            <Button onClick={() => exportToExcel("stocktakings")} variant="outline" size="sm" className="font-bold text-xs">
+              <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
+            </Button>
+          </div>
+          {renderStocktakingsTable()}
+        </TabsContent>
+        <TabsContent value="transfers">
+          <div className="flex justify-end mb-2">
+            <Button onClick={() => exportToExcel("transfers")} variant="outline" size="sm" className="font-bold text-xs">
+              <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
+            </Button>
+          </div>
+          {renderTransfersTable()}
+        </TabsContent>
       </Tabs>
 
       <Dialog open={!!selectedDoc} onOpenChange={() => setSelectedDoc(null)}>
