@@ -110,7 +110,11 @@ export default function FiscalSettingsPage() {
 
     if (data) {
       // КРИТИЧНО: Приоритет данным из БД, чтобы IP подтягивался сохраненный
-      setConfig({ ...XML_DEFAULTS, ...data, location_id: locId });
+      // Parse PaymentTypes from JSON to ensure correct type
+      const paymentTypes = Array.isArray(data.PaymentTypes) 
+        ? data.PaymentTypes as typeof XML_DEFAULTS.PaymentTypes
+        : XML_DEFAULTS.PaymentTypes;
+      setConfig({ ...XML_DEFAULTS, ...data, PaymentTypes: paymentTypes, location_id: locId });
     } else {
       setConfig({ ...XML_DEFAULTS, location_id: locId });
     }
