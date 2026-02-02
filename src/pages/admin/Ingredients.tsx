@@ -17,13 +17,14 @@ type Unit = Tables<'units'>;
 interface IngredientWithUnit {
   id: string;
   name: string;
+  unit: string | null; // Legacy field from DB
   unit_id: string | null;
   cost_per_unit: number;
   min_stock: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  unit?: Unit | null;
+  units?: Unit | null; // Relation alias from select
 }
 
 export default function IngredientsPage() {
@@ -49,7 +50,7 @@ export default function IngredientsPage() {
   const fetchData = async () => {
     try {
       const [{ data: ings }, { data: unitsData }] = await Promise.all([
-        supabase.from('ingredients').select('*, unit:units(*)').order('name'),
+        supabase.from('ingredients').select('*, units(*)').order('name'),
         supabase.from('units').select('*'),
       ]);
 
@@ -205,7 +206,7 @@ export default function IngredientsPage() {
               {filteredIngredients.map(ing => (
                 <TableRow key={ing.id} className={!ing.is_active ? 'opacity-60' : ''}>
                   <TableCell className="font-medium">{ing.name}</TableCell>
-                  <TableCell>{ing.unit?.abbreviation}</TableCell>
+                  <TableCell>{ing.units?.abbreviation}</TableCell>
                   <TableCell className="text-right">
                     ₽ {Number(ing.cost_per_unit).toFixed(2)}
                   </TableCell>

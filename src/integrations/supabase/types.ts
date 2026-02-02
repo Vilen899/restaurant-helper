@@ -85,88 +85,244 @@ export type Database = {
       }
       fiscal_settings: {
         Row: {
+          adg_code_length: number | null
+          adg_length: number | null
+          AdgCodeFromProductCodeLength: number | null
+          AdgCodeFromProductFastCodeLength: number | null
+          AggregateSaleAdg: string | null
+          AggregateSaleCode: string | null
+          AggregateSaleName: string | null
+          AggregateSales: boolean | null
+          AggregateSaleUnit: string | null
           api_login: string | null
           api_password: string | null
           api_token: string | null
           api_url: string | null
           auto_print_receipt: boolean
+          BackupDaysLimit: number | null
+          BonusPaymentName: string | null
+          C16CardIdTransfer: boolean | null
+          cashier_id: string | null
+          cashier_pin: string | null
+          CashierId: string | null
+          CashierPin: string | null
           company_address: string | null
           company_name: string | null
           connection_type: string
+          CounterToRelogin: number | null
           created_at: string
+          DebugMode: number | null
+          default_adg: string | null
           default_timeout: number | null
+          DefaultAdg: string | null
+          DefaultOperationTimeout: number | null
           device_id: string | null
+          DisableCashInOut: boolean | null
+          DoXReport: boolean | null
+          DoZReport: boolean | null
           driver: string
           enabled: boolean
+          fast_code_length: number | null
+          host: string | null
+          Host: string | null
           id: string
           inn: string | null
           ip_address: string | null
           kkm_password: string | null
+          KkmPassword: string | null
+          KkmPaymentTimeout: number | null
           location_id: string | null
+          Mode: string | null
           operator_name: string | null
+          payment_methods_map: Json | null
           payment_timeout: number | null
+          payment_types: Json | null
+          PaymentTypes: Json | null
           port: string | null
+          Port: string | null
           print_copy: boolean
           serial_number: string | null
+          subcharge_code: string | null
+          subcharge_name: string | null
+          subcharge_unit: string | null
+          SubchargeAsDishAdgCode: string | null
+          SubchargeAsDishCode: string | null
+          SubchargeAsDishName: string | null
+          SubchargeAsDishUnit: string | null
           terminal_id: string | null
           updated_at: string
+          use_default_adg: boolean | null
+          use_discount: boolean | null
+          use_kitchen_name: boolean | null
+          UseDefaultAdg: boolean | null
+          UseDepartmentFromKitchenName: boolean | null
+          UseDiscountInKkm: boolean | null
+          UseKitchenName: boolean | null
+          UseSubchargeAsDish: boolean | null
           vat_rate: number | null
+          VatRate: number | null
+          VersionMajor: number | null
+          VersionMinor: number | null
         }
         Insert: {
+          adg_code_length?: number | null
+          adg_length?: number | null
+          AdgCodeFromProductCodeLength?: number | null
+          AdgCodeFromProductFastCodeLength?: number | null
+          AggregateSaleAdg?: string | null
+          AggregateSaleCode?: string | null
+          AggregateSaleName?: string | null
+          AggregateSales?: boolean | null
+          AggregateSaleUnit?: string | null
           api_login?: string | null
           api_password?: string | null
           api_token?: string | null
           api_url?: string | null
           auto_print_receipt?: boolean
+          BackupDaysLimit?: number | null
+          BonusPaymentName?: string | null
+          C16CardIdTransfer?: boolean | null
+          cashier_id?: string | null
+          cashier_pin?: string | null
+          CashierId?: string | null
+          CashierPin?: string | null
           company_address?: string | null
           company_name?: string | null
           connection_type?: string
+          CounterToRelogin?: number | null
           created_at?: string
+          DebugMode?: number | null
+          default_adg?: string | null
           default_timeout?: number | null
+          DefaultAdg?: string | null
+          DefaultOperationTimeout?: number | null
           device_id?: string | null
+          DisableCashInOut?: boolean | null
+          DoXReport?: boolean | null
+          DoZReport?: boolean | null
           driver?: string
           enabled?: boolean
+          fast_code_length?: number | null
+          host?: string | null
+          Host?: string | null
           id?: string
           inn?: string | null
           ip_address?: string | null
           kkm_password?: string | null
+          KkmPassword?: string | null
+          KkmPaymentTimeout?: number | null
           location_id?: string | null
+          Mode?: string | null
           operator_name?: string | null
+          payment_methods_map?: Json | null
           payment_timeout?: number | null
+          payment_types?: Json | null
+          PaymentTypes?: Json | null
           port?: string | null
+          Port?: string | null
           print_copy?: boolean
           serial_number?: string | null
+          subcharge_code?: string | null
+          subcharge_name?: string | null
+          subcharge_unit?: string | null
+          SubchargeAsDishAdgCode?: string | null
+          SubchargeAsDishCode?: string | null
+          SubchargeAsDishName?: string | null
+          SubchargeAsDishUnit?: string | null
           terminal_id?: string | null
           updated_at?: string
+          use_default_adg?: boolean | null
+          use_discount?: boolean | null
+          use_kitchen_name?: boolean | null
+          UseDefaultAdg?: boolean | null
+          UseDepartmentFromKitchenName?: boolean | null
+          UseDiscountInKkm?: boolean | null
+          UseKitchenName?: boolean | null
+          UseSubchargeAsDish?: boolean | null
           vat_rate?: number | null
+          VatRate?: number | null
+          VersionMajor?: number | null
+          VersionMinor?: number | null
         }
         Update: {
+          adg_code_length?: number | null
+          adg_length?: number | null
+          AdgCodeFromProductCodeLength?: number | null
+          AdgCodeFromProductFastCodeLength?: number | null
+          AggregateSaleAdg?: string | null
+          AggregateSaleCode?: string | null
+          AggregateSaleName?: string | null
+          AggregateSales?: boolean | null
+          AggregateSaleUnit?: string | null
           api_login?: string | null
           api_password?: string | null
           api_token?: string | null
           api_url?: string | null
           auto_print_receipt?: boolean
+          BackupDaysLimit?: number | null
+          BonusPaymentName?: string | null
+          C16CardIdTransfer?: boolean | null
+          cashier_id?: string | null
+          cashier_pin?: string | null
+          CashierId?: string | null
+          CashierPin?: string | null
           company_address?: string | null
           company_name?: string | null
           connection_type?: string
+          CounterToRelogin?: number | null
           created_at?: string
+          DebugMode?: number | null
+          default_adg?: string | null
           default_timeout?: number | null
+          DefaultAdg?: string | null
+          DefaultOperationTimeout?: number | null
           device_id?: string | null
+          DisableCashInOut?: boolean | null
+          DoXReport?: boolean | null
+          DoZReport?: boolean | null
           driver?: string
           enabled?: boolean
+          fast_code_length?: number | null
+          host?: string | null
+          Host?: string | null
           id?: string
           inn?: string | null
           ip_address?: string | null
           kkm_password?: string | null
+          KkmPassword?: string | null
+          KkmPaymentTimeout?: number | null
           location_id?: string | null
+          Mode?: string | null
           operator_name?: string | null
+          payment_methods_map?: Json | null
           payment_timeout?: number | null
+          payment_types?: Json | null
+          PaymentTypes?: Json | null
           port?: string | null
+          Port?: string | null
           print_copy?: boolean
           serial_number?: string | null
+          subcharge_code?: string | null
+          subcharge_name?: string | null
+          subcharge_unit?: string | null
+          SubchargeAsDishAdgCode?: string | null
+          SubchargeAsDishCode?: string | null
+          SubchargeAsDishName?: string | null
+          SubchargeAsDishUnit?: string | null
           terminal_id?: string | null
           updated_at?: string
+          use_default_adg?: boolean | null
+          use_discount?: boolean | null
+          use_kitchen_name?: boolean | null
+          UseDefaultAdg?: boolean | null
+          UseDepartmentFromKitchenName?: boolean | null
+          UseDiscountInKkm?: boolean | null
+          UseKitchenName?: boolean | null
+          UseSubchargeAsDish?: boolean | null
           vat_rate?: number | null
+          VatRate?: number | null
+          VersionMajor?: number | null
+          VersionMinor?: number | null
         }
         Relationships: [
           {
