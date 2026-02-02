@@ -42,7 +42,8 @@ import GoodsReceiptPage from "./pages/admin/GoodsReceipt";
 import MaterialDocsPage from "./pages/admin/MaterialDocs";
 import StockTransferPage from "./pages/admin/StockTransfer";
 import PhysicalInventoryPage from "./pages/admin/PhysicalInventory";
-import MovementJournalPage from "./pages/admin/MovementJournal"; // Проверь, что файл называется именно так
+import MovementJournalPage from "./pages/admin/MovementJournal";
+import InventoryMovementsPage from "./pages/admin/InventoryMovements";
 
 const queryClient = new QueryClient();
 
@@ -79,6 +80,7 @@ function AppRoutes() {
         <Route path="movement-journal" element={<MovementJournalPage />} />
         <Route path="material-log" element={<MovementJournalPage />} />
         <Route path="material-docs" element={<MaterialDocsPage />} />
+        <Route path="inventory-movements" element={<InventoryMovementsPage />} />
 
         {/* СПРАВОЧНИКИ И НАСТРОЙКИ */}
         <Route path="menu" element={<MenuPage />} />

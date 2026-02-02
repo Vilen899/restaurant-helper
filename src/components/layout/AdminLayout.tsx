@@ -24,6 +24,7 @@ import {
   Printer,
   TrendingDown,
   Monitor,
+  TrendingUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -80,6 +81,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { path: '/admin/reports', icon: FileText, label: 'Продажи', roles: ['admin', 'manager'] },
       { path: '/admin/reports/inventory', icon: Warehouse, label: 'Остатки', roles: ['admin', 'manager'] },
+      { path: '/admin/inventory-movements', icon: TrendingUp, label: 'Движение товаров', roles: ['admin', 'manager'] },
       { path: '/admin/reports/negative-sales', icon: TrendingDown, label: 'Минусовые продажи', roles: ['admin', 'manager'] },
       { path: '/admin/documents', icon: FileText, label: 'Документы (чеки)', roles: ['admin', 'manager'] },
       { path: '/admin/work-time', icon: Clock, label: 'Рабочее время', roles: ['admin', 'manager'] },

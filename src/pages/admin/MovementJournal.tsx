@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw, Download } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw, Download, Filter, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +23,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import { cn } from "@/lib/utils";
+
+interface Location {
+  id: string;
+  name: string;
+}
 
 interface Movement {
   id: string;
@@ -84,9 +95,15 @@ export default function MovementJournal() {
   const [materialDocs, setMaterialDocs] = useState<MaterialDoc[]>([]);
   const [stocktakings, setStocktakings] = useState<Stocktaking[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
   const [docType, setDocType] = useState<string>("");
+
+  // Filters
+  const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     fetchAllData();
@@ -94,6 +111,8 @@ export default function MovementJournal() {
 
   const fetchAllData = async () => {
     setLoading(true);
+    const { data: locs } = await supabase.from("locations").select("id, name").eq("is_active", true).order("name");
+    setLocations(locs || []);
     await Promise.all([fetchMovements(), fetchMaterialDocs(), fetchStocktakings(), fetchTransfers()]);
     setLoading(false);
   };
@@ -104,6 +123,37 @@ export default function MovementJournal() {
       .select("*, ingredient:ingredients(name), location:locations(name)")
       .order("created_at", { ascending: false });
     setMovements((data as Movement[]) || []);
+  };
+
+  // Filtered data based on location and date
+  const filterByLocationAndDate = <T extends { location_id?: string | null; created_at: string }>(data: T[]): T[] => {
+    return data.filter((item) => {
+      const matchesLocation = selectedLocation === "all" || item.location_id === selectedLocation;
+      const createdDate = new Date(item.created_at);
+      const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
+      const matchesDateTo = !dateTo || createdDate <= new Date(dateTo.setHours(23, 59, 59, 999));
+      return matchesLocation && matchesDateFrom && matchesDateTo;
+    });
+  };
+
+  const filteredMovements = useMemo(() => filterByLocationAndDate(movements), [movements, selectedLocation, dateFrom, dateTo]);
+  const filteredMaterialDocs = useMemo(() => filterByLocationAndDate(materialDocs), [materialDocs, selectedLocation, dateFrom, dateTo]);
+  const filteredStocktakings = useMemo(() => filterByLocationAndDate(stocktakings), [stocktakings, selectedLocation, dateFrom, dateTo]);
+  
+  const filteredTransfers = useMemo(() => {
+    return transfers.filter((t) => {
+      const matchesLocation = selectedLocation === "all" || t.from_location_id === selectedLocation || t.to_location_id === selectedLocation;
+      const createdDate = new Date(t.created_at);
+      const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
+      const matchesDateTo = !dateTo || createdDate <= new Date(dateTo.setHours(23, 59, 59, 999));
+      return matchesLocation && matchesDateFrom && matchesDateTo;
+    });
+  }, [transfers, selectedLocation, dateFrom, dateTo]);
+
+  const clearFilters = () => {
+    setSelectedLocation("all");
+    setDateFrom(undefined);
+    setDateTo(undefined);
   };
 
   const fetchMaterialDocs = async () => {
@@ -287,7 +337,7 @@ export default function MovementJournal() {
     switch (type) {
       case "movements":
         fileName = `Движения_${new Date().toLocaleDateString("ru-RU")}`;
-        data = movements.map((m) => ({
+        data = filteredMovements.map((m) => ({
           "Дата/Время": new Date(m.created_at).toLocaleString("ru-RU"),
           "Материал": m.ingredient?.name || "",
           "Количество": m.quantity,
@@ -299,7 +349,7 @@ export default function MovementJournal() {
         break;
       case "receipts":
         fileName = `Приходы_${new Date().toLocaleDateString("ru-RU")}`;
-        data = materialDocs.map((doc) => ({
+        data = filteredMaterialDocs.map((doc) => ({
           "Дата": new Date(doc.created_at).toLocaleDateString("ru-RU"),
           "Номер документа": doc.doc_number || "",
           "Поставщик": doc.supplier_name || "",
@@ -310,7 +360,7 @@ export default function MovementJournal() {
         break;
       case "stocktakings":
         fileName = `Инвентаризации_${new Date().toLocaleDateString("ru-RU")}`;
-        data = stocktakings.map((st) => ({
+        data = filteredStocktakings.map((st) => ({
           "Дата": new Date(st.created_at).toLocaleDateString("ru-RU"),
           "Склад": st.location?.name || "",
           "Статус": st.status === "completed" ? "Завершена" : st.status,
@@ -323,7 +373,7 @@ export default function MovementJournal() {
         break;
       case "transfers":
         fileName = `Перемещения_${new Date().toLocaleDateString("ru-RU")}`;
-        data = transfers.map((tr) => ({
+        data = filteredTransfers.map((tr) => ({
           "Дата создания": new Date(tr.created_at).toLocaleDateString("ru-RU"),
           "Со склада": tr.from_location?.name || "",
           "На склад": tr.to_location?.name || "",
@@ -380,19 +430,84 @@ export default function MovementJournal() {
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="bg-muted/30 border p-4 mb-6 rounded-lg flex flex-wrap gap-3 items-end">
+        <div className="w-[200px]">
+          <label className="text-xs font-bold text-muted-foreground mb-1 block">ЛОКАЦИЯ</label>
+          <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+            <SelectTrigger>
+              <Filter size={14} className="mr-2" />
+              <SelectValue placeholder="Все локации" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все локации</SelectItem>
+              {locations.map((loc) => (
+                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-[160px]">
+          <label className="text-xs font-bold text-muted-foreground mb-1 block">ДАТА С</label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !dateFrom && "text-muted-foreground")}>
+                <Calendar size={14} className="mr-2" />
+                {dateFrom ? format(dateFrom, "dd.MM.yyyy") : "Выбрать"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="single"
+                selected={dateFrom}
+                onSelect={setDateFrom}
+                locale={ru}
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        <div className="w-[160px]">
+          <label className="text-xs font-bold text-muted-foreground mb-1 block">ДАТА ПО</label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !dateTo && "text-muted-foreground")}>
+                <Calendar size={14} className="mr-2" />
+                {dateTo ? format(dateTo, "dd.MM.yyyy") : "Выбрать"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="single"
+                selected={dateTo}
+                onSelect={setDateTo}
+                locale={ru}
+                className={cn("p-3 pointer-events-auto")}
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
+          Сбросить
+        </Button>
+      </div>
+
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="mb-6 flex-wrap h-auto gap-1 p-1">
           <TabsTrigger value="all" className="text-xs font-bold">
-            ВСЕ ДВИЖЕНИЯ ({movements.length})
+            ВСЕ ДВИЖЕНИЯ ({filteredMovements.length})
           </TabsTrigger>
           <TabsTrigger value="receipts" className="text-xs font-bold flex gap-1">
-            <Package size={14} /> ПРИХОДЫ ({materialDocs.length})
+            <Package size={14} /> ПРИХОДЫ ({filteredMaterialDocs.length})
           </TabsTrigger>
           <TabsTrigger value="stocktakings" className="text-xs font-bold flex gap-1">
-            <Calculator size={14} /> ИНВЕНТАРИЗАЦИИ ({stocktakings.length})
+            <Calculator size={14} /> ИНВЕНТАРИЗАЦИИ ({filteredStocktakings.length})
           </TabsTrigger>
           <TabsTrigger value="transfers" className="text-xs font-bold flex gap-1">
-            <ArrowRightLeft size={14} /> ПЕРЕМЕЩЕНИЯ ({transfers.length})
+            <ArrowRightLeft size={14} /> ПЕРЕМЕЩЕНИЯ ({filteredTransfers.length})
           </TabsTrigger>
         </TabsList>
 
@@ -402,7 +517,7 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderMovementsTable(movements)}
+          {renderMovementsTable(filteredMovements)}
         </TabsContent>
         <TabsContent value="receipts">
           <div className="flex justify-end mb-2">
@@ -410,7 +525,7 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderMaterialDocsTable()}
+          {renderMaterialDocsTable(filteredMaterialDocs)}
         </TabsContent>
         <TabsContent value="stocktakings">
           <div className="flex justify-end mb-2">
@@ -418,7 +533,7 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderStocktakingsTable()}
+          {renderStocktakingsTable(filteredStocktakings)}
         </TabsContent>
         <TabsContent value="transfers">
           <div className="flex justify-end mb-2">
@@ -426,7 +541,7 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderTransfersTable()}
+          {renderTransfersTable(filteredTransfers)}
         </TabsContent>
       </Tabs>
 
@@ -506,13 +621,14 @@ export default function MovementJournal() {
     );
   }
 
-  function renderMaterialDocsTable() {
+  function renderMaterialDocsTable(data: MaterialDoc[]) {
     if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
+    if (data.length === 0) return <div className="text-center py-20 text-muted-foreground">НЕТ ЗАПИСЕЙ</div>;
     return (
       <Card>
         <Table>
@@ -527,7 +643,7 @@ export default function MovementJournal() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {materialDocs.map((doc) => (
+            {data.map((doc) => (
               <TableRow key={doc.id}>
                 <TableCell className="text-xs font-mono text-muted-foreground">
                   {new Date(doc.created_at).toLocaleDateString("ru-RU")}
@@ -577,13 +693,14 @@ export default function MovementJournal() {
     );
   }
 
-  function renderStocktakingsTable() {
+  function renderStocktakingsTable(data: Stocktaking[]) {
     if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
+    if (data.length === 0) return <div className="text-center py-20 text-muted-foreground">НЕТ ЗАПИСЕЙ</div>;
     return (
       <Card>
         <Table>
@@ -598,7 +715,7 @@ export default function MovementJournal() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {stocktakings.map((st) => (
+            {data.map((st) => (
               <TableRow key={st.id}>
                 <TableCell className="text-xs font-mono text-muted-foreground">
                   {new Date(st.created_at).toLocaleDateString("ru-RU")}
@@ -652,13 +769,14 @@ export default function MovementJournal() {
     );
   }
 
-  function renderTransfersTable() {
+  function renderTransfersTable(data: Transfer[]) {
     if (loading)
       return (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={30} />
         </div>
       );
+    if (data.length === 0) return <div className="text-center py-20 text-muted-foreground">НЕТ ЗАПИСЕЙ</div>;
     return (
       <Card>
         <Table>
@@ -672,7 +790,7 @@ export default function MovementJournal() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {transfers.map((tr) => (
+            {data.map((tr) => (
               <TableRow key={tr.id}>
                 <TableCell className="text-xs font-mono text-muted-foreground">
                   {new Date(tr.created_at).toLocaleDateString("ru-RU")}
