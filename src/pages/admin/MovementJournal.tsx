@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw, Download, Filter, Calendar } from "lucide-react";
+import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw, Download, Filter, Calendar, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -104,6 +105,7 @@ export default function MovementJournal() {
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   useEffect(() => {
     fetchAllData();
@@ -125,35 +127,67 @@ export default function MovementJournal() {
     setMovements((data as Movement[]) || []);
   };
 
-  // Filtered data based on location and date
-  const filterByLocationAndDate = <T extends { location_id?: string | null; created_at: string }>(data: T[]): T[] => {
+  // Filtered data based on location, date, and search term
+  const filterByLocationDateAndSearch = <T extends { location_id?: string | null; created_at: string }>(
+    data: T[],
+    ingredientGetter?: (item: T) => string | undefined
+  ): T[] => {
     return data.filter((item) => {
       const matchesLocation = selectedLocation === "all" || item.location_id === selectedLocation;
       const createdDate = new Date(item.created_at);
       const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
-      const matchesDateTo = !dateTo || createdDate <= new Date(dateTo.setHours(23, 59, 59, 999));
-      return matchesLocation && matchesDateFrom && matchesDateTo;
+      const matchesDateTo = !dateTo || createdDate <= new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+      const matchesSearch = !searchTerm || (ingredientGetter && ingredientGetter(item)?.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchesLocation && matchesDateFrom && matchesDateTo && matchesSearch;
     });
   };
 
-  const filteredMovements = useMemo(() => filterByLocationAndDate(movements), [movements, selectedLocation, dateFrom, dateTo]);
-  const filteredMaterialDocs = useMemo(() => filterByLocationAndDate(materialDocs), [materialDocs, selectedLocation, dateFrom, dateTo]);
-  const filteredStocktakings = useMemo(() => filterByLocationAndDate(stocktakings), [stocktakings, selectedLocation, dateFrom, dateTo]);
+  const filteredMovements = useMemo(() => 
+    filterByLocationDateAndSearch(movements, (m) => m.ingredient?.name), 
+    [movements, selectedLocation, dateFrom, dateTo, searchTerm]
+  );
+  
+  const filteredMaterialDocs = useMemo(() => {
+    // For material docs, search in supplier name or doc number
+    return materialDocs.filter((doc) => {
+      const matchesLocation = selectedLocation === "all" || doc.location_id === selectedLocation;
+      const createdDate = new Date(doc.created_at);
+      const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
+      const matchesDateTo = !dateTo || createdDate <= new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+      const matchesSearch = !searchTerm || 
+        doc.supplier_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.doc_number?.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesLocation && matchesDateFrom && matchesDateTo && matchesSearch;
+    });
+  }, [materialDocs, selectedLocation, dateFrom, dateTo, searchTerm]);
+  
+  const filteredStocktakings = useMemo(() => 
+    filterByLocationDateAndSearch(stocktakings, () => undefined).filter((st) => {
+      // Search would need items loaded, skip for now or match location name
+      if (!searchTerm) return true;
+      return st.location?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    }), 
+    [stocktakings, selectedLocation, dateFrom, dateTo, searchTerm]
+  );
   
   const filteredTransfers = useMemo(() => {
     return transfers.filter((t) => {
       const matchesLocation = selectedLocation === "all" || t.from_location_id === selectedLocation || t.to_location_id === selectedLocation;
       const createdDate = new Date(t.created_at);
       const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
-      const matchesDateTo = !dateTo || createdDate <= new Date(dateTo.setHours(23, 59, 59, 999));
-      return matchesLocation && matchesDateFrom && matchesDateTo;
+      const matchesDateTo = !dateTo || createdDate <= new Date(new Date(dateTo).setHours(23, 59, 59, 999));
+      const matchesSearch = !searchTerm || 
+        t.from_location?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.to_location?.name?.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesLocation && matchesDateFrom && matchesDateTo && matchesSearch;
     });
-  }, [transfers, selectedLocation, dateFrom, dateTo]);
+  }, [transfers, selectedLocation, dateFrom, dateTo, searchTerm]);
 
   const clearFilters = () => {
     setSelectedLocation("all");
     setDateFrom(undefined);
     setDateTo(undefined);
+    setSearchTerm("");
   };
 
   const fetchMaterialDocs = async () => {
@@ -432,6 +466,19 @@ export default function MovementJournal() {
 
       {/* Filters */}
       <div className="bg-muted/30 border p-4 mb-6 rounded-lg flex flex-wrap gap-3 items-end">
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <label className="text-xs font-bold text-muted-foreground mb-1 block">ПОИСК</label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input
+              placeholder="По материалу, поставщику..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </div>
+
         <div className="w-[200px]">
           <label className="text-xs font-bold text-muted-foreground mb-1 block">ЛОКАЦИЯ</label>
           <Select value={selectedLocation} onValueChange={setSelectedLocation}>

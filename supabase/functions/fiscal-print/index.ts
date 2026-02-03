@@ -548,7 +548,7 @@ async function aisinoRequest(
 }
 
 // HDM driver implementation (Armenian fiscal printers - ISP930, etc.)
-// Based on iiko integration format
+// Based on iiko integration format with correct field mapping from fiscal_settings
 async function hdmRequest(
   baseUrl: string,
   headers: Record<string, string>,
@@ -556,11 +556,21 @@ async function hdmRequest(
   orderData?: PrintRequest["order_data"],
   settings?: FiscalSettings
 ): Promise<{ success: boolean; message?: string; data?: unknown }> {
-  const cashierId = settings?.api_login || "1";
-  const cashierPin = settings?.api_password || "";
-  const kkmPassword = settings?.kkm_password || "";
-  const vatRate = settings?.vat_rate || 20;
-  const timeout = settings?.default_timeout || 30000;
+  // Use correct field mappings from fiscal_settings table
+  // CashierId and cashier_id are both available - prefer the uppercase version (from XML config)
+  const cashierId = (settings as any)?.CashierId || (settings as any)?.cashier_id || "3";
+  const cashierPin = (settings as any)?.CashierPin || (settings as any)?.cashier_pin || "4321";
+  const kkmPassword = (settings as any)?.KkmPassword || settings?.kkm_password || "Aa1111Bb";
+  const vatRate = (settings as any)?.VatRate || settings?.vat_rate || 16.67;
+  const timeout = (settings as any)?.DefaultOperationTimeout || settings?.default_timeout || 30000;
+  const defaultAdg = (settings as any)?.DefaultAdg || (settings as any)?.default_adg || "56.10";
+  
+  // Host and Port - prefer uppercase versions
+  const host = (settings as any)?.Host || (settings as any)?.host || settings?.ip_address || "192.168.9.19";
+  const port = (settings as any)?.Port || settings?.port || "8080";
+  
+  // Override baseUrl if host/port are set explicitly in settings
+  const effectiveBaseUrl = settings?.api_url || `http://${host}:${port}`;
   
   // HDM uses specific auth headers
   const hdmHeaders: Record<string, string> = {
@@ -571,37 +581,63 @@ async function hdmRequest(
   try {
     switch (action) {
       case "test_connection": {
-        // Try HDM status endpoint
+        // Try HDM status endpoint with correct data format
         const loginData = {
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
           password: kkmPassword,
         };
         
-        const response = await fetch(`${baseUrl}/api/login`, {
-          method: "POST",
-          headers: hdmHeaders,
-          body: JSON.stringify(loginData),
-          signal: AbortSignal.timeout(timeout),
-        });
+        console.log(`HDM test_connection to ${effectiveBaseUrl} with cashierId=${cashierId}`);
         
-        if (response.ok) {
-          const data = await response.json().catch(() => ({}));
-          return { success: true, message: "HDM connected", data };
+        // Try login endpoint first
+        try {
+          const response = await fetch(`${effectiveBaseUrl}/api/login`, {
+            method: "POST",
+            headers: hdmHeaders,
+            body: JSON.stringify(loginData),
+            signal: AbortSignal.timeout(timeout),
+          });
+          
+          if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            return { success: true, message: "HDM connected successfully", data };
+          }
+        } catch (loginErr) {
+          console.log("Login endpoint failed, trying status...", loginErr);
         }
         
         // Try alternative status check
-        const statusResponse = await fetch(`${baseUrl}/api/status`, {
-          method: "GET",
-          headers: hdmHeaders,
-          signal: AbortSignal.timeout(timeout),
-        });
-        
-        if (statusResponse.ok) {
-          return { success: true, message: "HDM connected" };
+        try {
+          const statusResponse = await fetch(`${effectiveBaseUrl}/api/status`, {
+            method: "GET",
+            headers: hdmHeaders,
+            signal: AbortSignal.timeout(timeout),
+          });
+          
+          if (statusResponse.ok) {
+            return { success: true, message: "HDM connected" };
+          }
+        } catch (statusErr) {
+          console.log("Status endpoint failed, trying ping...", statusErr);
         }
         
-        throw new Error(`Status: ${response.status}`);
+        // Try simple ping
+        try {
+          const pingResponse = await fetch(`${effectiveBaseUrl}/`, {
+            method: "GET",
+            headers: hdmHeaders,
+            signal: AbortSignal.timeout(timeout),
+          });
+          
+          if (pingResponse.ok || pingResponse.status < 500) {
+            return { success: true, message: "HDM device reachable" };
+          }
+        } catch (pingErr) {
+          console.log("Ping failed:", pingErr);
+        }
+        
+        throw new Error(`Cannot connect to HDM at ${effectiveBaseUrl}`);
       }
       
       case "print_receipt": {
@@ -726,26 +762,34 @@ async function hdmRequest(
           command: "openDrawer",
         };
         
-        const response = await fetch(`${baseUrl}/api/drawer`, {
-          method: "POST",
-          headers: hdmHeaders,
-          body: JSON.stringify(drawerData),
-          signal: AbortSignal.timeout(timeout),
-        });
-        
-        if (response.ok) {
-          return { success: true, message: "Drawer opened" };
+        try {
+          const response = await fetch(`${effectiveBaseUrl}/api/drawer`, {
+            method: "POST",
+            headers: hdmHeaders,
+            body: JSON.stringify(drawerData),
+            signal: AbortSignal.timeout(timeout),
+          });
+          
+          if (response.ok) {
+            return { success: true, message: "Drawer opened" };
+          }
+        } catch (err) {
+          console.log("Drawer endpoint failed, trying command...", err);
         }
         
         // Try command endpoint
-        const cmdResponse = await fetch(`${baseUrl}/api/command`, {
-          method: "POST",
-          headers: hdmHeaders,
-          body: JSON.stringify({ ...drawerData, action: "openDrawer" }),
-          signal: AbortSignal.timeout(timeout),
-        });
-        
-        return { success: cmdResponse.ok, message: cmdResponse.ok ? "Drawer opened" : "Failed" };
+        try {
+          const cmdResponse = await fetch(`${effectiveBaseUrl}/api/command`, {
+            method: "POST",
+            headers: hdmHeaders,
+            body: JSON.stringify({ ...drawerData, action: "openDrawer" }),
+            signal: AbortSignal.timeout(timeout),
+          });
+          
+          return { success: cmdResponse.ok, message: cmdResponse.ok ? "Drawer opened" : "Failed" };
+        } catch (err) {
+          throw new Error(`Drawer command failed: ${err}`);
+        }
       }
       
       case "x_report": {
@@ -756,7 +800,9 @@ async function hdmRequest(
           reportType: "X",
         };
         
-        const response = await fetch(`${baseUrl}/api/report`, {
+        console.log(`HDM X-report to ${effectiveBaseUrl}`);
+        
+        const response = await fetch(`${effectiveBaseUrl}/api/report`, {
           method: "POST",
           headers: hdmHeaders,
           body: JSON.stringify(reportData),
@@ -777,7 +823,9 @@ async function hdmRequest(
           reportType: "Z",
         };
         
-        const response = await fetch(`${baseUrl}/api/report`, {
+        console.log(`HDM Z-report to ${effectiveBaseUrl}`);
+        
+        const response = await fetch(`${effectiveBaseUrl}/api/report`, {
           method: "POST",
           headers: hdmHeaders,
           body: JSON.stringify(reportData),
