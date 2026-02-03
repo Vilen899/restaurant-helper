@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { History, FileText, Calculator, ArrowRightLeft, Trash2, Loader2, Eye, Package, RefreshCw, Download, Filter, Calendar, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { TablePagination } from "@/components/admin/TablePagination";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +108,16 @@ export default function MovementJournal() {
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState<string>("");
 
+  // Pagination state for each tab
+  const [movementsPage, setMovementsPage] = useState(1);
+  const [movementsPageSize, setMovementsPageSize] = useState(25);
+  const [receiptsPage, setReceiptsPage] = useState(1);
+  const [receiptsPageSize, setReceiptsPageSize] = useState(25);
+  const [stocktakingsPage, setStocktakingsPage] = useState(1);
+  const [stocktakingsPageSize, setStocktakingsPageSize] = useState(25);
+  const [transfersPage, setTransfersPage] = useState(1);
+  const [transfersPageSize, setTransfersPageSize] = useState(25);
+
   useEffect(() => {
     fetchAllData();
   }, []);
@@ -188,7 +199,33 @@ export default function MovementJournal() {
     setDateFrom(undefined);
     setDateTo(undefined);
     setSearchTerm("");
+    // Reset pagination when filters change
+    setMovementsPage(1);
+    setReceiptsPage(1);
+    setStocktakingsPage(1);
+    setTransfersPage(1);
   };
+
+  // Paginated data
+  const paginatedMovements = useMemo(() => {
+    const start = (movementsPage - 1) * movementsPageSize;
+    return filteredMovements.slice(start, start + movementsPageSize);
+  }, [filteredMovements, movementsPage, movementsPageSize]);
+
+  const paginatedMaterialDocs = useMemo(() => {
+    const start = (receiptsPage - 1) * receiptsPageSize;
+    return filteredMaterialDocs.slice(start, start + receiptsPageSize);
+  }, [filteredMaterialDocs, receiptsPage, receiptsPageSize]);
+
+  const paginatedStocktakings = useMemo(() => {
+    const start = (stocktakingsPage - 1) * stocktakingsPageSize;
+    return filteredStocktakings.slice(start, start + stocktakingsPageSize);
+  }, [filteredStocktakings, stocktakingsPage, stocktakingsPageSize]);
+
+  const paginatedTransfers = useMemo(() => {
+    const start = (transfersPage - 1) * transfersPageSize;
+    return filteredTransfers.slice(start, start + transfersPageSize);
+  }, [filteredTransfers, transfersPage, transfersPageSize]);
 
   const fetchMaterialDocs = async () => {
     const { data } = await supabase
@@ -564,7 +601,17 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderMovementsTable(filteredMovements)}
+          {renderMovementsTable(paginatedMovements)}
+          {filteredMovements.length > 0 && (
+            <TablePagination
+              currentPage={movementsPage}
+              totalPages={Math.ceil(filteredMovements.length / movementsPageSize)}
+              pageSize={movementsPageSize}
+              totalItems={filteredMovements.length}
+              onPageChange={(page) => setMovementsPage(page)}
+              onPageSizeChange={(size) => { setMovementsPageSize(size); setMovementsPage(1); }}
+            />
+          )}
         </TabsContent>
         <TabsContent value="receipts">
           <div className="flex justify-end mb-2">
@@ -572,7 +619,17 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderMaterialDocsTable(filteredMaterialDocs)}
+          {renderMaterialDocsTable(paginatedMaterialDocs)}
+          {filteredMaterialDocs.length > 0 && (
+            <TablePagination
+              currentPage={receiptsPage}
+              totalPages={Math.ceil(filteredMaterialDocs.length / receiptsPageSize)}
+              pageSize={receiptsPageSize}
+              totalItems={filteredMaterialDocs.length}
+              onPageChange={(page) => setReceiptsPage(page)}
+              onPageSizeChange={(size) => { setReceiptsPageSize(size); setReceiptsPage(1); }}
+            />
+          )}
         </TabsContent>
         <TabsContent value="stocktakings">
           <div className="flex justify-end mb-2">
@@ -580,7 +637,17 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderStocktakingsTable(filteredStocktakings)}
+          {renderStocktakingsTable(paginatedStocktakings)}
+          {filteredStocktakings.length > 0 && (
+            <TablePagination
+              currentPage={stocktakingsPage}
+              totalPages={Math.ceil(filteredStocktakings.length / stocktakingsPageSize)}
+              pageSize={stocktakingsPageSize}
+              totalItems={filteredStocktakings.length}
+              onPageChange={(page) => setStocktakingsPage(page)}
+              onPageSizeChange={(size) => { setStocktakingsPageSize(size); setStocktakingsPage(1); }}
+            />
+          )}
         </TabsContent>
         <TabsContent value="transfers">
           <div className="flex justify-end mb-2">
@@ -588,7 +655,17 @@ export default function MovementJournal() {
               <Download size={14} className="mr-1" /> ЭКСПОРТ EXCEL
             </Button>
           </div>
-          {renderTransfersTable(filteredTransfers)}
+          {renderTransfersTable(paginatedTransfers)}
+          {filteredTransfers.length > 0 && (
+            <TablePagination
+              currentPage={transfersPage}
+              totalPages={Math.ceil(filteredTransfers.length / transfersPageSize)}
+              pageSize={transfersPageSize}
+              totalItems={filteredTransfers.length}
+              onPageChange={(page) => setTransfersPage(page)}
+              onPageSizeChange={(size) => { setTransfersPageSize(size); setTransfersPage(1); }}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
