@@ -114,7 +114,30 @@ export default function FiscalSettingsPage() {
       const paymentTypes = Array.isArray(data.PaymentTypes) 
         ? data.PaymentTypes as typeof XML_DEFAULTS.PaymentTypes
         : XML_DEFAULTS.PaymentTypes;
-      setConfig({ ...XML_DEFAULTS, ...data, PaymentTypes: paymentTypes, location_id: locId });
+
+      // IMPORTANT: В БД исторически могут быть поля в разных форматах (Host/ip_address/host, Port/port)
+      // Приводим к единому виду, который использует UI.
+      const mappedHost = (data as any).Host ?? (data as any).ip_address ?? (data as any).host ?? XML_DEFAULTS.Host;
+      const mappedPort = (data as any).Port ?? (data as any).port ?? XML_DEFAULTS.Port;
+      const mappedKkmPassword = (data as any).KkmPassword ?? (data as any).kkm_password ?? XML_DEFAULTS.KkmPassword;
+      const mappedVatRate = (data as any).VatRate ?? (data as any).vat_rate ?? XML_DEFAULTS.VatRate;
+      const mappedDefaultTimeout =
+        (data as any).DefaultOperationTimeout ?? (data as any).default_timeout ?? XML_DEFAULTS.DefaultOperationTimeout;
+      const mappedPaymentTimeout =
+        (data as any).KkmPaymentTimeout ?? (data as any).payment_timeout ?? XML_DEFAULTS.KkmPaymentTimeout;
+
+      setConfig({
+        ...XML_DEFAULTS,
+        ...data,
+        Host: mappedHost,
+        Port: mappedPort,
+        KkmPassword: mappedKkmPassword,
+        VatRate: mappedVatRate,
+        DefaultOperationTimeout: mappedDefaultTimeout,
+        KkmPaymentTimeout: mappedPaymentTimeout,
+        PaymentTypes: paymentTypes,
+        location_id: locId,
+      });
     } else {
       setConfig({ ...XML_DEFAULTS, location_id: locId });
     }
@@ -152,14 +175,23 @@ export default function FiscalSettingsPage() {
   };
 
   const save = async () => {
-    // Сохраняем весь объект config (включая измененный Host) в Supabase
-    const { error } = await supabase.from("fiscal_settings").upsert(
-      {
-        ...config,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "location_id" },
-    );
+    // Сохраняем весь объект config + зеркалим ключевые поля в snake_case,
+    // чтобы backend-функции всегда читали актуальные IP/порт/пароль.
+    const payload: any = {
+      ...config,
+      // Network
+      ip_address: config.Host,
+      host: config.Host,
+      port: config.Port,
+      // HDM specific
+      kkm_password: config.KkmPassword,
+      vat_rate: config.VatRate,
+      default_timeout: config.DefaultOperationTimeout,
+      payment_timeout: config.KkmPaymentTimeout,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from("fiscal_settings").upsert(payload, { onConflict: "location_id" });
     if (!error) toast.success("Настройки (включая IP) сохранены в БД");
     else toast.error(error.message);
   };

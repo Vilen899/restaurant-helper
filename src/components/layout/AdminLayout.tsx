@@ -107,7 +107,9 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [openGroups, setOpenGroups] = useState<string[]>(['Товары и склады']);
+  // По умолчанию раскрываем ключевые разделы, чтобы пункты «Приход / Перемещение / Инвентаризация»
+  // не выглядели "пропавшими".
+  const [openGroups, setOpenGroups] = useState<string[]>(['Товары и склады', 'Складские документы', 'Отчёты']);
   const { user, signOut, isAdmin, isManager } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
