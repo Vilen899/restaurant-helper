@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { TablePagination } from "@/components/admin/TablePagination";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
@@ -55,6 +56,10 @@ export default function InventoryMovementsPage() {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -89,11 +94,19 @@ export default function InventoryMovementsPage() {
       
       const createdDate = new Date(m.created_at);
       const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
-      const matchesDateTo = !dateTo || createdDate <= new Date(dateTo.setHours(23, 59, 59, 999));
+      const matchesDateTo = !dateTo || createdDate <= new Date(new Date(dateTo).setHours(23, 59, 59, 999));
       
       return matchesSearch && matchesLocation && matchesType && matchesDateFrom && matchesDateTo;
     });
   }, [movements, searchTerm, selectedLocation, selectedType, dateFrom, dateTo]);
+
+  // Paginated data
+  const paginatedMovements = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredMovements.slice(start, start + pageSize);
+  }, [filteredMovements, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredMovements.length / pageSize);
 
   const stats = useMemo(() => {
     const supply = filteredMovements.filter(m => m.movement_type === "supply").reduce((sum, m) => sum + Math.abs(m.quantity), 0);
@@ -132,7 +145,13 @@ export default function InventoryMovementsPage() {
     setSelectedType("all");
     setDateFrom(undefined);
     setDateTo(undefined);
+    setCurrentPage(1);
   };
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedLocation, selectedType, dateFrom, dateTo]);
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 font-sans">
@@ -292,14 +311,14 @@ export default function InventoryMovementsPage() {
                   Загрузка...
                 </TableCell>
               </TableRow>
-            ) : filteredMovements.length === 0 ? (
+            ) : paginatedMovements.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                   Нет записей
                 </TableCell>
               </TableRow>
             ) : (
-              filteredMovements.map((m) => (
+              paginatedMovements.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="text-xs font-mono text-muted-foreground">
                     {new Date(m.created_at).toLocaleString("ru-RU")}
@@ -323,6 +342,20 @@ export default function InventoryMovementsPage() {
             )}
           </TableBody>
         </Table>
+        
+        {/* Pagination */}
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredMovements.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setCurrentPage(1);
+          }}
+          pageSizeOptions={[10, 25, 50, 100]}
+        />
       </Card>
     </div>
   );

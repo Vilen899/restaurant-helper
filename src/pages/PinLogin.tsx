@@ -128,6 +128,17 @@ export default function PinLogin() {
       const { data, error: funcError } = await supabase.functions.invoke("verify-pin", {
         body: { pin, location_id: selectedLocation },
       });
+      
+      // Check for error in response data first (API returns 200 but with error object)
+      if (data?.error) {
+        showError(
+          data.message || "Доступ запрещен",
+          data.error === "SHIFT_OPEN_AT_ANOTHER_LOCATION" ? "warning" : "error",
+        );
+        return;
+      }
+      
+      // Check for function invocation error
       if (funcError) {
         const details = await funcError.context?.json().catch(() => ({}));
         showError(
@@ -136,10 +147,17 @@ export default function PinLogin() {
         );
         return;
       }
-      playModernSound("success");
-      sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
-      navigate("/cashier");
+      
+      // Success - navigate to cashier
+      if (data?.success && data?.user) {
+        playModernSound("success");
+        sessionStorage.setItem("cashier_session", JSON.stringify(data.user));
+        navigate("/cashier");
+      } else {
+        showError("Неверный PIN или ошибка авторизации");
+      }
     } catch (e) {
+      console.error("PIN verification error:", e);
       showError("Ошибка соединения");
     } finally {
       setLoading(false);
