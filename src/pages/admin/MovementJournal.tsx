@@ -34,6 +34,11 @@ interface Location {
   name: string;
 }
 
+interface Ingredient {
+  id: string;
+  name: string;
+}
+
 interface Movement {
   id: string;
   ingredient_id: string;
@@ -98,12 +103,14 @@ export default function MovementJournal() {
   const [stocktakings, setStocktakings] = useState<Stocktaking[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
   const [docType, setDocType] = useState<string>("");
 
   // Filters
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
+  const [selectedIngredient, setSelectedIngredient] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -124,8 +131,12 @@ export default function MovementJournal() {
 
   const fetchAllData = async () => {
     setLoading(true);
-    const { data: locs } = await supabase.from("locations").select("id, name").eq("is_active", true).order("name");
+    const [{ data: locs }, { data: ings }] = await Promise.all([
+      supabase.from("locations").select("id, name").eq("is_active", true).order("name"),
+      supabase.from("ingredients").select("id, name").eq("is_active", true).order("name"),
+    ]);
     setLocations(locs || []);
+    setIngredients(ings || []);
     await Promise.all([fetchMovements(), fetchMaterialDocs(), fetchStocktakings(), fetchTransfers()]);
     setLoading(false);
   };
@@ -138,24 +149,26 @@ export default function MovementJournal() {
     setMovements((data as Movement[]) || []);
   };
 
-  // Filtered data based on location, date, and search term
+  // Filtered data based on location, date, ingredient, and search term
   const filterByLocationDateAndSearch = <T extends { location_id?: string | null; created_at: string }>(
     data: T[],
-    ingredientGetter?: (item: T) => string | undefined
+    ingredientIdGetter?: (item: T) => string | undefined,
+    ingredientNameGetter?: (item: T) => string | undefined
   ): T[] => {
     return data.filter((item) => {
       const matchesLocation = selectedLocation === "all" || item.location_id === selectedLocation;
       const createdDate = new Date(item.created_at);
       const matchesDateFrom = !dateFrom || createdDate >= dateFrom;
       const matchesDateTo = !dateTo || createdDate <= new Date(new Date(dateTo).setHours(23, 59, 59, 999));
-      const matchesSearch = !searchTerm || (ingredientGetter && ingredientGetter(item)?.toLowerCase().includes(searchTerm.toLowerCase()));
-      return matchesLocation && matchesDateFrom && matchesDateTo && matchesSearch;
+      const matchesIngredient = selectedIngredient === "all" || ingredientIdGetter?.(item) === selectedIngredient;
+      const matchesSearch = !searchTerm || (ingredientNameGetter && ingredientNameGetter(item)?.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchesLocation && matchesDateFrom && matchesDateTo && matchesIngredient && matchesSearch;
     });
   };
 
   const filteredMovements = useMemo(() => 
-    filterByLocationDateAndSearch(movements, (m) => m.ingredient?.name), 
-    [movements, selectedLocation, dateFrom, dateTo, searchTerm]
+    filterByLocationDateAndSearch(movements, (m) => m.ingredient_id, (m) => m.ingredient?.name), 
+    [movements, selectedLocation, selectedIngredient, dateFrom, dateTo, searchTerm]
   );
   
   const filteredMaterialDocs = useMemo(() => {
@@ -173,12 +186,12 @@ export default function MovementJournal() {
   }, [materialDocs, selectedLocation, dateFrom, dateTo, searchTerm]);
   
   const filteredStocktakings = useMemo(() => 
-    filterByLocationDateAndSearch(stocktakings, () => undefined).filter((st) => {
+    filterByLocationDateAndSearch(stocktakings, undefined, () => undefined).filter((st) => {
       // Search would need items loaded, skip for now or match location name
       if (!searchTerm) return true;
       return st.location?.name?.toLowerCase().includes(searchTerm.toLowerCase());
     }), 
-    [stocktakings, selectedLocation, dateFrom, dateTo, searchTerm]
+    [stocktakings, selectedLocation, selectedIngredient, dateFrom, dateTo, searchTerm]
   );
   
   const filteredTransfers = useMemo(() => {
@@ -192,10 +205,11 @@ export default function MovementJournal() {
         t.to_location?.name?.toLowerCase().includes(searchTerm.toLowerCase());
       return matchesLocation && matchesDateFrom && matchesDateTo && matchesSearch;
     });
-  }, [transfers, selectedLocation, dateFrom, dateTo, searchTerm]);
+  }, [transfers, selectedLocation, selectedIngredient, dateFrom, dateTo, searchTerm]);
 
   const clearFilters = () => {
     setSelectedLocation("all");
+    setSelectedIngredient("all");
     setDateFrom(undefined);
     setDateTo(undefined);
     setSearchTerm("");
@@ -527,6 +541,22 @@ export default function MovementJournal() {
               <SelectItem value="all">Все локации</SelectItem>
               {locations.map((loc) => (
                 <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="w-[220px]">
+          <label className="text-xs font-bold text-muted-foreground mb-1 block">ИНГРЕДИЕНТ</label>
+          <Select value={selectedIngredient} onValueChange={setSelectedIngredient}>
+            <SelectTrigger>
+              <Package size={14} className="mr-2" />
+              <SelectValue placeholder="Все ингредиенты" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              <SelectItem value="all">Все ингредиенты</SelectItem>
+              {ingredients.map((ing) => (
+                <SelectItem key={ing.id} value={ing.id}>{ing.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
