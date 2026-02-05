@@ -24,11 +24,10 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-// 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML
 const XML_DEFAULTS = {
   Host: "192.168.8.169",
   Port: "8080",
-  LocalProxyUrl: "", 
+  LocalProxyUrl: "",
   CashierId: "3",
   CashierPin: "4321",
   KkmPassword: "Aa1111Bb",
@@ -71,14 +70,24 @@ const XML_DEFAULTS = {
     { Id: "7a0ae73c-b12b-4025-9783-85a77156cbcb", Name: "Buy.Am", UseExtPos: true, PaymentType: "paidAmountCard" },
     { Id: "78c242fc-6fad-4ee6-9a44-7fbdfd54f7e5", Name: "Tel Cell", UseExtPos: true, PaymentType: "paidAmountCard" },
     { Id: "3859f307-61e4-4bcd-9314-757f831d8c23", Name: "Idram", UseExtPos: true, PaymentType: "paidAmountCard" },
-    { Id: "9c4eebef-dd32-4883-ab1a-1d0854e75dcf", Name: "Հյուրասիրություն", UseExtPos: true, PaymentType: "paidAmountCard" },
-    { Id: "27144aaf-e4ac-438e-9155-68280819edad", Name: "Առաքում POS ով", UseExtPos: true, PaymentType: "paidAmountCard" },
+    {
+      Id: "9c4eebef-dd32-4883-ab1a-1d0854e75dcf",
+      Name: "Հյուրասիրություն",
+      UseExtPos: true,
+      PaymentType: "paidAmountCard",
+    },
+    {
+      Id: "27144aaf-e4ac-438e-9155-68280819edad",
+      Name: "Առաքում POS ով",
+      UseExtPos: true,
+      PaymentType: "paidAmountCard",
+    },
   ],
 };
 
 export default function FiscalSettingsPage() {
   const [config, setConfig] = useState({ ...XML_DEFAULTS, location_id: "", LocalProxyUrl: "" });
-  const [locations, setLocations] = useState([]);
+  const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "online" | "offline">("idle");
@@ -99,23 +108,21 @@ export default function FiscalSettingsPage() {
   async function loadSettings(locId: string) {
     setLoading(true);
     setConnectionStatus("idle");
-    const { data, error } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
+    const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
 
     if (data) {
       const paymentTypes = Array.isArray(data.PaymentTypes) ? data.PaymentTypes : XML_DEFAULTS.PaymentTypes;
-      
       setConfig({
         ...XML_DEFAULTS,
         ...data,
         location_id: locId,
-        // Мапим snake_case из БД в PascalCase для стейта
         LocalProxyUrl: data.local_proxy_url || data.LocalProxyUrl || "",
         Host: data.Host || data.host || data.ip_address || XML_DEFAULTS.Host,
         Port: data.Port || data.port || XML_DEFAULTS.Port,
         PaymentTypes: paymentTypes,
       });
     } else {
-      setConfig({ ...XML_DEFAULTS, location_id: locId });
+      setConfig({ ...XML_DEFAULTS, location_id: locId, LocalProxyUrl: "" });
     }
     setLoading(false);
   }
@@ -124,11 +131,11 @@ export default function FiscalSettingsPage() {
     try {
       setLoading(true);
       const { location_id, ...restConfig } = config;
-      
+
       const payload = {
         ...restConfig,
         location_id: location_id,
-        local_proxy_url: config.LocalProxyUrl, // Явное указание для БД
+        local_proxy_url: config.LocalProxyUrl,
         updated_at: new Date().toISOString(),
       };
 
@@ -154,8 +161,8 @@ export default function FiscalSettingsPage() {
           method: "GET",
           signal: controller.signal,
           mode: "no-cors",
-          // @ts-ignore - флаг для доступа к локальным сетям в Chrome
-          targetAddressSpace: 'private'
+          // @ts-ignore
+          targetAddressSpace: "private",
         });
         return true;
       } catch (e) {
@@ -165,37 +172,36 @@ export default function FiscalSettingsPage() {
       }
     };
 
-    const targetUrl = config.LocalProxyUrl 
+    const targetUrl = config.LocalProxyUrl
       ? `${config.LocalProxyUrl}/api/v1/status`
       : `http://${config.Host}:${config.Port}/api/v1/status`;
 
     const isOk = await pingUrl(targetUrl);
-    
+    setConnectionStatus(isOk ? "online" : "offline");
+
     if (isOk) {
-      setConnectionStatus("online");
       toast.success("Соединение установлено!");
     } else {
-      setConnectionStatus("offline");
-      toast.error("Касса недоступна. Проверьте Mixed Content или прокси.");
+      toast.error("Касса недоступна");
     }
     setIsTesting(false);
   };
 
-  if (loading) return <div className="p-8 text-center">Загрузка конфигурации...</div>;
+  if (loading) return <div className="p-8 text-center">Загрузка...</div>;
 
   return (
     <div className="container mx-auto p-6 max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Настройки ККМ</h1>
-          <p className="text-muted-foreground">Конфигурация фискального регистратора и параметров чека</p>
+          <p className="text-muted-foreground">Конфигурация фискального регистратора</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
             Тест связи
           </Button>
-          <Button onClick={handleSave} className="bg-primary">
+          <Button onClick={handleSave}>
             <Save className="mr-2 h-4 w-4" /> Сохранить
           </Button>
         </div>
@@ -207,56 +213,49 @@ export default function FiscalSettingsPage() {
             <Server className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Сетевые настройки</h2>
           </div>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>IP Адрес ККМ</Label>
-              <Input 
-                value={config.Host} 
-                onChange={(e) => setConfig({...config, Host: e.target.value})}
-                placeholder="192.168.x.x"
-              />
+              <Input value={config.Host} onChange={(e) => setConfig({ ...config, Host: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label>Порт</Label>
-              <Input 
-                value={config.Port} 
-                onChange={(e) => setConfig({...config, Port: e.target.value})}
-              />
+              <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
               <Label className="text-amber-600 flex items-center gap-1">
                 Локальный Прокси (URL) <AlertTriangle className="h-3 w-3" />
               </Label>
-              <Input 
-                value={config.LocalProxyUrl} 
-                onChange={(e) => setConfig({...config, LocalProxyUrl: e.target.value})}
+              <Input
+                value={config.LocalProxyUrl}
+                onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
                 placeholder="http://localhost:3456"
               />
-              <p className="text-[10px] text-muted-foreground">Используйте для обхода блокировки HTTPS -> HTTP</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b">
+        <Card className="p-6 space-y-4 text-center">
+          <div className="flex items-center justify-center gap-2 pb-2 border-b">
             <Activity className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-semibold">Статус</h2>
           </div>
-          <div className="flex flex-col items-center justify-center py-6 space-y-4">
-            <div className={`h-16 w-16 rounded-full flex items-center justify-center ${
-              connectionStatus === 'online' ? 'bg-green-100 text-green-600' : 
-              connectionStatus === 'offline' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'
-            }`}>
-              <Zap className="h-8 w-8" />
+          <div className="flex flex-col items-center py-4">
+            <div
+              className={`h-12 w-12 rounded-full flex items-center justify-center mb-4 ${
+                connectionStatus === "online"
+                  ? "bg-green-100 text-green-600"
+                  : connectionStatus === "offline"
+                    ? "bg-red-100 text-red-600"
+                    : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              <Zap className="h-6 w-6" />
             </div>
-            <div className="text-center">
-              <p className="font-medium text-lg">
-                {connectionStatus === 'online' ? 'Связь установлена' : 
-                 connectionStatus === 'offline' ? 'Нет связи' : 'Ожидание проверки'}
-              </p>
-              <p className="text-sm text-muted-foreground">{config.Host}:{config.Port}</p>
-            </div>
+            <p className="font-bold">
+              {connectionStatus === "online" ? "ONLINE" : connectionStatus === "offline" ? "OFFLINE" : "WAITING"}
+            </p>
           </div>
         </Card>
       </div>
@@ -264,20 +263,28 @@ export default function FiscalSettingsPage() {
       <Card className="p-6">
         <div className="flex items-center gap-2 pb-4 border-b mb-4">
           <Lock className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Авторизация Кассира</h2>
+          <h2 className="text-xl font-semibold">Авторизация</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label>ID Кассира</Label>
-            <Input value={config.CashierId} onChange={(e) => setConfig({...config, CashierId: e.target.value})} />
+            <Input value={config.CashierId} onChange={(e) => setConfig({ ...config, CashierId: e.target.value })} />
           </div>
           <div className="space-y-2">
             <Label>PIN Кассира</Label>
-            <Input type="password" value={config.CashierPin} onChange={(e) => setConfig({...config, CashierPin: e.target.value})} />
+            <Input
+              type="password"
+              value={config.CashierPin}
+              onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
+            />
           </div>
           <div className="space-y-2">
-            <Label>Пароль ККМ (Admin)</Label>
-            <Input type="password" value={config.KkmPassword} onChange={(e) => setConfig({...config, KkmPassword: e.target.value})} />
+            <Label>Пароль ККМ</Label>
+            <Input
+              type="password"
+              value={config.KkmPassword}
+              onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
+            />
           </div>
         </div>
       </Card>
