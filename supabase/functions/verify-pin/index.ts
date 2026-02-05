@@ -38,7 +38,7 @@ serve(async (req) => {
 
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name, pin_hash, is_active")
+      .select("id, full_name, pin_hash, is_active, hourly_rate")
       .eq("is_active", true)
       .not("pin_hash", "is", null);
 
@@ -55,6 +55,15 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
+
+    // Получаем роль пользователя
+    const { data: roleData } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", profile.id)
+      .maybeSingle();
+
+    const userRole = roleData?.role || "cashier";
 
     const { data: openShift } = await supabase
       .from("shifts")
@@ -78,7 +87,13 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        user: { id: profile.id, full_name: profile.full_name, location_id },
+        user: {
+          id: profile.id,
+          full_name: profile.full_name,
+          location_id,
+          role: userRole,
+          hourly_rate: profile.hourly_rate || 0,
+        },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
