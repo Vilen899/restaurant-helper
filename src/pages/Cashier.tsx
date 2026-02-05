@@ -97,6 +97,48 @@ export default function CashierPage() {
     id: string; name: string; type: 'percent' | 'fixed'; value: number; reason?: string;
   } | null>(null);
 
+  // Фискальная печать через Edge Function
+  const printFiscalReceipt = async (order: any, cartItems: CartItem[], method: PaymentMethod) => {
+    try {
+      const orderData = {
+        order_number: order.order_number,
+        items: cartItems.map(ci => ({
+          name: ci.menuItem.name,
+          quantity: ci.quantity,
+          price: Number(ci.menuItem.price),
+          total: Number(ci.menuItem.price) * ci.quantity,
+        })),
+        subtotal,
+        discount: discountAmount,
+        total,
+        payment_method: method.code,
+        cashier_name: session?.full_name || "Кассир",
+        date: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase.functions.invoke("fiscal-print", {
+        body: {
+          action: "print_receipt",
+          location_id: session?.location_id,
+          order_data: orderData,
+        },
+      });
+
+      if (error) {
+        console.warn("Fiscal print error:", error);
+        toast.warning("ККМ недоступна. Фискальный чек не напечатан.", { duration: 4000 });
+      } else if (data?.success) {
+        console.log("Fiscal receipt printed:", data);
+      } else if (data?.error) {
+        console.warn("Fiscal print warning:", data.error);
+        toast.warning(`ККМ: ${data.error}`, { duration: 4000 });
+      }
+    } catch (err) {
+      console.warn("Fiscal print exception:", err);
+      toast.warning("Не удалось связаться с ККМ", { duration: 4000 });
+    }
+  };
+
   useEffect(() => {
     const saved = localStorage.getItem('cashier_settings');
     if (saved) setCashierSettings(prev => ({ ...prev, ...JSON.parse(saved) }));
@@ -140,7 +182,14 @@ export default function CashierPage() {
     const sessionData = sessionStorage.getItem("cashier_session");
     if (!sessionData) { toast.error("Войдите по PIN-коду"); navigate("/pin"); return; }
     const parsed = JSON.parse(sessionData) as CashierSession;
-    if (parsed.role !== "cashier") { toast.error("Доступ только для кассиров"); sessionStorage.removeItem("cashier_session"); navigate("/"); return; }
+    // Разрешаем доступ кассирам, менеджерам и админам
+    const allowedRoles = ["cashier", "manager", "admin"];
+    if (parsed.role && !allowedRoles.includes(parsed.role)) {
+      toast.error("Доступ запрещён");
+      sessionStorage.removeItem("cashier_session");
+      navigate("/");
+      return;
+    }
     
     // Если в сессии уже есть смена, используем её
     if (parsed.shift_id) {
@@ -413,7 +462,10 @@ export default function CashierPage() {
         }
       }
 
-      // Печать чека
+      // Печать чека (сначала пытаемся фискальный, если не получается - обычный)
+      await printFiscalReceipt(order, cart, method);
+      
+      // Также печатаем локальный чек для контроля
       printReceipt(order, cart, method, cashReceived);
 
       toast.success(`Заказ #${order.order_number} оформлен`);

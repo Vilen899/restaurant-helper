@@ -13,6 +13,8 @@ import {
   Activity,
   AlertTriangle,
   RefreshCw,
+  ExternalLink,
+  Server,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 const XML_DEFAULTS = {
   Host: "192.168.8.169", // Обновил дефолт на твой актуальный
   Port: "8080",
+  LocalProxyUrl: "", // e.g. http://localhost:3456 - локальный прокси для обхода mixed-content
   CashierId: "3",
   CashierPin: "4321",
   KkmPassword: "Aa1111Bb",
@@ -84,7 +87,7 @@ const XML_DEFAULTS = {
 };
 
 export default function FiscalSettingsPage() {
-  const [config, setConfig] = useState({ ...XML_DEFAULTS, location_id: "" });
+  const [config, setConfig] = useState({ ...XML_DEFAULTS, location_id: "", LocalProxyUrl: "" });
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
@@ -119,6 +122,7 @@ export default function FiscalSettingsPage() {
       // Приводим к единому виду, который использует UI.
       const mappedHost = (data as any).Host ?? (data as any).ip_address ?? (data as any).host ?? XML_DEFAULTS.Host;
       const mappedPort = (data as any).Port ?? (data as any).port ?? XML_DEFAULTS.Port;
+      const mappedProxyUrl = (data as any).LocalProxyUrl ?? (data as any).local_proxy_url ?? "";
       const mappedKkmPassword = (data as any).KkmPassword ?? (data as any).kkm_password ?? XML_DEFAULTS.KkmPassword;
       const mappedVatRate = (data as any).VatRate ?? (data as any).vat_rate ?? XML_DEFAULTS.VatRate;
       const mappedDefaultTimeout =
@@ -131,6 +135,7 @@ export default function FiscalSettingsPage() {
         ...data,
         Host: mappedHost,
         Port: mappedPort,
+        LocalProxyUrl: mappedProxyUrl,
         KkmPassword: mappedKkmPassword,
         VatRate: mappedVatRate,
         DefaultOperationTimeout: mappedDefaultTimeout,
@@ -139,10 +144,18 @@ export default function FiscalSettingsPage() {
         location_id: locId,
       });
     } else {
-      setConfig({ ...XML_DEFAULTS, location_id: locId });
+      setConfig({ ...XML_DEFAULTS, location_id: locId, LocalProxyUrl: "" });
     }
     setLoading(false);
   }
+
+  // Открыть статус ККМ в новой вкладке
+  const handleOpenKkmStatus = () => {
+    const statusUrl = config.LocalProxyUrl
+      ? `${config.LocalProxyUrl}/api/v1/status`
+      : `http://${config.Host}:${config.Port}/api/v1/status`;
+    window.open(statusUrl, "_blank", "noopener,noreferrer");
+  };
 
   const handleTestConnection = async () => {
     setIsTesting(true);
@@ -151,6 +164,7 @@ export default function FiscalSettingsPage() {
     // Используем актуальные значения из state config
     const currentHost = config.Host;
     const currentPort = config.Port;
+    const proxyUrl = config.LocalProxyUrl;
 
     const isPrivateIp = (host: string) =>
       /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
@@ -174,8 +188,21 @@ export default function FiscalSettingsPage() {
 
     const httpsUrl = `https://${currentHost}:${currentPort}/api/v1/status`;
     const httpUrl = `http://${currentHost}:${currentPort}/api/v1/status`;
+    const localProxyStatusUrl = proxyUrl ? `${proxyUrl}/api/v1/status` : null;
 
     try {
+      // 0) Если указан локальный прокси — пробуем через него
+      if (localProxyStatusUrl) {
+        try {
+          await pingUrl(localProxyStatusUrl);
+          setConnectionStatus("online");
+          toast.success(`Связь через прокси ${proxyUrl} установлена`);
+          return;
+        } catch (proxyErr) {
+          console.warn("Proxy connection failed, trying direct:", proxyErr);
+        }
+      }
+
       // 1) Сначала пробуем HTTPS — это единственный вариант, который не блокируется как mixed-content.
       await pingUrl(httpsUrl);
       setConnectionStatus("online");
@@ -212,6 +239,7 @@ export default function FiscalSettingsPage() {
       ip_address: config.Host,
       host: config.Host,
       port: config.Port,
+      local_proxy_url: config.LocalProxyUrl,
       // HDM specific
       kkm_password: config.KkmPassword,
       vat_rate: config.VatRate,
@@ -317,15 +345,42 @@ export default function FiscalSettingsPage() {
                 />
               </div>
 
-              <Button
+              {/* Local Proxy URL */}
+              <div className="space-y-1">
+                <Label className="text-[9px] text-slate-500 uppercase flex items-center gap-1">
+                  <Server className="h-3 w-3" /> Local Proxy URL (optional)
+                </Label>
+                <Input
+                  value={config.LocalProxyUrl}
+                  onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
+                  className="bg-slate-950 font-mono text-purple-400"
+                  placeholder="http://localhost:3456"
+                />
+                <p className="text-[8px] text-slate-600 italic">
+                  Для обхода mixed-content: запустите прокси на кассовом ПК
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button
                 onClick={handleTestConnection}
                 disabled={isTesting}
                 variant="outline"
-                className="w-full border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 text-[10px] font-bold h-9 gap-2"
+                  className="border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 text-[10px] font-bold h-9 gap-2"
               >
                 {isTesting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />}
                 {isTesting ? "TESTING..." : "TEST CONNECTION"}
-              </Button>
+                </Button>
+
+                <Button
+                  onClick={handleOpenKkmStatus}
+                  variant="outline"
+                  className="border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400 text-[10px] font-bold h-9 gap-2"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  OPEN STATUS
+                </Button>
+              </div>
             </div>
           </Card>
 
