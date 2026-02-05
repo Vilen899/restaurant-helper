@@ -20,9 +20,11 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
+// 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML (ТВОЙ ОРИГИНАЛ)
 const XML_DEFAULTS = {
   Host: "192.168.8.169",
   Port: "8080",
@@ -40,7 +42,7 @@ const XML_DEFAULTS = {
   BonusPaymentName: "",
   C16CardIdTransfer: false,
   SubchargeAsDishCode: "999999",
-  SubchargeAsDishName: "Հանրային սննդի կազմակерպում",
+  SubchargeAsDishName: "Հանրային սննդի կազմակերպում",
   SubchargeAsDishAdgCode: "56.10",
   SubchargeAsDishUnit: "հատ․",
   DefaultOperationTimeout: 30000,
@@ -93,10 +95,10 @@ export default function FiscalSettingsPage() {
 
   useEffect(() => {
     async function init() {
-      const { data: locData } = await supabase.from("locations").select("id, name").eq("is_active", true);
-      if (locData?.length) {
-        setLocations(locData);
-        await loadSettings(locData[0].id);
+      const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
+      if (data?.length) {
+        setLocations(data);
+        await loadSettings(data[0].id);
       } else {
         setLoading(false);
       }
@@ -110,25 +112,26 @@ export default function FiscalSettingsPage() {
     const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
 
     if (data) {
-      // Решаем проблему TS2322 и TS2339 через as any
-      const rawData = data as any;
-      const paymentTypes = Array.isArray(rawData.PaymentTypes) ? rawData.PaymentTypes : XML_DEFAULTS.PaymentTypes;
+      const dbData = data as any;
+      const paymentTypes = Array.isArray(dbData.PaymentTypes) ? dbData.PaymentTypes : XML_DEFAULTS.PaymentTypes;
 
       setConfig({
         ...XML_DEFAULTS,
-        ...rawData,
+        ...dbData,
         location_id: locId,
-        LocalProxyUrl: rawData.local_proxy_url || rawData.LocalProxyUrl || "",
-        Host: rawData.Host || rawData.host || rawData.ip_address || XML_DEFAULTS.Host,
-        Port: rawData.Port || rawData.port || XML_DEFAULTS.Port,
+        // Мапим варианты имен полей из БД (для поддержки старых миграций)
+        Host: dbData.Host ?? dbData.ip_address ?? dbData.host ?? XML_DEFAULTS.Host,
+        Port: dbData.Port ?? dbData.port ?? XML_DEFAULTS.Port,
+        LocalProxyUrl: dbData.local_proxy_url ?? dbData.LocalProxyUrl ?? "",
         PaymentTypes: paymentTypes,
       });
     } else {
-      setConfig({ ...XML_DEFAULTS, location_id: locId, LocalProxyUrl: "" });
+      setConfig({ ...XML_DEFAULTS, location_id: locId });
     }
     setLoading(false);
   }
 
+  // СОХРАНЕНИЕ ВСЕХ ПАРАМЕТРОВ
   const handleSave = async () => {
     try {
       setLoading(true);
@@ -136,16 +139,17 @@ export default function FiscalSettingsPage() {
 
       const payload: any = {
         ...restConfig,
-        location_id: location_id,
-        local_proxy_url: config.LocalProxyUrl, // Мапим вручную
+        location_id,
+        // Явный маппинг для избежания ошибки Schema Cache
+        local_proxy_url: config.LocalProxyUrl,
         updated_at: new Date().toISOString(),
       };
 
       const { error } = await supabase.from("fiscal_settings").upsert(payload);
       if (error) throw error;
-      toast.success("Настройки сохранены");
+      toast.success("Настройки успешно сохранены");
     } catch (err: any) {
-      toast.error(`Ошибка: ${err.message}`);
+      toast.error(`Ошибка сохранения: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -153,10 +157,12 @@ export default function FiscalSettingsPage() {
 
   const handleTestConnection = async () => {
     setIsTesting(true);
+    setConnectionStatus("idle");
+
     const pingUrl = async (url: string) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
       try {
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 4000);
         await fetch(url, {
           method: "GET",
           signal: controller.signal,
@@ -164,16 +170,26 @@ export default function FiscalSettingsPage() {
           // @ts-ignore
           targetAddressSpace: "private",
         });
-        clearTimeout(id);
         return true;
       } catch {
         return false;
+      } finally {
+        clearTimeout(timeoutId);
       }
     };
 
-    const target = config.LocalProxyUrl || `http://${config.Host}:${config.Port}/api/v1/status`;
+    const target = config.LocalProxyUrl
+      ? `${config.LocalProxyUrl}/api/v1/status`
+      : `http://${config.Host}:${config.Port}/api/v1/status`;
+
     const isOk = await pingUrl(target);
     setConnectionStatus(isOk ? "online" : "offline");
+
+    if (isOk) {
+      toast.success(`Связь установлена (${config.LocalProxyUrl ? "Proxy" : "Direct"})`);
+    } else {
+      toast.error("Касса недоступна (Offline)");
+    }
     setIsTesting(false);
   };
 
@@ -183,37 +199,38 @@ export default function FiscalSettingsPage() {
     <div className="container mx-auto p-6 max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Настройки ККМ</h1>
-          <p className="text-muted-foreground">Конфигурация регистратора</p>
+          <h1 className="text-3xl font-bold tracking-tight">Настройки ККМ</h1>
+          <p className="text-muted-foreground">Полная конфигурация чека и сетевых параметров</p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
-            Тест
+            Тест связи
           </Button>
-          <Button onClick={handleSave} disabled={loading}>
+          <Button onClick={handleSave} className="bg-primary">
             <Save className="mr-2 h-4 w-4" /> Сохранить
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* СЕТЬ */}
         <Card className="p-6 md:col-span-2 space-y-6">
-          <div className="flex items-center gap-2 border-b pb-2">
-            <Server className="h-5 w-5" />
-            <h2 className="font-semibold">Сеть</h2>
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <Server className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Сетевые настройки</h2>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Host</Label>
+              <Label>IP Адрес ККМ</Label>
               <Input value={config.Host} onChange={(e) => setConfig({ ...config, Host: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label>Port</Label>
+              <Label>Порт</Label>
               <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
             </div>
-            <div className="space-y-2 col-span-2">
-              <Label>Proxy URL (для Mixed Content)</Label>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="text-amber-600">Local Proxy URL (Mixed Content Fix)</Label>
               <Input
                 value={config.LocalProxyUrl}
                 onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
@@ -223,41 +240,93 @@ export default function FiscalSettingsPage() {
           </div>
         </Card>
 
-        <Card className="p-6 text-center">
-          <div className="flex justify-center mb-4">
-            <div
-              className={`h-12 w-12 rounded-full flex items-center justify-center ${connectionStatus === "online" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"}`}
-            >
-              <Zap />
-            </div>
+        {/* СТАТУС */}
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <Activity className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Статус</h2>
           </div>
-          <p className="font-bold uppercase">{connectionStatus}</p>
+          <div className="flex flex-col items-center justify-center py-6">
+            <div
+              className={`h-16 w-16 rounded-full flex items-center justify-center mb-4 ${
+                connectionStatus === "online"
+                  ? "bg-green-100 text-green-600"
+                  : connectionStatus === "offline"
+                    ? "bg-red-100 text-red-600"
+                    : "bg-gray-100 text-gray-400"
+              }`}
+            >
+              <Zap className="h-8 w-8" />
+            </div>
+            <p className="font-bold text-lg">{connectionStatus.toUpperCase()}</p>
+          </div>
         </Card>
       </div>
 
-      <Card className="p-6 space-y-4">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <Lock className="h-5 w-5" />
-          <h2 className="font-semibold">Авторизация</h2>
+      {/* АВТОРИЗАЦИЯ */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 pb-4 border-b mb-4">
+          <Lock className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-semibold">Авторизация</h2>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <Input
-            placeholder="ID"
-            value={config.CashierId}
-            onChange={(e) => setConfig({ ...config, CashierId: e.target.value })}
-          />
-          <Input
-            placeholder="PIN"
-            type="password"
-            value={config.CashierPin}
-            onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
-          />
-          <Input
-            placeholder="Pass"
-            type="password"
-            value={config.KkmPassword}
-            onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
-          />
+          <div className="space-y-2">
+            <Label>ID Кассира</Label>
+            <Input value={config.CashierId} onChange={(e) => setConfig({ ...config, CashierId: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label>PIN</Label>
+            <Input
+              type="password"
+              value={config.CashierPin}
+              onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Пароль ККМ</Label>
+            <Input
+              type="password"
+              value={config.KkmPassword}
+              onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* ДОПОЛНИТЕЛЬНЫЕ ПАРАМЕТРЫ (ТВОИ ADG, VAT И Т.Д.) */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 pb-4 border-b mb-4">
+          <Terminal className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-semibold">Параметры ADG и Чека</h2>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="space-y-2">
+            <Label>НДС (%)</Label>
+            <Input
+              type="number"
+              value={config.VatRate}
+              onChange={(e) => setConfig({ ...config, VatRate: parseFloat(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>ADG по умолчанию</Label>
+            <Input value={config.DefaultAdg} onChange={(e) => setConfig({ ...config, DefaultAdg: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label>Код блюда (Subcharge)</Label>
+            <Input
+              value={config.SubchargeAsDishCode}
+              onChange={(e) => setConfig({ ...config, SubchargeAsDishCode: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Таймаут (мс)</Label>
+            <Input
+              type="number"
+              value={config.DefaultOperationTimeout}
+              onChange={(e) => setConfig({ ...config, DefaultOperationTimeout: parseInt(e.target.value) })}
+            />
+          </div>
         </div>
       </Card>
     </div>
