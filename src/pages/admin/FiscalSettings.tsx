@@ -26,9 +26,9 @@ import { supabase } from "@/integrations/supabase/client";
 
 // 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML
 const XML_DEFAULTS = {
-  Host: "192.168.8.169", // Обновил дефолт на твой актуальный
+  Host: "192.168.8.169",
   Port: "8080",
-  LocalProxyUrl: "", // e.g. http://localhost:3456 - локальный прокси для обхода mixed-content
+  LocalProxyUrl: "", 
   CashierId: "3",
   CashierPin: "4321",
   KkmPassword: "Aa1111Bb",
@@ -71,18 +71,8 @@ const XML_DEFAULTS = {
     { Id: "7a0ae73c-b12b-4025-9783-85a77156cbcb", Name: "Buy.Am", UseExtPos: true, PaymentType: "paidAmountCard" },
     { Id: "78c242fc-6fad-4ee6-9a44-7fbdfd54f7e5", Name: "Tel Cell", UseExtPos: true, PaymentType: "paidAmountCard" },
     { Id: "3859f307-61e4-4bcd-9314-757f831d8c23", Name: "Idram", UseExtPos: true, PaymentType: "paidAmountCard" },
-    {
-      Id: "9c4eebef-dd32-4883-ab1a-1d0854e75dcf",
-      Name: "Հյուրասիրություն",
-      UseExtPos: true,
-      PaymentType: "paidAmountCard",
-    },
-    {
-      Id: "27144aaf-e4ac-438e-9155-68280819edad",
-      Name: "Առաքում POS ով",
-      UseExtPos: true,
-      PaymentType: "paidAmountCard",
-    },
+    { Id: "9c4eebef-dd32-4883-ab1a-1d0854e75dcf", Name: "Հյուրասիրություն", UseExtPos: true, PaymentType: "paidAmountCard" },
+    { Id: "27144aaf-e4ac-438e-9155-68280819edad", Name: "Առաքում POS ով", UseExtPos: true, PaymentType: "paidAmountCard" },
   ],
 };
 
@@ -95,10 +85,10 @@ export default function FiscalSettingsPage() {
 
   useEffect(() => {
     async function init() {
-      const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
-      if (data?.length) {
-        setLocations(data);
-        await loadSettings(data[0].id);
+      const { data: locData } = await supabase.from("locations").select("id, name").eq("is_active", true);
+      if (locData?.length) {
+        setLocations(locData);
+        await loadSettings(locData[0].id);
       } else {
         setLoading(false);
       }
@@ -109,559 +99,188 @@ export default function FiscalSettingsPage() {
   async function loadSettings(locId: string) {
     setLoading(true);
     setConnectionStatus("idle");
-    const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
+    const { data, error } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
 
     if (data) {
-      // КРИТИЧНО: Приоритет данным из БД, чтобы IP подтягивался сохраненный
-      // Parse PaymentTypes from JSON to ensure correct type
-      const paymentTypes = Array.isArray(data.PaymentTypes) 
-        ? data.PaymentTypes as typeof XML_DEFAULTS.PaymentTypes
-        : XML_DEFAULTS.PaymentTypes;
-
-      // IMPORTANT: В БД исторически могут быть поля в разных форматах (Host/ip_address/host, Port/port)
-      // Приводим к единому виду, который использует UI.
-      const mappedHost = (data as any).Host ?? (data as any).ip_address ?? (data as any).host ?? XML_DEFAULTS.Host;
-      const mappedPort = (data as any).Port ?? (data as any).port ?? XML_DEFAULTS.Port;
-      const mappedProxyUrl = (data as any).LocalProxyUrl ?? (data as any).local_proxy_url ?? "";
-      const mappedKkmPassword = (data as any).KkmPassword ?? (data as any).kkm_password ?? XML_DEFAULTS.KkmPassword;
-      const mappedVatRate = (data as any).VatRate ?? (data as any).vat_rate ?? XML_DEFAULTS.VatRate;
-      const mappedDefaultTimeout =
-        (data as any).DefaultOperationTimeout ?? (data as any).default_timeout ?? XML_DEFAULTS.DefaultOperationTimeout;
-      const mappedPaymentTimeout =
-        (data as any).KkmPaymentTimeout ?? (data as any).payment_timeout ?? XML_DEFAULTS.KkmPaymentTimeout;
-
+      const paymentTypes = Array.isArray(data.PaymentTypes) ? data.PaymentTypes : XML_DEFAULTS.PaymentTypes;
+      
       setConfig({
         ...XML_DEFAULTS,
         ...data,
-        Host: mappedHost,
-        Port: mappedPort,
-        LocalProxyUrl: mappedProxyUrl,
-        KkmPassword: mappedKkmPassword,
-        VatRate: mappedVatRate,
-        DefaultOperationTimeout: mappedDefaultTimeout,
-        KkmPaymentTimeout: mappedPaymentTimeout,
-        PaymentTypes: paymentTypes,
         location_id: locId,
+        // Мапим snake_case из БД в PascalCase для стейта
+        LocalProxyUrl: data.local_proxy_url || data.LocalProxyUrl || "",
+        Host: data.Host || data.host || data.ip_address || XML_DEFAULTS.Host,
+        Port: data.Port || data.port || XML_DEFAULTS.Port,
+        PaymentTypes: paymentTypes,
       });
     } else {
-      setConfig({ ...XML_DEFAULTS, location_id: locId, LocalProxyUrl: "" });
+      setConfig({ ...XML_DEFAULTS, location_id: locId });
     }
     setLoading(false);
   }
 
-  // Открыть статус ККМ в новой вкладке
-  const handleOpenKkmStatus = () => {
-    const statusUrl = config.LocalProxyUrl
-      ? `${config.LocalProxyUrl}/api/v1/status`
-      : `http://${config.Host}:${config.Port}/api/v1/status`;
-    window.open(statusUrl, "_blank", "noopener,noreferrer");
+  const handleSave = async () => {
+    try {
+      setLoading(true);
+      const { location_id, ...restConfig } = config;
+      
+      const payload = {
+        ...restConfig,
+        location_id: location_id,
+        local_proxy_url: config.LocalProxyUrl, // Явное указание для БД
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from("fiscal_settings").upsert(payload);
+      if (error) throw error;
+      toast.success("Настройки успешно сохранены");
+    } catch (err: any) {
+      toast.error(`Ошибка: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleTestConnection = async () => {
     setIsTesting(true);
     setConnectionStatus("idle");
 
-    // Используем актуальные значения из state config
-    const currentHost = config.Host;
-    const currentPort = config.Port;
-    const proxyUrl = config.LocalProxyUrl;
-
-    const isPrivateIp = (host: string) =>
-      /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-
     const pingUrl = async (url: string) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
       try {
-        // NOTE: no-cors нужен, т.к. ККМ обычно не отдаёт CORS заголовки.
-        // Мы не читаем ответ — нам важно только факт сетевого ответа.
         await fetch(url, {
           method: "GET",
           signal: controller.signal,
           mode: "no-cors",
-          cache: "no-store",
+          // @ts-ignore - флаг для доступа к локальным сетям в Chrome
+          targetAddressSpace: 'private'
         });
+        return true;
+      } catch (e) {
+        return false;
       } finally {
         clearTimeout(timeoutId);
       }
     };
 
-    const httpsUrl = `https://${currentHost}:${currentPort}/api/v1/status`;
-    const httpUrl = `http://${currentHost}:${currentPort}/api/v1/status`;
-    const localProxyStatusUrl = proxyUrl ? `${proxyUrl}/api/v1/status` : null;
+    const targetUrl = config.LocalProxyUrl 
+      ? `${config.LocalProxyUrl}/api/v1/status`
+      : `http://${config.Host}:${config.Port}/api/v1/status`;
 
-    try {
-      // 0) Если указан локальный прокси — пробуем через него
-      if (localProxyStatusUrl) {
-        try {
-          await pingUrl(localProxyStatusUrl);
-          setConnectionStatus("online");
-          toast.success(`Связь через прокси ${proxyUrl} установлена`);
-          return;
-        } catch (proxyErr) {
-          console.warn("Proxy connection failed, trying direct:", proxyErr);
-        }
-      }
-
-      // 1) Сначала пробуем HTTPS — это единственный вариант, который не блокируется как mixed-content.
-      await pingUrl(httpsUrl);
+    const isOk = await pingUrl(targetUrl);
+    
+    if (isOk) {
       setConnectionStatus("online");
-      toast.success(`Связь с ${currentHost} установлена (HTTPS)`);
-    } catch (httpsErr) {
-      try {
-        // 2) Фолбэк на HTTP (может быть заблокирован браузером из HTTPS-приложения).
-        await pingUrl(httpUrl);
-        setConnectionStatus("online");
-        toast.success(`Связь с ${currentHost} установлена (HTTP)`);
-      } catch (httpErr) {
-        console.error("Connection error (https):", httpsErr);
-        console.error("Connection error (http):", httpErr);
-        setConnectionStatus("offline");
-
-        const hint =
-          window.location.protocol === "https:" && isPrivateIp(currentHost)
-            ? `\n\nПодсказка: приложение работает по HTTPS, а ККМ по HTTP в локальной сети. Браузер может блокировать такие запросы (mixed content / private network).\nРешения: включить HTTPS на ККМ, либо разрешить «Небезопасный контент» для сайта в настройках браузера, либо использовать локальный прокси на кассовом ПК.`
-            : "";
-
-        toast.error(`Касса ${currentHost}:${currentPort} недоступна.${hint}`);
-      }
-    } finally {
-      setIsTesting(false);
+      toast.success("Соединение установлено!");
+    } else {
+      setConnectionStatus("offline");
+      toast.error("Касса недоступна. Проверьте Mixed Content или прокси.");
     }
+    setIsTesting(false);
   };
 
-  const save = async () => {
-    // Сохраняем весь объект config + зеркалим ключевые поля в snake_case,
-    // чтобы backend-функции всегда читали актуальные IP/порт/пароль.
-    const payload: any = {
-      ...config,
-      // Network
-      ip_address: config.Host,
-      host: config.Host,
-      port: config.Port,
-      local_proxy_url: config.LocalProxyUrl,
-      // HDM specific
-      kkm_password: config.KkmPassword,
-      vat_rate: config.VatRate,
-      default_timeout: config.DefaultOperationTimeout,
-      payment_timeout: config.KkmPaymentTimeout,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase.from("fiscal_settings").upsert(payload, { onConflict: "location_id" });
-    if (!error) toast.success("Настройки (включая IP) сохранены в БД");
-    else toast.error(error.message);
-  };
-
-  if (loading)
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center font-mono text-emerald-500 uppercase italic tracking-widest">
-        Parsing_XML_Config...
-      </div>
-    );
+  if (loading) return <div className="p-8 text-center">Загрузка конфигурации...</div>;
 
   return (
-    <div className="min-h-screen bg-[#020202] text-slate-300 p-4 md:p-8 font-sans pb-20">
-      <div className="max-w-[1400px] mx-auto space-y-6">
-        {/* HEADER PANEL */}
-        <div className="flex flex-col md:flex-row justify-between items-center bg-slate-900/40 p-6 rounded-2xl border border-slate-800 backdrop-blur-md">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-emerald-600 rounded-xl shadow-lg shadow-emerald-900/20">
-              <Terminal className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-black text-white uppercase italic tracking-tighter">HDM Driver Manifest</h1>
-              <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase">
-                <MapPin className="h-3 w-3" />
-                <select
-                  className="bg-transparent border-none outline-none text-emerald-500"
-                  value={config.location_id}
-                  onChange={(e) => loadSettings(e.target.value)}
-                >
-                  {locations.map((loc) => (
-                    <option key={loc.id} value={loc.id} className="bg-slate-900">
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-          <Button
-            onClick={save}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-10 h-12 rounded-xl text-[11px] tracking-widest shadow-xl transition-all"
-          >
-            <Save className="mr-2 h-4 w-4" /> SAVE TO DATABASE
+    <div className="container mx-auto p-6 max-w-5xl space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Настройки ККМ</h1>
+          <p className="text-muted-foreground">Конфигурация фискального регистратора и параметров чека</p>
+        </div>
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
+            {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
+            Тест связи
+          </Button>
+          <Button onClick={handleSave} className="bg-primary">
+            <Save className="mr-2 h-4 w-4" /> Сохранить
           </Button>
         </div>
-
-        {/* SECTION 1: NETWORK & AUTH */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl border-t-2 border-t-blue-500 shadow-xl relative overflow-hidden">
-            <div className="flex justify-between items-center mb-6">
-              <div className="flex items-center gap-2 text-blue-500">
-                <Wifi className="h-4 w-4" />
-                <h3 className="text-[10px] font-black uppercase tracking-widest">Connection</h3>
-              </div>
-              <div
-                className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${
-                  connectionStatus === "online"
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : connectionStatus === "offline"
-                      ? "bg-red-500/20 text-red-400"
-                      : "bg-slate-800 text-slate-500"
-                }`}
-              >
-                {connectionStatus === "idle" ? "Not Tested" : connectionStatus}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-[9px] text-slate-500 uppercase">Host IP</Label>
-                  <Input
-                    value={config.Host}
-                    onChange={(e) => setConfig({ ...config, Host: e.target.value })}
-                    className="bg-slate-950 font-mono text-blue-400"
-                    placeholder="192.168.8.169"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[9px] text-slate-500 uppercase">Port</Label>
-                  <Input
-                    value={config.Port}
-                    onChange={(e) => setConfig({ ...config, Port: e.target.value })}
-                    className="bg-slate-950 font-mono text-blue-400"
-                  />
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-[9px] text-slate-500 uppercase italic">KkmPassword</Label>
-                <Input
-                  value={config.KkmPassword}
-                  onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
-                  className="bg-slate-950 text-emerald-500"
-                />
-              </div>
-
-              {/* Local Proxy URL */}
-              <div className="space-y-1">
-                <Label className="text-[9px] text-slate-500 uppercase flex items-center gap-1">
-                  <Server className="h-3 w-3" /> Local Proxy URL (optional)
-                </Label>
-                <Input
-                  value={config.LocalProxyUrl}
-                  onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
-                  className="bg-slate-950 font-mono text-purple-400"
-                  placeholder="http://localhost:3456"
-                />
-                <p className="text-[8px] text-slate-600 italic">
-                  Для обхода mixed-content: запустите прокси на кассовом ПК
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                onClick={handleTestConnection}
-                disabled={isTesting}
-                variant="outline"
-                  className="border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 text-blue-400 text-[10px] font-bold h-9 gap-2"
-              >
-                {isTesting ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Activity className="h-3 w-3" />}
-                {isTesting ? "TESTING..." : "TEST CONNECTION"}
-                </Button>
-
-                <Button
-                  onClick={handleOpenKkmStatus}
-                  variant="outline"
-                  className="border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-400 text-[10px] font-bold h-9 gap-2"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  OPEN STATUS
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* Остальные карточки без изменений, чтобы не урезать функционал */}
-          <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl border-t-2 border-t-emerald-500 shadow-xl">
-            <div className="flex items-center gap-2 mb-6 text-emerald-500">
-              <Lock className="h-4 w-4" />
-              <h3 className="text-[10px] font-black uppercase tracking-widest">Cashier Auth</h3>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-[9px] text-slate-500 uppercase">CashierId</Label>
-                  <Input
-                    value={config.CashierId}
-                    onChange={(e) => setConfig({ ...config, CashierId: e.target.value })}
-                    className="bg-slate-950 h-9"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[9px] text-slate-500 uppercase">CashierPin</Label>
-                  <Input
-                    value={config.CashierPin}
-                    onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
-                    className="bg-slate-950 h-9"
-                  />
-                </div>
-              </div>
-              <div className="p-3 bg-black/40 rounded-xl border border-slate-800 flex justify-between items-center">
-                <span className="text-[10px] font-bold uppercase text-slate-400">Vat Rate (%)</span>
-                <Input
-                  type="number"
-                  value={config.VatRate}
-                  onChange={(e) => setConfig({ ...config, VatRate: parseFloat(e.target.value) })}
-                  className="w-20 bg-transparent border-none text-right font-black text-emerald-500 h-6 p-0 focus:ring-0"
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl border-t-2 border-t-amber-500 shadow-xl">
-            <div className="flex items-center gap-2 mb-6 text-amber-500">
-              <ShieldCheck className="h-4 w-4" />
-              <h3 className="text-[10px] font-black uppercase tracking-widest">Logic Flags</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: "Discount", key: "UseDiscountInKkm" },
-                { label: "Subcharge", key: "UseSubchargeAsDish" },
-                { label: "Kitchen", key: "UseKitchenName" },
-                { label: "Def. ADG", key: "UseDefaultAdg" },
-              ].map((f) => (
-                <div
-                  key={f.key}
-                  className="flex flex-col gap-2 p-2 bg-black/30 rounded-lg border border-slate-800 items-center"
-                >
-                  <span className="text-[8px] font-black uppercase text-slate-500">{f.label}</span>
-                  <Switch checked={config[f.key]} onCheckedChange={(v) => setConfig({ ...config, [f.key]: v })} />
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-
-        {/* SECTION 2: SUBCHARGE */}
-        <Card className="bg-slate-900/30 border-slate-800 p-6 rounded-2xl shadow-xl border-l-4 border-l-amber-600">
-          <div className="flex items-center gap-2 mb-6 text-amber-500">
-            <Zap className="h-4 w-4" />
-            <h3 className="text-[10px] font-black uppercase tracking-widest">Subcharge Details</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-1">
-              <Label className="text-[9px] uppercase">Name</Label>
-              <Input
-                value={config.SubchargeAsDishName}
-                onChange={(e) => setConfig({ ...config, SubchargeAsDishName: e.target.value })}
-                className="bg-slate-950 text-[11px]"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[9px] uppercase">ADG Code</Label>
-              <Input
-                value={config.SubchargeAsDishAdgCode}
-                onChange={(e) => setConfig({ ...config, SubchargeAsDishAdgCode: e.target.value })}
-                className="bg-slate-950 font-bold text-amber-500"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[9px] uppercase">Dish Code</Label>
-              <Input
-                value={config.SubchargeAsDishCode}
-                onChange={(e) => setConfig({ ...config, SubchargeAsDishCode: e.target.value })}
-                className="bg-slate-950"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-[9px] uppercase">Unit</Label>
-              <Input
-                value={config.SubchargeAsDishUnit}
-                onChange={(e) => setConfig({ ...config, SubchargeAsDishUnit: e.target.value })}
-                className="bg-slate-950"
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* SECTION 3: PAYMENTS */}
-        <Card className="bg-slate-900/20 border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="p-4 bg-slate-900/40 border-b border-slate-800 flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-emerald-500">
-            <div className="flex items-center gap-2">
-              <CreditCard className="h-4 w-4" /> Payment Types Registry
-            </div>
-          </div>
-          <table className="w-full text-[11px]">
-            <thead className="bg-black/60 text-slate-500 font-bold uppercase text-[9px]">
-              <tr>
-                <th className="p-4 text-left">Display Name</th>
-                <th className="p-4 text-left">Internal UUID</th>
-                <th className="p-4 text-left">Type</th>
-                <th className="p-4 text-center">External POS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/40">
-              {config.PaymentTypes.map((pt, idx) => (
-                <tr key={idx} className="hover:bg-emerald-900/5 transition-colors">
-                  <td className="p-4 font-bold text-white italic">{pt.Name}</td>
-                  <td className="p-4 font-mono text-slate-500 text-[10px]">{pt.Id}</td>
-                  <td className="p-4">
-                    <span className="px-2 py-1 bg-blue-950 text-blue-400 rounded-md font-bold text-[9px] uppercase">
-                      {pt.PaymentType}
-                    </span>
-                  </td>
-                  <td className="p-4 text-center">
-                    <Switch
-                      checked={pt.UseExtPos}
-                      onCheckedChange={(v) => {
-                        const upd = [...config.PaymentTypes];
-                        upd[idx].UseExtPos = v;
-                        setConfig({ ...config, PaymentTypes: upd });
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-
-        {/* SECTION 4: SYSTEM PARAMS */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
-            <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <Clock className="h-3 w-3" /> Timeouts
-            </div>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-[8px] uppercase">Op Timeout</Label>
-                <Input
-                  type="number"
-                  value={config.DefaultOperationTimeout}
-                  onChange={(e) => setConfig({ ...config, DefaultOperationTimeout: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] uppercase">KKM Timeout</Label>
-                <Input
-                  type="number"
-                  value={config.KkmPaymentTimeout}
-                  onChange={(e) => setConfig({ ...config, KkmPaymentTimeout: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
-            <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <Activity className="h-3 w-3" /> System
-            </div>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-[8px] uppercase">Backup Limit</Label>
-                <Input
-                  type="number"
-                  value={config.BackupDaysLimit}
-                  onChange={(e) => setConfig({ ...config, BackupDaysLimit: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] uppercase">Relogin Count</Label>
-                <Input
-                  type="number"
-                  value={config.CounterToRelogin}
-                  onChange={(e) => setConfig({ ...config, CounterToRelogin: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
-            <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <Database className="h-3 w-3" /> ADG Length
-            </div>
-            <div className="space-y-3">
-              <div>
-                <Label className="text-[8px] uppercase">Code Length</Label>
-                <Input
-                  type="number"
-                  value={config.AdgCodeFromProductCodeLength}
-                  onChange={(e) => setConfig({ ...config, AdgCodeFromProductCodeLength: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
-                />
-              </div>
-              <div>
-                <Label className="text-[8px] uppercase">Fast Length</Label>
-                <Input
-                  type="number"
-                  value={config.AdgCodeFromProductFastCodeLength}
-                  onChange={(e) => setConfig({ ...config, AdgCodeFromProductFastCodeLength: parseInt(e.target.value) })}
-                  className="h-8 bg-slate-950"
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card className="bg-slate-900/30 border-slate-800 p-5 rounded-xl">
-            <div className="text-[8px] font-black uppercase text-slate-500 mb-2 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> Advanced
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center p-1">
-                <span className="text-[8px] font-bold uppercase">C16 Transfer</span>
-                <Switch
-                  checked={config.C16CardIdTransfer}
-                  onCheckedChange={(v) => setConfig({ ...config, C16CardIdTransfer: v })}
-                />
-              </div>
-              <div className="flex justify-between items-center p-1">
-                <span className="text-[8px] font-bold uppercase">Cash I/O</span>
-                <Switch
-                  checked={config.DisableCashInOut}
-                  onCheckedChange={(v) => setConfig({ ...config, DisableCashInOut: v })}
-                />
-              </div>
-              <div className="flex justify-between items-center p-1">
-                <span className="text-[8px] font-bold uppercase">Debug Mode</span>
-                <Input
-                  value={config.DebugMode}
-                  onChange={(e) => setConfig({ ...config, DebugMode: parseInt(e.target.value) })}
-                  className="w-10 h-6 bg-transparent p-0 text-right border-none font-bold"
-                />
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* BOTTOM FLAGS */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Do X Report", key: "DoXReport" },
-            { label: "Do Z Report", key: "DoZReport" },
-            { label: "Kitchen Dept", key: "UseDepartmentFromKitchenName" },
-            { label: "Manual Mode", key: "Mode", isText: true },
-          ].map((f) => (
-            <div
-              key={f.key}
-              className="p-3 bg-slate-900/40 border border-slate-800 rounded-xl flex items-center justify-between"
-            >
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">{f.label}</span>
-              {f.isText ? (
-                <span className="text-[9px] font-bold text-white italic">{config[f.key]}</span>
-              ) : (
-                <Switch checked={config[f.key]} onCheckedChange={(v) => setConfig({ ...config, [f.key]: v })} />
-              )}
-            </div>
-          ))}
-        </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card className="p-6 md:col-span-2 space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <Server className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Сетевые настройки</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>IP Адрес ККМ</Label>
+              <Input 
+                value={config.Host} 
+                onChange={(e) => setConfig({...config, Host: e.target.value})}
+                placeholder="192.168.x.x"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Порт</Label>
+              <Input 
+                value={config.Port} 
+                onChange={(e) => setConfig({...config, Port: e.target.value})}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="text-amber-600 flex items-center gap-1">
+                Локальный Прокси (URL) <AlertTriangle className="h-3 w-3" />
+              </Label>
+              <Input 
+                value={config.LocalProxyUrl} 
+                onChange={(e) => setConfig({...config, LocalProxyUrl: e.target.value})}
+                placeholder="http://localhost:3456"
+              />
+              <p className="text-[10px] text-muted-foreground">Используйте для обхода блокировки HTTPS -> HTTP</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-6 space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <Activity className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Статус</h2>
+          </div>
+          <div className="flex flex-col items-center justify-center py-6 space-y-4">
+            <div className={`h-16 w-16 rounded-full flex items-center justify-center ${
+              connectionStatus === 'online' ? 'bg-green-100 text-green-600' : 
+              connectionStatus === 'offline' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-400'
+            }`}>
+              <Zap className="h-8 w-8" />
+            </div>
+            <div className="text-center">
+              <p className="font-medium text-lg">
+                {connectionStatus === 'online' ? 'Связь установлена' : 
+                 connectionStatus === 'offline' ? 'Нет связи' : 'Ожидание проверки'}
+              </p>
+              <p className="text-sm text-muted-foreground">{config.Host}:{config.Port}</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Card className="p-6">
+        <div className="flex items-center gap-2 pb-4 border-b mb-4">
+          <Lock className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-semibold">Авторизация Кассира</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <Label>ID Кассира</Label>
+            <Input value={config.CashierId} onChange={(e) => setConfig({...config, CashierId: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>PIN Кассира</Label>
+            <Input type="password" value={config.CashierPin} onChange={(e) => setConfig({...config, CashierPin: e.target.value})} />
+          </div>
+          <div className="space-y-2">
+            <Label>Пароль ККМ (Admin)</Label>
+            <Input type="password" value={config.KkmPassword} onChange={(e) => setConfig({...config, KkmPassword: e.target.value})} />
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }
