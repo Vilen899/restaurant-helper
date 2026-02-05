@@ -152,23 +152,52 @@ export default function FiscalSettingsPage() {
     const currentHost = config.Host;
     const currentPort = config.Port;
 
-    try {
+    const isPrivateIp = (host: string) =>
+      /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+
+    const pingUrl = async (url: string) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
+      try {
+        // NOTE: no-cors нужен, т.к. ККМ обычно не отдаёт CORS заголовки.
+        // Мы не читаем ответ — нам важно только факт сетевого ответа.
+        await fetch(url, {
+          method: "GET",
+          signal: controller.signal,
+          mode: "no-cors",
+          cache: "no-store",
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
-      // Пытаемся стучаться по введенному IP
-      const response = await fetch(`http://${currentHost}:${currentPort}/api/v1/status`, {
-        method: "GET",
-        signal: controller.signal,
-        mode: "no-cors",
-      });
+    const httpsUrl = `https://${currentHost}:${currentPort}/api/v1/status`;
+    const httpUrl = `http://${currentHost}:${currentPort}/api/v1/status`;
 
+    try {
+      // 1) Сначала пробуем HTTPS — это единственный вариант, который не блокируется как mixed-content.
+      await pingUrl(httpsUrl);
       setConnectionStatus("online");
-      toast.success(`Связь с ${currentHost} установлена`);
-    } catch (error) {
-      console.error("Connection error:", error);
-      setConnectionStatus("offline");
-      toast.error(`Касса ${currentHost} недоступна`);
+      toast.success(`Связь с ${currentHost} установлена (HTTPS)`);
+    } catch (httpsErr) {
+      try {
+        // 2) Фолбэк на HTTP (может быть заблокирован браузером из HTTPS-приложения).
+        await pingUrl(httpUrl);
+        setConnectionStatus("online");
+        toast.success(`Связь с ${currentHost} установлена (HTTP)`);
+      } catch (httpErr) {
+        console.error("Connection error (https):", httpsErr);
+        console.error("Connection error (http):", httpErr);
+        setConnectionStatus("offline");
+
+        const hint =
+          window.location.protocol === "https:" && isPrivateIp(currentHost)
+            ? `\n\nПодсказка: приложение работает по HTTPS, а ККМ по HTTP в локальной сети. Браузер может блокировать такие запросы (mixed content / private network).\nРешения: включить HTTPS на ККМ, либо разрешить «Небезопасный контент» для сайта в настройках браузера, либо использовать локальный прокси на кассовом ПК.`
+            : "";
+
+        toast.error(`Касса ${currentHost}:${currentPort} недоступна.${hint}`);
+      }
     } finally {
       setIsTesting(false);
     }
