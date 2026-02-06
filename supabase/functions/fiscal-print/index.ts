@@ -41,12 +41,59 @@ interface FiscalSettings {
   inn: string | null;
   operator_name: string | null;
   company_name: string | null;
-  // HDM-specific fields (Armenian fiscal printers)
-  kkm_password: string | null;
-  vat_rate: number | null;
-  terminal_id: string | null;
-  default_timeout: number | null;
-  payment_timeout: number | null;
+  // HDM-specific fields (Armenian fiscal printers - from iiko XML config)
+  Host?: string;
+  Port?: string;
+  CashierId?: string;
+  CashierPin?: string;
+  KkmPassword?: string;
+  VatRate?: number;
+  DefaultAdg?: string;
+  UseDefaultAdg?: boolean;
+  UseDiscountInKkm?: boolean;
+  UseSubchargeAsDish?: boolean;
+  UseKitchenName?: boolean;
+  UseDepartmentFromKitchenName?: boolean;
+  SubchargeAsDishCode?: string;
+  SubchargeAsDishName?: string;
+  SubchargeAsDishAdgCode?: string;
+  SubchargeAsDishUnit?: string;
+  DefaultOperationTimeout?: number;
+  KkmPaymentTimeout?: number;
+  BonusPaymentName?: string;
+  C16CardIdTransfer?: boolean;
+  AdgCodeFromProductCodeLength?: number;
+  AdgCodeFromProductFastCodeLength?: number;
+  BackupDaysLimit?: number;
+  AggregateSales?: boolean;
+  AggregateSaleName?: string;
+  AggregateSaleAdg?: string;
+  AggregateSaleCode?: string;
+  AggregateSaleUnit?: string;
+  DisableCashInOut?: boolean;
+  DoXReport?: boolean;
+  DoZReport?: boolean;
+  CounterToRelogin?: number;
+  DebugMode?: number;
+  Mode?: string;
+  PaymentTypes?: Array<{
+    Id: string;
+    Name: string;
+    UseExtPos: boolean;
+    PaymentType: string; // "paidAmount" for cash, "paidAmountCard" for card
+  }>;
+  // Legacy snake_case fields
+  kkm_password?: string | null;
+  vat_rate?: number | null;
+  terminal_id?: string | null;
+  default_timeout?: number | null;
+  payment_timeout?: number | null;
+  cashier_id?: string | null;
+  cashier_pin?: string | null;
+  default_adg?: string | null;
+  host?: string | null;
+  local_proxy_url?: string | null;
+  LocalProxyUrl?: string | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -547,8 +594,8 @@ async function aisinoRequest(
   }
 }
 
-// HDM driver implementation (Armenian fiscal printers - ISP930, etc.)
-// Based on iiko integration format with correct field mapping from fiscal_settings
+// HDM driver implementation (Armenian fiscal printers - ISP930)
+// Full iiko-compatible format based on the provided XML config
 async function hdmRequest(
   baseUrl: string,
   headers: Record<string, string>,
@@ -556,23 +603,41 @@ async function hdmRequest(
   orderData?: PrintRequest["order_data"],
   settings?: FiscalSettings
 ): Promise<{ success: boolean; message?: string; data?: unknown }> {
-  // Use correct field mappings from fiscal_settings table
-  // CashierId and cashier_id are both available - prefer the uppercase version (from XML config)
-  const cashierId = (settings as any)?.CashierId || (settings as any)?.cashier_id || "3";
-  const cashierPin = (settings as any)?.CashierPin || (settings as any)?.cashier_pin || "4321";
-  const kkmPassword = (settings as any)?.KkmPassword || settings?.kkm_password || "Aa1111Bb";
-  const vatRate = (settings as any)?.VatRate || settings?.vat_rate || 16.67;
-  const timeout = (settings as any)?.DefaultOperationTimeout || settings?.default_timeout || 30000;
-  const defaultAdg = (settings as any)?.DefaultAdg || (settings as any)?.default_adg || "56.10";
+  // Extract HDM settings with iiko XML field names (prefer uppercase)
+  const cashierId = settings?.CashierId || settings?.cashier_id || "3";
+  const cashierPin = settings?.CashierPin || settings?.cashier_pin || "4321";
+  const kkmPassword = settings?.KkmPassword || settings?.kkm_password || "Aa1111Bb";
+  const vatRate = settings?.VatRate || settings?.vat_rate || 16.67;
+  const defaultTimeout = settings?.DefaultOperationTimeout || settings?.default_timeout || 30000;
+  const paymentTimeout = settings?.KkmPaymentTimeout || settings?.payment_timeout || 120000;
+  const defaultAdg = settings?.DefaultAdg || settings?.default_adg || "56.10";
+  const useDefaultAdg = settings?.UseDefaultAdg !== false;
+  const useDiscountInKkm = settings?.UseDiscountInKkm !== false;
+  const useSubchargeAsDish = settings?.UseSubchargeAsDish !== false;
+  const useKitchenName = settings?.UseKitchenName !== false;
+  const subchargeCode = settings?.SubchargeAsDishCode || "999999";
+  const subchargeName = settings?.SubchargeAsDishName || "Հdelays sնdelays դdelays  կdelays delays մdelays delays delays delays ";
+  const subchargeAdgCode = settings?.SubchargeAsDishAdgCode || "56.10";
+  const subchargeUnit = settings?.SubchargeAsDishUnit || "delays delays .";
+  const debugMode = settings?.DebugMode ?? 1;
+  const mode = settings?.Mode || "Manual";
   
-  // Host and Port - prefer uppercase versions
-  const host = (settings as any)?.Host || (settings as any)?.host || settings?.ip_address || "192.168.9.19";
-  const port = (settings as any)?.Port || settings?.port || "8080";
+  // Get PaymentTypes from settings (iiko format)
+  const paymentTypes = settings?.PaymentTypes || [];
   
-  // Override baseUrl if host/port are set explicitly in settings
-  const effectiveBaseUrl = settings?.api_url || `http://${host}:${port}`;
+  // Host and Port - iiko XML uses uppercase
+  const host = settings?.Host || settings?.host || settings?.ip_address || "192.168.9.19";
+  const port = settings?.Port || settings?.port || "8080";
   
-  // HDM uses specific auth headers
+  // Check for local proxy URL (for Mixed Content bypass)
+  const localProxyUrl = settings?.LocalProxyUrl || settings?.local_proxy_url;
+  
+  // Build effective URL - prefer local proxy if configured
+  const effectiveBaseUrl = localProxyUrl || settings?.api_url || `http://${host}:${port}`;
+  
+  console.log(`[HDM] Using URL: ${effectiveBaseUrl}, CashierId: ${cashierId}, Mode: ${mode}`);
+  
+  // HDM API headers
   const hdmHeaders: Record<string, string> = {
     ...headers,
     "Content-Type": "application/json",
@@ -581,81 +646,90 @@ async function hdmRequest(
   try {
     switch (action) {
       case "test_connection": {
-        // Try HDM status endpoint with correct data format
+        console.log(`[HDM] test_connection to ${effectiveBaseUrl}`);
+        
+        // HDM login/status check
         const loginData = {
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
           password: kkmPassword,
         };
         
-        console.log(`HDM test_connection to ${effectiveBaseUrl} with cashierId=${cashierId}`);
+        // Try multiple endpoints used by HDM/ISP930
+        const endpoints = [
+          { url: "/api/v1/status", method: "GET", body: null },
+          { url: "/api/login", method: "POST", body: loginData },
+          { url: "/api/status", method: "GET", body: null },
+          { url: "/status", method: "GET", body: null },
+          { url: "/", method: "GET", body: null },
+        ];
         
-        // Try login endpoint first
-        try {
-          const response = await fetch(`${effectiveBaseUrl}/api/login`, {
-            method: "POST",
-            headers: hdmHeaders,
-            body: JSON.stringify(loginData),
-            signal: AbortSignal.timeout(timeout),
-          });
-          
-          if (response.ok) {
-            const data = await response.json().catch(() => ({}));
-            return { success: true, message: "HDM connected successfully", data };
+        for (const ep of endpoints) {
+          try {
+            const fetchOptions: RequestInit = {
+              method: ep.method,
+              headers: hdmHeaders,
+              signal: AbortSignal.timeout(defaultTimeout),
+            };
+            
+            if (ep.body && ep.method === "POST") {
+              fetchOptions.body = JSON.stringify(ep.body);
+            }
+            
+            const response = await fetch(`${effectiveBaseUrl}${ep.url}`, fetchOptions);
+            
+            if (response.ok || response.status < 500) {
+              const data = await response.json().catch(() => ({ status: "ok" }));
+              console.log(`[HDM] Connected via ${ep.url}`);
+              return { 
+                success: true, 
+                message: `HDM connected (${host}:${port})`, 
+                data: { endpoint: ep.url, ...data }
+              };
+            }
+          } catch (err) {
+            console.log(`[HDM] Endpoint ${ep.url} failed:`, err);
+            continue;
           }
-        } catch (loginErr) {
-          console.log("Login endpoint failed, trying status...", loginErr);
         }
         
-        // Try alternative status check
-        try {
-          const statusResponse = await fetch(`${effectiveBaseUrl}/api/status`, {
-            method: "GET",
-            headers: hdmHeaders,
-            signal: AbortSignal.timeout(timeout),
-          });
-          
-          if (statusResponse.ok) {
-            return { success: true, message: "HDM connected" };
-          }
-        } catch (statusErr) {
-          console.log("Status endpoint failed, trying ping...", statusErr);
-        }
-        
-        // Try simple ping
-        try {
-          const pingResponse = await fetch(`${effectiveBaseUrl}/`, {
-            method: "GET",
-            headers: hdmHeaders,
-            signal: AbortSignal.timeout(timeout),
-          });
-          
-          if (pingResponse.ok || pingResponse.status < 500) {
-            return { success: true, message: "HDM device reachable" };
-          }
-        } catch (pingErr) {
-          console.log("Ping failed:", pingErr);
-        }
-        
-        throw new Error(`Cannot connect to HDM at ${effectiveBaseUrl}`);
+        throw new Error(`HDM недоступен: ${effectiveBaseUrl}`);
       }
       
       case "print_receipt": {
-        if (!orderData) throw new Error("No order data");
+        if (!orderData) throw new Error("Нет данных заказа");
         
-        // HDM/Armenian fiscal format (like on the receipt photo)
-        // Format: Name, Price x Quantity = Total, ADG code, product code
-        const paymentTimeout = settings?.payment_timeout || 120000;
-        const paymentMethodLower = orderData.payment_method?.toLowerCase() || "";
-        const isCash = paymentMethodLower === "cash" || 
-                       paymentMethodLower === "կdelays" ||
-                       paymentMethodLower === "kankhik" ||
-                       paymentMethodLower === "paidamount" ||
+        console.log(`[HDM] print_receipt #${orderData.order_number}`);
+        
+        // Determine payment type from PaymentTypes config (iiko format)
+        const paymentMethodLower = (orderData.payment_method || "").toLowerCase();
+        let fiscalPaymentType = "paidAmountCard"; // default to card
+        let useExtPos = true;
+        
+        // Match payment method against configured PaymentTypes
+        for (const pt of paymentTypes) {
+          const ptNameLower = pt.Name.toLowerCase();
+          if (paymentMethodLower.includes(ptNameLower) || 
+              ptNameLower.includes(paymentMethodLower) ||
+              paymentMethodLower === "cash" && pt.PaymentType === "paidAmount") {
+            fiscalPaymentType = pt.PaymentType;
+            useExtPos = pt.UseExtPos;
+            break;
+          }
+        }
+        
+        // Check for cash payment
+        const isCash = fiscalPaymentType === "paidAmount" ||
+                       paymentMethodLower === "cash" ||
+                       paymentMethodLower === "կdelays delays " ||
                        paymentMethodLower === "naличные" ||
                        paymentMethodLower === "наличные";
         
-        // Format items with Armenian receipt structure
-        // Example: "Buffalwich Small" + "1400.00x1.000=1400.00" + "ДАU: 56.10, Н/Ч 0303"
+        if (isCash) {
+          fiscalPaymentType = "paidAmount";
+        }
+        
+        // Format items for HDM (Armenian fiscal receipt format)
         const formattedItems = orderData.items.map((item, idx) => ({
           id: idx + 1,
           name: item.name,
@@ -663,98 +737,124 @@ async function hdmRequest(
           price: item.price,
           amount: item.total,
           vatRate: vatRate,
-          // ADG code for food service (РЕСТОРАНЫ, БЫСТРОЕ ПИТАНИЕ) = 56.10
-          adgCode: "56.10",
-          // Product code - sequential
+          adgCode: useDefaultAdg ? defaultAdg : "56.10",
           productCode: String(idx + 1).padStart(4, "0"),
-          // Unit: pieces (հdelays.)
-          unit: "հat.",
+          unit: "delays delays .", // pieces
+          // Kitchen name support (for multi-department)
+          kitchenName: useKitchenName ? item.name : undefined,
         }));
         
+        // Apply discount handling
+        let discountItem = null;
+        if (orderData.discount > 0 && useDiscountInKkm) {
+          // HDM can handle discounts inline or as separate line
+          formattedItems.forEach(item => {
+            (item as any).discount = (item.amount / orderData.subtotal) * orderData.discount;
+          });
+        }
+        
+        // Handle subcharge as dish (service fee) if enabled
+        if (useSubchargeAsDish && orderData.subtotal !== orderData.total) {
+          // Add service charge as a dish item
+          const serviceCharge = orderData.total - orderData.subtotal + orderData.discount;
+          if (serviceCharge > 0) {
+            formattedItems.push({
+              id: formattedItems.length + 1,
+              name: subchargeName,
+              quantity: 1,
+              price: serviceCharge,
+              amount: serviceCharge,
+              vatRate: vatRate,
+              adgCode: subchargeAdgCode,
+              productCode: subchargeCode,
+              unit: subchargeUnit,
+              kitchenName: undefined,
+            });
+          }
+        }
+        
+        // Build receipt data in iiko-compatible format
         const receiptData = {
-          // Cashier authentication
+          // Cashier authentication (from XML config)
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
           password: kkmPassword,
           
           // Receipt type
           receiptType: "sale",
-          documentType: 3, // Գdelays = Sale receipt
+          documentType: 3, // Վdelay delays = Sale
           
-          // Items with Armenian format
+          // Items
           items: formattedItems,
           
-          // Payment info
+          // Payment (iiko PaymentTypes format)
           payments: [{
-            type: isCash ? "paidAmount" : "paidAmountCard",
-            // Armenian: Ադdelays = cash received, Աdelays = card
+            type: fiscalPaymentType,
             paymentType: isCash ? 0 : 1,
             amount: orderData.total,
+            useExtPos: useExtPos,
           }],
           
-          // Totals ( Delays/Delays: total, Աdelays: received, Ցdelays: change)
+          // Totals
           subtotal: orderData.subtotal,
-          discount: orderData.discount || 0,
+          discount: useDiscountInKkm ? (orderData.discount || 0) : 0,
           total: orderData.total,
           
           // Operator info
-          operator: settings?.operator_name || orderData.cashier_name,
-          operatorName: settings?.operator_name || orderData.cashier_name,
+          operator: orderData.cashier_name || settings?.operator_name,
           
           // Receipt metadata
           receiptNumber: orderData.order_number,
-          fiscalNumber: orderData.order_number,
           date: orderData.date,
           
-          // Company info from settings
+          // VAT
+          vatRate: vatRate,
+          
+          // Mode from config
+          mode: mode,
+          debugMode: debugMode,
+          
+          // Company info
           companyName: settings?.company_name,
           inn: settings?.inn,
           terminalId: settings?.terminal_id,
         };
         
-        const response = await fetch(`${baseUrl}/api/receipt`, {
-          method: "POST",
-          headers: hdmHeaders,
-          body: JSON.stringify(receiptData),
-          signal: AbortSignal.timeout(paymentTimeout),
-        });
+        // Try HDM endpoints
+        const printEndpoints = [
+          "/api/v1/receipt",
+          "/api/receipt",
+          "/api/sale",
+          "/api/fiscal/receipt",
+        ];
         
-        if (response.ok) {
-          const data = await response.json().catch(() => ({}));
-          return { success: true, message: "Receipt printed", data };
+        for (const endpoint of printEndpoints) {
+          try {
+            console.log(`[HDM] Trying ${endpoint}...`);
+            const response = await fetch(`${effectiveBaseUrl}${endpoint}`, {
+              method: "POST",
+              headers: hdmHeaders,
+              body: JSON.stringify(receiptData),
+              signal: AbortSignal.timeout(paymentTimeout),
+            });
+            
+            if (response.ok) {
+              const data = await response.json().catch(() => ({}));
+              console.log(`[HDM] Receipt printed via ${endpoint}`);
+              return { success: true, message: "Чек напечатан", data };
+            }
+          } catch (err) {
+            console.log(`[HDM] Endpoint ${endpoint} failed:`, err);
+            continue;
+          }
         }
         
-        // Try alternative endpoint (some HDM devices use /api/sale)
-        const altResponse = await fetch(`${baseUrl}/api/sale`, {
-          method: "POST",
-          headers: hdmHeaders,
-          body: JSON.stringify(receiptData),
-          signal: AbortSignal.timeout(paymentTimeout),
-        });
-        
-        if (altResponse.ok) {
-          const data = await altResponse.json().catch(() => ({}));
-          return { success: true, message: "Receipt printed", data };
-        }
-        
-        // Try iiko-compatible endpoint
-        const iikoResponse = await fetch(`${baseUrl}/api/fiscal/receipt`, {
-          method: "POST",
-          headers: hdmHeaders,
-          body: JSON.stringify(receiptData),
-          signal: AbortSignal.timeout(paymentTimeout),
-        });
-        
-        if (iikoResponse.ok) {
-          const data = await iikoResponse.json().catch(() => ({}));
-          return { success: true, message: "Receipt printed", data };
-        }
-        
-        const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(`Print failed: ${response.status} - ${errorText}`);
+        throw new Error("Не удалось напечатать чек");
       }
       
       case "open_drawer": {
+        console.log(`[HDM] open_drawer`);
+        
         const drawerData = {
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
@@ -762,37 +862,34 @@ async function hdmRequest(
           command: "openDrawer",
         };
         
-        try {
-          const response = await fetch(`${effectiveBaseUrl}/api/drawer`, {
-            method: "POST",
-            headers: hdmHeaders,
-            body: JSON.stringify(drawerData),
-            signal: AbortSignal.timeout(timeout),
-          });
-          
-          if (response.ok) {
-            return { success: true, message: "Drawer opened" };
+        for (const endpoint of ["/api/drawer", "/api/v1/drawer", "/api/command"]) {
+          try {
+            const response = await fetch(`${effectiveBaseUrl}${endpoint}`, {
+              method: "POST",
+              headers: hdmHeaders,
+              body: JSON.stringify(drawerData),
+              signal: AbortSignal.timeout(defaultTimeout),
+            });
+            
+            if (response.ok) {
+              return { success: true, message: "Денежный ящик открыт" };
+            }
+          } catch (err) {
+            continue;
           }
-        } catch (err) {
-          console.log("Drawer endpoint failed, trying command...", err);
         }
         
-        // Try command endpoint
-        try {
-          const cmdResponse = await fetch(`${effectiveBaseUrl}/api/command`, {
-            method: "POST",
-            headers: hdmHeaders,
-            body: JSON.stringify({ ...drawerData, action: "openDrawer" }),
-            signal: AbortSignal.timeout(timeout),
-          });
-          
-          return { success: cmdResponse.ok, message: cmdResponse.ok ? "Drawer opened" : "Failed" };
-        } catch (err) {
-          throw new Error(`Drawer command failed: ${err}`);
-        }
+        throw new Error("Не удалось открыть денежный ящик");
       }
       
       case "x_report": {
+        console.log(`[HDM] x_report`);
+        
+        // Check if X-report is enabled in config
+        if (settings?.DoXReport === false) {
+          return { success: true, message: "X-отчёт отключён в настройках" };
+        }
+        
         const reportData = {
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
@@ -800,22 +897,27 @@ async function hdmRequest(
           reportType: "X",
         };
         
-        console.log(`HDM X-report to ${effectiveBaseUrl}`);
-        
         const response = await fetch(`${effectiveBaseUrl}/api/report`, {
           method: "POST",
           headers: hdmHeaders,
           body: JSON.stringify(reportData),
-          signal: AbortSignal.timeout(timeout),
+          signal: AbortSignal.timeout(defaultTimeout),
         });
         
         if (response.ok) {
-          return { success: true, message: "X-report printed" };
+          return { success: true, message: "X-отчёт напечатан" };
         }
-        throw new Error(`X-report failed: ${response.status}`);
+        throw new Error(`X-отчёт не выполнен: ${response.status}`);
       }
       
       case "z_report": {
+        console.log(`[HDM] z_report`);
+        
+        // Check if Z-report is enabled in config
+        if (settings?.DoZReport === false) {
+          return { success: true, message: "Z-отчёт отключён в настройках" };
+        }
+        
         const reportData = {
           cashierId: parseInt(cashierId),
           cashierPin: cashierPin,
@@ -823,26 +925,26 @@ async function hdmRequest(
           reportType: "Z",
         };
         
-        console.log(`HDM Z-report to ${effectiveBaseUrl}`);
-        
         const response = await fetch(`${effectiveBaseUrl}/api/report`, {
           method: "POST",
           headers: hdmHeaders,
           body: JSON.stringify(reportData),
-          signal: AbortSignal.timeout(timeout),
+          signal: AbortSignal.timeout(defaultTimeout),
         });
         
         if (response.ok) {
-          return { success: true, message: "Z-report printed" };
+          return { success: true, message: "Z-отчёт напечатан" };
         }
-        throw new Error(`Z-report failed: ${response.status}`);
+        throw new Error(`Z-отчёт не выполнен: ${response.status}`);
       }
       
       default:
-        throw new Error(`Unknown action: ${action}`);
+        throw new Error(`Неизвестное действие: ${action}`);
     }
   } catch (error) {
-    throw new Error(`HDM error: ${error instanceof Error ? error.message : String(error)}`);
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[HDM] Error: ${msg}`);
+    throw new Error(`HDM: ${msg}`);
   }
 }
 
