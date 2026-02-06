@@ -3,19 +3,15 @@ import {
   Save,
   Wifi,
   Zap,
-  CreditCard,
-  MapPin,
   Terminal,
   Lock,
-  Database,
-  ShieldCheck,
-  Clock,
   Activity,
-  AlertTriangle,
   RefreshCw,
   ExternalLink,
   Server,
+  Cpu,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,8 +82,17 @@ const XML_DEFAULTS = {
   ],
 };
 
+// Supported KKM Drivers
+const KKM_DRIVERS = [
+  { value: "hdm", label: "HDM (ISP930)", description: "Армянский фискальный регистратор" },
+  { value: "atol", label: "ATOL", description: "Российский драйвер ATOL" },
+  { value: "shtrih", label: "Shtrih-M", description: "Штрих-М ФР" },
+  { value: "evotor", label: "Evotor", description: "Смарт-терминал Эвотор" },
+  { value: "custom", label: "Custom API", description: "Пользовательский API" },
+];
+
 export default function FiscalSettingsPage() {
-  const [config, setConfig] = useState<any>({ ...XML_DEFAULTS, location_id: "", LocalProxyUrl: "" });
+  const [config, setConfig] = useState<any>({ ...XML_DEFAULTS, location_id: "", LocalProxyUrl: "", driver: "hdm" });
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
@@ -213,6 +218,37 @@ export default function FiscalSettingsPage() {
         </div>
       </div>
 
+      {/* DRIVER SELECTION */}
+      <Card className="p-6">
+        <div className="flex items-center gap-2 pb-4 border-b mb-4">
+          <Cpu className="h-5 w-5 text-primary" />
+          <h2 className="text-xl font-semibold">Драйвер ККМ</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Выберите драйвер</Label>
+            <Select value={config.driver || "hdm"} onValueChange={(v) => setConfig({ ...config, driver: v })}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите драйвер ККМ" />
+              </SelectTrigger>
+              <SelectContent>
+                {KKM_DRIVERS.map((d) => (
+                  <SelectItem key={d.value} value={d.value}>
+                    {d.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Описание</Label>
+            <p className="text-sm text-muted-foreground pt-2">
+              {KKM_DRIVERS.find((d) => d.value === config.driver)?.description || "Выберите драйвер"}
+            </p>
+          </div>
+        </div>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* СЕТЬ */}
         <Card className="p-6 md:col-span-2 space-y-6">
@@ -230,13 +266,31 @@ export default function FiscalSettingsPage() {
               <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label className="text-amber-600">Local Proxy URL (Mixed Content Fix)</Label>
+              <Label className="text-warning">Local Proxy URL (Mixed Content Fix)</Label>
               <Input
                 value={config.LocalProxyUrl}
                 onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
                 placeholder="http://localhost:3456"
               />
+              <p className="text-xs text-muted-foreground">
+                Запустите scripts/kkm-proxy.js на кассовом ПК и укажите http://localhost:3456
+              </p>
             </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const url = config.LocalProxyUrl
+                  ? `${config.LocalProxyUrl}/api/v1/status`
+                  : `http://${config.Host}:${config.Port}/api/v1/status`;
+                window.open(url, "_blank");
+              }}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Открыть статус ККМ
+            </Button>
           </div>
         </Card>
 

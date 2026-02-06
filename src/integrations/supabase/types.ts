@@ -131,6 +131,8 @@ export type Database = {
           kkm_password: string | null
           KkmPassword: string | null
           KkmPaymentTimeout: number | null
+          local_proxy_url: string | null
+          LocalProxyUrl: string | null
           location_id: string | null
           Mode: string | null
           operator_name: string | null
@@ -211,6 +213,8 @@ export type Database = {
           kkm_password?: string | null
           KkmPassword?: string | null
           KkmPaymentTimeout?: number | null
+          local_proxy_url?: string | null
+          LocalProxyUrl?: string | null
           location_id?: string | null
           Mode?: string | null
           operator_name?: string | null
@@ -291,6 +295,8 @@ export type Database = {
           kkm_password?: string | null
           KkmPassword?: string | null
           KkmPaymentTimeout?: number | null
+          local_proxy_url?: string | null
+          LocalProxyUrl?: string | null
           location_id?: string | null
           Mode?: string | null
           operator_name?: string | null
