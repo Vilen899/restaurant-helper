@@ -164,7 +164,7 @@ export default function FiscalSettingsPage() {
     setIsTesting(true);
     setConnectionStatus("idle");
 
-    const pingUrl = async (url: string) => {
+    const pingUrl = async (url: string): Promise<boolean> => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
       try {
@@ -172,8 +172,6 @@ export default function FiscalSettingsPage() {
           method: "GET",
           signal: controller.signal,
           mode: "no-cors",
-          // @ts-ignore
-          targetAddressSpace: "private",
         });
         return true;
       } catch {
@@ -183,18 +181,81 @@ export default function FiscalSettingsPage() {
       }
     };
 
-    const target = config.LocalProxyUrl
-      ? `${config.LocalProxyUrl}/api/v1/status`
-      : `http://${config.Host}:${config.Port}/api/v1/status`;
+    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
+    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
 
-    const isOk = await pingUrl(target);
-    setConnectionStatus(isOk ? "online" : "offline");
+    // Try Direct IP first
+    let directOk = await pingUrl(directUrl);
+    let proxyOk = false;
+    let usedMethod = "Direct";
 
-    if (isOk) {
-      toast.success(`Связь установлена (${config.LocalProxyUrl ? "Proxy" : "Direct"})`);
+    if (directOk) {
+      setConnectionStatus("online");
+      toast.success(`✅ Связь установлена (Direct: ${config.Host}:${config.Port})`);
+    } else if (proxyUrl) {
+      // Fallback to proxy
+      proxyOk = await pingUrl(proxyUrl);
+      if (proxyOk) {
+        setConnectionStatus("online");
+        usedMethod = "Proxy";
+        toast.success(`✅ Связь через Proxy (${config.LocalProxyUrl})`);
+      } else {
+        setConnectionStatus("offline");
+        toast.error("❌ ККМ недоступна ни напрямую, ни через прокси");
+      }
     } else {
-      toast.error("Касса недоступна (Offline)");
+      setConnectionStatus("offline");
+      toast.error(`❌ ККМ недоступна (Direct: ${config.Host}:${config.Port})`);
     }
+
+    setIsTesting(false);
+  };
+
+  const handleAutoDetect = async () => {
+    setIsTesting(true);
+    toast.info("🔍 Автоопределение оптимального подключения...");
+
+    const pingUrl = async (url: string): Promise<{ ok: boolean; latency: number }> => {
+      const start = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      try {
+        await fetch(url, { method: "GET", signal: controller.signal, mode: "no-cors" });
+        return { ok: true, latency: Date.now() - start };
+      } catch {
+        return { ok: false, latency: Infinity };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
+
+    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
+    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
+
+    const directResult = await pingUrl(directUrl);
+    const proxyResult = proxyUrl ? await pingUrl(proxyUrl) : { ok: false, latency: Infinity };
+
+    if (directResult.ok && proxyResult.ok) {
+      // Both work - choose faster
+      if (directResult.latency <= proxyResult.latency) {
+        toast.success(`⚡ Direct быстрее (${directResult.latency}ms vs ${proxyResult.latency}ms) — используем Direct`);
+        setConfig({ ...config, LocalProxyUrl: "" });
+      } else {
+        toast.success(`⚡ Proxy быстрее (${proxyResult.latency}ms vs ${directResult.latency}ms) — используем Proxy`);
+      }
+      setConnectionStatus("online");
+    } else if (directResult.ok) {
+      toast.success(`✅ Работает только Direct (${directResult.latency}ms)`);
+      setConfig({ ...config, LocalProxyUrl: "" });
+      setConnectionStatus("online");
+    } else if (proxyResult.ok) {
+      toast.success(`✅ Работает только Proxy (${proxyResult.latency}ms)`);
+      setConnectionStatus("online");
+    } else {
+      toast.error("❌ Ни Direct, ни Proxy не работают. Проверьте IP и сеть.");
+      setConnectionStatus("offline");
+    }
+
     setIsTesting(false);
   };
 
@@ -208,6 +269,10 @@ export default function FiscalSettingsPage() {
           <p className="text-muted-foreground">Полная конфигурация чека и сетевых параметров</p>
         </div>
         <div className="flex gap-3">
+          <Button variant="outline" onClick={handleAutoDetect} disabled={isTesting}>
+            {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+            Авто-определение
+          </Button>
           <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
             Тест связи
