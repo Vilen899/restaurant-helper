@@ -22,7 +22,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 // 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML (ТВОЙ ОРИГИНАЛ)
 const XML_DEFAULTS = {
-  Host: "192.168.8.169",
+  Host: "192.168.9.19",
   Port: "8080",
   LocalProxyUrl: "",
   CashierId: "3",
