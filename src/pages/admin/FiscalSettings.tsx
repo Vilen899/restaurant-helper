@@ -16,9 +16,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { PaymentTypesEditor } from "@/components/admin/fiscal/PaymentTypesEditor";
+import { FiscalReportsCard } from "@/components/admin/fiscal/FiscalReportsCard";
 
 // 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML (ТВОЙ ОРИГИНАЛ)
 const XML_DEFAULTS = {
@@ -448,6 +449,15 @@ export default function FiscalSettingsPage() {
           </div>
         </div>
       </Card>
+
+      {/* ФИСКАЛЬНЫЕ ОТЧЁТЫ */}
+      <FiscalReportsCard config={config} />
+
+      {/* СПОСОБЫ ОПЛАТЫ */}
+      <PaymentTypesEditor
+        paymentTypes={config.PaymentTypes || []}
+        onChange={(paymentTypes) => setConfig({ ...config, PaymentTypes: paymentTypes })}
+      />
     </div>
   );
 }
