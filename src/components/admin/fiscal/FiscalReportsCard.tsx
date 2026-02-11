@@ -31,9 +31,6 @@ export function FiscalReportsCard({ config }: FiscalReportsCardProps) {
   const [confirmZReport, setConfirmZReport] = useState(false);
 
   const getKkmUrl = () => {
-    if (config.LocalProxyUrl) {
-      return config.LocalProxyUrl;
-    }
     return `http://${config.Host}:${config.Port}`;
   };
 

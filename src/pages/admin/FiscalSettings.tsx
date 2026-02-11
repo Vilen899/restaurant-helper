@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import {
   Save,
   Wifi,
-  Zap,
   Terminal,
   Lock,
   Activity,
@@ -161,86 +160,31 @@ export default function FiscalSettingsPage() {
     }
   };
 
-  // Попытка подключения: сначала Direct, потом Proxy (как iiko — напрямую по IP)
-  const pingUrl = async (url: string): Promise<{ ok: boolean; latency: number; error?: string }> => {
-    const start = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(url, { method: "GET", signal: controller.signal });
-      clearTimeout(timeoutId);
-      return { ok: response.ok || response.status < 500, latency: Date.now() - start };
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      return { ok: false, latency: Date.now() - start, error: err.message };
-    }
-  };
-
+  // Прямое подключение к ККМ по IP (как iiko)
   const handleTestConnection = async () => {
     setIsTesting(true);
     setConnectionStatus("idle");
 
-    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
-    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
-
-    // 1) Пробуем напрямую (как iiko)
-    const directResult = await pingUrl(directUrl);
-    if (directResult.ok) {
-      setConnectionStatus("online");
-      toast.success(`✅ ККМ доступна напрямую (${config.Host}:${config.Port}, ${directResult.latency}ms)`);
-      setIsTesting(false);
-      return;
-    }
-
-    // 2) Пробуем через Proxy
-    if (proxyUrl) {
-      const proxyResult = await pingUrl(proxyUrl);
-      if (proxyResult.ok) {
+    const url = `http://${config.Host}:${config.Port}/api/v1/status`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const start = Date.now();
+      const response = await fetch(url, { method: "GET", signal: controller.signal });
+      clearTimeout(timeoutId);
+      const latency = Date.now() - start;
+      if (response.ok || response.status < 500) {
         setConnectionStatus("online");
-        toast.success(`✅ ККМ доступна через Proxy (${config.LocalProxyUrl}, ${proxyResult.latency}ms)`);
-        setIsTesting(false);
-        return;
-      }
-    }
-
-    // 3) Ничего не работает
-    setConnectionStatus("offline");
-    toast.error(
-      `❌ ККМ недоступна (${config.Host}:${config.Port}).\n` +
-      "Если браузер блокирует — попробуйте Local Proxy (kkm-proxy.js)",
-      { duration: 8000 }
-    );
-    setIsTesting(false);
-  };
-
-  const handleAutoDetect = async () => {
-    setIsTesting(true);
-    toast.info("🔍 Поиск оптимального подключения к ККМ...");
-
-    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
-    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
-
-    const directResult = await pingUrl(directUrl);
-    const proxyResult = proxyUrl ? await pingUrl(proxyUrl) : { ok: false, latency: Infinity };
-
-    if (directResult.ok && proxyResult.ok) {
-      if (directResult.latency <= proxyResult.latency) {
-        toast.success(`⚡ Direct быстрее (${directResult.latency}ms vs ${proxyResult.latency}ms)`);
+        toast.success(`✅ ККМ доступна (${config.Host}:${config.Port}, ${latency}ms)`);
       } else {
-        toast.success(`⚡ Proxy быстрее (${proxyResult.latency}ms vs ${directResult.latency}ms)`);
+        setConnectionStatus("offline");
+        toast.error(`❌ ККМ ответила ошибкой: ${response.status}`);
       }
-      setConnectionStatus("online");
-    } else if (directResult.ok) {
-      toast.success(`✅ Direct работает (${directResult.latency}ms)`);
-      setConnectionStatus("online");
-    } else if (proxyResult.ok) {
-      toast.success(`✅ Proxy работает (${proxyResult.latency}ms)`);
-      setConnectionStatus("online");
-    } else {
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       setConnectionStatus("offline");
-      toast.error("❌ ККМ недоступна. Проверьте IP/порт и сеть.");
+      toast.error(`❌ ККМ недоступна (${config.Host}:${config.Port}): ${err.message}`);
     }
-
     setIsTesting(false);
   };
 
@@ -253,11 +197,7 @@ export default function FiscalSettingsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Настройки ККМ</h1>
           <p className="text-muted-foreground">Полная конфигурация чека и сетевых параметров</p>
         </div>
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={handleAutoDetect} disabled={isTesting}>
-            {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-            Авто-определение
-          </Button>
+         <div className="flex gap-3">
           <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
             Тест связи
@@ -315,27 +255,13 @@ export default function FiscalSettingsPage() {
               <Label>Порт</Label>
               <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
             </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label>Local Proxy URL (опционально)</Label>
-              <Input
-                value={config.LocalProxyUrl}
-                onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
-                placeholder="http://localhost:3456"
-              />
-              <p className="text-xs text-muted-foreground">
-                Если прямое подключение к ККМ не работает из-за ограничений браузера — запустите <code>scripts/kkm-proxy.js</code> на кассовом ПК
-              </p>
-            </div>
           </div>
           <div className="flex gap-2 pt-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => {
-                const url = config.LocalProxyUrl
-                  ? `${config.LocalProxyUrl}/api/v1/status`
-                  : `http://${config.Host}:${config.Port}/api/v1/status`;
-                window.open(url, "_blank");
+                window.open(`http://${config.Host}:${config.Port}/api/v1/status`, "_blank");
               }}
             >
               <ExternalLink className="mr-2 h-4 w-4" />
@@ -360,7 +286,7 @@ export default function FiscalSettingsPage() {
                     : "bg-gray-100 text-gray-400"
               }`}
             >
-              <Zap className="h-8 w-8" />
+              <Wifi className="h-8 w-8" />
             </div>
             <p className="font-bold text-lg">{connectionStatus.toUpperCase()}</p>
           </div>
