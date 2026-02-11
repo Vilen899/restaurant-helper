@@ -26,7 +26,7 @@
 const http = require('http');
 
 // Конфигурация
-const KKM_HOST = process.env.KKM_HOST || '192.168.8.169';
+const KKM_HOST = process.env.KKM_HOST || '192.168.9.19';
 const KKM_PORT = parseInt(process.env.KKM_PORT || '8080', 10);
 const PROXY_PORT = parseInt(process.env.PROXY_PORT || '3456', 10);
 
