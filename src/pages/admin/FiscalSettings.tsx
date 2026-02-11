@@ -165,48 +165,44 @@ export default function FiscalSettingsPage() {
     setIsTesting(true);
     setConnectionStatus("idle");
 
-    const pingUrl = async (url: string): Promise<boolean> => {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      try {
-        await fetch(url, {
-          method: "GET",
-          signal: controller.signal,
-          mode: "no-cors",
-        });
-        return true;
-      } catch {
-        return false;
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    };
+    // Браузер на HTTPS НЕ МОЖЕТ обратиться к HTTP напрямую (Mixed Content).
+    // Единственный способ — через Local Proxy на кассовом ПК.
+    if (!config.LocalProxyUrl) {
+      setConnectionStatus("offline");
+      toast.error(
+        "❌ Для подключения к ККМ из браузера необходим Local Proxy.\n" +
+        "Запустите scripts/kkm-proxy.js на кассовом ПК и укажите http://localhost:3456",
+        { duration: 8000 }
+      );
+      setIsTesting(false);
+      return;
+    }
 
-    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
-    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
-
-    // Try Direct IP first
-    let directOk = await pingUrl(directUrl);
-    let proxyOk = false;
-    let usedMethod = "Direct";
-
-    if (directOk) {
-      setConnectionStatus("online");
-      toast.success(`✅ Связь установлена (Direct: ${config.Host}:${config.Port})`);
-    } else if (proxyUrl) {
-      // Fallback to proxy
-      proxyOk = await pingUrl(proxyUrl);
-      if (proxyOk) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(`${config.LocalProxyUrl}/api/v1/status`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      
+      if (response.ok || response.status < 500) {
         setConnectionStatus("online");
-        usedMethod = "Proxy";
-        toast.success(`✅ Связь через Proxy (${config.LocalProxyUrl})`);
+        toast.success(`✅ ККМ доступна через Proxy (${config.LocalProxyUrl} → ${config.Host}:${config.Port})`);
       } else {
         setConnectionStatus("offline");
-        toast.error("❌ ККМ недоступна ни напрямую, ни через прокси");
+        const text = await response.text().catch(() => "");
+        toast.error(`❌ ККМ ответила ошибкой ${response.status}: ${text}`);
       }
-    } else {
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       setConnectionStatus("offline");
-      toast.error(`❌ ККМ недоступна (Direct: ${config.Host}:${config.Port})`);
+      if (err.name === "AbortError") {
+        toast.error("❌ Таймаут подключения к Proxy. Убедитесь что kkm-proxy.js запущен.");
+      } else {
+        toast.error(`❌ Proxy недоступен: ${err.message}. Запустите: node scripts/kkm-proxy.js`);
+      }
     }
 
     setIsTesting(false);
@@ -214,47 +210,44 @@ export default function FiscalSettingsPage() {
 
   const handleAutoDetect = async () => {
     setIsTesting(true);
-    toast.info("🔍 Автоопределение оптимального подключения...");
+    toast.info("🔍 Проверка подключения через Local Proxy...");
 
-    const pingUrl = async (url: string): Promise<{ ok: boolean; latency: number }> => {
+    if (!config.LocalProxyUrl) {
+      // Подставляем дефолтный proxy URL
+      const defaultProxy = "http://localhost:3456";
+      setConfig({ ...config, LocalProxyUrl: defaultProxy });
+      toast.info(`Установлен Local Proxy URL: ${defaultProxy}. Убедитесь что kkm-proxy.js запущен.`);
+      setIsTesting(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
       const start = Date.now();
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      try {
-        await fetch(url, { method: "GET", signal: controller.signal, mode: "no-cors" });
-        return { ok: true, latency: Date.now() - start };
-      } catch {
-        return { ok: false, latency: Infinity };
-      } finally {
-        clearTimeout(timeoutId);
-      }
-    };
+      const response = await fetch(`${config.LocalProxyUrl}/api/v1/status`, {
+        method: "GET",
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const latency = Date.now() - start;
 
-    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
-    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
-
-    const directResult = await pingUrl(directUrl);
-    const proxyResult = proxyUrl ? await pingUrl(proxyUrl) : { ok: false, latency: Infinity };
-
-    if (directResult.ok && proxyResult.ok) {
-      // Both work - choose faster
-      if (directResult.latency <= proxyResult.latency) {
-        toast.success(`⚡ Direct быстрее (${directResult.latency}ms vs ${proxyResult.latency}ms) — используем Direct`);
-        setConfig({ ...config, LocalProxyUrl: "" });
+      if (response.ok || response.status < 500) {
+        setConnectionStatus("online");
+        toast.success(`✅ ККМ подключена через Proxy (${latency}ms)`);
       } else {
-        toast.success(`⚡ Proxy быстрее (${proxyResult.latency}ms vs ${directResult.latency}ms) — используем Proxy`);
+        setConnectionStatus("offline");
+        toast.error(`❌ ККМ ответила ошибкой: ${response.status}`);
       }
-      setConnectionStatus("online");
-    } else if (directResult.ok) {
-      toast.success(`✅ Работает только Direct (${directResult.latency}ms)`);
-      setConfig({ ...config, LocalProxyUrl: "" });
-      setConnectionStatus("online");
-    } else if (proxyResult.ok) {
-      toast.success(`✅ Работает только Proxy (${proxyResult.latency}ms)`);
-      setConnectionStatus("online");
-    } else {
-      toast.error("❌ Ни Direct, ни Proxy не работают. Проверьте IP и сеть.");
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       setConnectionStatus("offline");
+      toast.error(
+        "❌ Proxy недоступен. Инструкция:\n" +
+        "1) На кассовом ПК: node scripts/kkm-proxy.js\n" +
+        "2) В настройках: http://localhost:3456",
+        { duration: 10000 }
+      );
     }
 
     setIsTesting(false);
@@ -332,15 +325,21 @@ export default function FiscalSettingsPage() {
               <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label className="text-warning">Local Proxy URL (Mixed Content Fix)</Label>
+              <Label className="text-destructive font-bold">⚠ Local Proxy URL (ОБЯЗАТЕЛЬНО)</Label>
               <Input
                 value={config.LocalProxyUrl}
                 onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
                 placeholder="http://localhost:3456"
+                className={!config.LocalProxyUrl ? "border-destructive" : "border-green-500"}
               />
-              <p className="text-xs text-muted-foreground">
-                Запустите scripts/kkm-proxy.js на кассовом ПК и укажите http://localhost:3456
-              </p>
+              <div className="text-xs space-y-1 p-3 rounded-lg bg-muted border">
+                <p className="font-semibold text-foreground">Почему нужен Proxy?</p>
+                <p className="text-muted-foreground">Браузер (HTTPS) <strong>не может</strong> обращаться к ККМ по HTTP напрямую — это блокируется Mixed Content. iiko работает потому что это десктопное приложение.</p>
+                <p className="font-semibold text-foreground mt-2">Инструкция (один раз):</p>
+                <p className="text-muted-foreground">1. Скопируйте <code className="bg-background px-1 rounded">scripts/kkm-proxy.js</code> на кассовый ПК</p>
+                <p className="text-muted-foreground">2. Запустите: <code className="bg-background px-1 rounded">KKM_HOST={config.Host} KKM_PORT={config.Port} node kkm-proxy.js</code></p>
+                <p className="text-muted-foreground">3. Укажите здесь: <code className="bg-background px-1 rounded">http://localhost:3456</code></p>
+              </div>
             </div>
           </div>
           <div className="flex gap-2 pt-2">
