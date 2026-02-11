@@ -9,22 +9,28 @@ import {
   ExternalLink,
   Server,
   Cpu,
+  Settings2,
+  Database,
+  ShieldCheck,
+  Clock,
 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { PaymentTypesEditor } from "@/components/admin/fiscal/PaymentTypesEditor";
 import { FiscalReportsCard } from "@/components/admin/fiscal/FiscalReportsCard";
 
-// 1. СТРОГОЕ СООТВЕТСТВИЕ СТРУКТУРЕ XML (ТВОЙ ОРИГИНАЛ)
+// ПОЛНЫЙ ОРИГИНАЛЬНЫЙ ОБЪЕКТ XML
 const XML_DEFAULTS = {
   Host: "192.168.9.19",
   Port: "8080",
-  LocalProxyUrl: "",
+  LocalProxyUrl: "http://localhost:3456",
   CashierId: "3",
   CashierPin: "4321",
   KkmPassword: "Aa1111Bb",
@@ -82,21 +88,17 @@ const XML_DEFAULTS = {
   ],
 };
 
-// Supported KKM Drivers
 const KKM_DRIVERS = [
   { value: "hdm", label: "HDM (ISP930)", description: "Армянский фискальный регистратор" },
   { value: "atol", label: "ATOL", description: "Российский драйвер ATOL" },
   { value: "shtrih", label: "Shtrih-M", description: "Штрих-М ФР" },
-  { value: "evotor", label: "Evotor", description: "Смарт-терминал Эвотор" },
-  { value: "custom", label: "Custom API", description: "Пользовательский API" },
 ];
 
 export default function FiscalSettingsPage() {
-  const [config, setConfig] = useState<any>({ ...XML_DEFAULTS, location_id: "", LocalProxyUrl: "", driver: "hdm" });
+  const [config, setConfig] = useState<any>({ ...XML_DEFAULTS, location_id: "", driver: "hdm" });
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<"idle" | "online" | "offline">("idle");
 
   useEffect(() => {
     async function init() {
@@ -113,261 +115,231 @@ export default function FiscalSettingsPage() {
 
   async function loadSettings(locId: string) {
     setLoading(true);
-    setConnectionStatus("idle");
     const { data } = await supabase.from("fiscal_settings").select("*").eq("location_id", locId).maybeSingle();
-
     if (data) {
-      const dbData = data as any;
-      const paymentTypes = Array.isArray(dbData.PaymentTypes) ? dbData.PaymentTypes : XML_DEFAULTS.PaymentTypes;
-
-      setConfig({
-        ...XML_DEFAULTS,
-        ...dbData,
-        location_id: locId,
-        // Мапим варианты имен полей из БД (для поддержки старых миграций)
-        Host: dbData.Host ?? dbData.ip_address ?? dbData.host ?? XML_DEFAULTS.Host,
-        Port: dbData.Port ?? dbData.port ?? XML_DEFAULTS.Port,
-        LocalProxyUrl: dbData.local_proxy_url ?? dbData.LocalProxyUrl ?? "",
-        PaymentTypes: paymentTypes,
-      });
+      setConfig({ ...XML_DEFAULTS, ...data, location_id: locId });
     } else {
       setConfig({ ...XML_DEFAULTS, location_id: locId });
     }
     setLoading(false);
   }
 
-  // СОХРАНЕНИЕ ВСЕХ ПАРАМЕТРОВ
   const handleSave = async () => {
     try {
       setLoading(true);
-      const { location_id, ...restConfig } = config;
-
-      const payload: any = {
-        ...restConfig,
-        location_id,
-        // Явный маппинг для избежания ошибки Schema Cache
+      const { error } = await supabase.from("fiscal_settings").upsert({
+        ...config,
         local_proxy_url: config.LocalProxyUrl,
         updated_at: new Date().toISOString(),
-      };
-
-      const { error } = await supabase.from("fiscal_settings").upsert(payload);
+      });
       if (error) throw error;
       toast.success("Настройки успешно сохранены");
     } catch (err: any) {
-      toast.error(`Ошибка сохранения: ${err.message}`);
+      toast.error(`Ошибка: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  // Прямое подключение к ККМ по IP (как iiko)
   const handleTestConnection = async () => {
     setIsTesting(true);
-    setConnectionStatus("idle");
-
-    const url = `http://${config.Host}:${config.Port}/api/v1/status`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    // ИСПОЛЬЗУЕМ ПРОКСИ ДЛЯ ОБХОДА MIXED CONTENT
+    const proxyUrl = `${config.LocalProxyUrl}/api/v1/status`;
     try {
-      const start = Date.now();
-      const response = await fetch(url, { method: "GET", signal: controller.signal });
-      clearTimeout(timeoutId);
-      const latency = Date.now() - start;
-      if (response.ok || response.status < 500) {
-        setConnectionStatus("online");
-        toast.success(`✅ ККМ доступна (${config.Host}:${config.Port}, ${latency}ms)`);
-      } else {
-        setConnectionStatus("offline");
-        toast.error(`❌ ККМ ответила ошибкой: ${response.status}`);
-      }
+      const response = await fetch(proxyUrl, {
+        method: "GET",
+        headers: {
+          "X-Target-Host": config.Host,
+          "X-Target-Port": config.Port,
+        },
+      });
+      if (response.ok) toast.success(`✅ ККМ ${config.Host} отвечает! (через прокси)`);
+      else toast.error(`❌ Ошибка ККМ: ${response.status}`);
     } catch (err: any) {
-      clearTimeout(timeoutId);
-      setConnectionStatus("offline");
-      toast.error(`❌ ККМ недоступна (${config.Host}:${config.Port}): ${err.message}`);
+      toast.error(`❌ Прокси ${config.LocalProxyUrl} не запущен!`);
+    } finally {
+      setIsTesting(false);
     }
-    setIsTesting(false);
   };
 
   if (loading) return <div className="p-8 text-center">Загрузка...</div>;
 
   return (
-    <div className="container mx-auto p-6 max-w-5xl space-y-6">
+    <div className="container mx-auto p-6 max-w-6xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Настройки ККМ</h1>
-          <p className="text-muted-foreground">Полная конфигурация чека и сетевых параметров</p>
+          <h1 className="text-3xl font-bold">Настройки ККМ</h1>
+          <p className="text-muted-foreground">Управление фискализацией через локальный агент</p>
         </div>
-         <div className="flex gap-3">
+        <div className="flex gap-3">
           <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
             {isTesting ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" /> : <Wifi className="mr-2 h-4 w-4" />}
             Тест связи
           </Button>
           <Button onClick={handleSave} className="bg-primary">
-            <Save className="mr-2 h-4 w-4" /> Сохранить
+            <Save className="mr-2 h-4 w-4" /> Сохранить настройки
           </Button>
         </div>
       </div>
 
-      {/* DRIVER SELECTION */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 pb-4 border-b mb-4">
-          <Cpu className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Драйвер ККМ</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Выберите драйвер</Label>
-            <Select value={config.driver || "hdm"} onValueChange={(v) => setConfig({ ...config, driver: v })}>
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите драйвер ККМ" />
-              </SelectTrigger>
-              <SelectContent>
-                {KKM_DRIVERS.map((d) => (
-                  <SelectItem key={d.value} value={d.value}>
-                    {d.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Описание</Label>
-            <p className="text-sm text-muted-foreground pt-2">
-              {KKM_DRIVERS.find((d) => d.value === config.driver)?.description || "Выберите драйвер"}
-            </p>
-          </div>
-        </div>
-      </Card>
+      <Tabs defaultValue="network" className="w-full">
+        <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+          <TabsTrigger value="network">
+            <Server className="w-4 h-4 mr-2" /> Связь
+          </TabsTrigger>
+          <TabsTrigger value="params">
+            <Settings2 className="w-4 h-4 mr-2" /> Параметры
+          </TabsTrigger>
+          <TabsTrigger value="payments">
+            <ShieldCheck className="w-4 h-4 mr-2" /> Оплаты
+          </TabsTrigger>
+          <TabsTrigger value="reports">
+            <Activity className="w-4 h-4 mr-2" /> Отчеты
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* СЕТЬ */}
-        <Card className="p-6 md:col-span-2 space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <Server className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Сетевые настройки</h2>
+        <TabsContent value="network">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+            <Card className="p-6 space-y-4">
+              <div className="flex items-center gap-2 font-semibold">
+                <Wifi className="w-5 h-5 text-primary" /> ККМ (Hardware)
+              </div>
+              <div className="space-y-2">
+                <Label>IP Адрес ККМ</Label>
+                <Input
+                  value={config.Host}
+                  onChange={(e) => setConfig({ ...config, Host: e.target.value })}
+                  placeholder="192.168.9.19"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Порт ККМ</Label>
+                <Input
+                  value={config.Port}
+                  onChange={(e) => setConfig({ ...config, Port: e.target.value })}
+                  placeholder="8080"
+                />
+              </div>
+              <div className="pt-4 border-t space-y-2">
+                <Label className="text-blue-600 font-bold">Адрес Прокси (Local Agent)</Label>
+                <Input
+                  className="border-blue-400"
+                  value={config.LocalProxyUrl}
+                  onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
+                />
+                <p className="text-[10px] text-muted-foreground italic">Запустите node kkm-proxy.js на порту 3456</p>
+              </div>
+            </Card>
+
+            <Card className="p-6 space-y-4">
+              <div className="flex items-center gap-2 font-semibold">
+                <Lock className="w-5 h-5 text-primary" /> Доступ
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Cashier ID</Label>
+                  <Input
+                    value={config.CashierId}
+                    onChange={(e) => setConfig({ ...config, CashierId: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Cashier PIN</Label>
+                  <Input
+                    type="password"
+                    value={config.CashierPin}
+                    onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Пароль ККМ (Admin)</Label>
+                <Input
+                  value={config.KkmPassword}
+                  onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
+                />
+              </div>
+            </Card>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>IP Адрес ККМ</Label>
-              <Input value={config.Host} onChange={(e) => setConfig({ ...config, Host: e.target.value })} />
+        </TabsContent>
+
+        <TabsContent value="params">
+          <Card className="p-6 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-4">
+                <h3 className="font-bold border-b pb-2">ADG Коды</h3>
+                <div className="space-y-2">
+                  <Label>Стандартный ADG</Label>
+                  <Input
+                    value={config.DefaultAdg}
+                    onChange={(e) => setConfig({ ...config, DefaultAdg: e.target.value })}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Label>Использовать по умолчанию</Label>
+                  <Switch
+                    checked={config.UseDefaultAdg}
+                    onCheckedChange={(v) => setConfig({ ...config, UseDefaultAdg: v })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-bold border-b pb-2">Наценки (Service)</h3>
+                <div className="space-y-2">
+                  <Label>Имя услуги</Label>
+                  <Input
+                    value={config.SubchargeAsDishName}
+                    onChange={(e) => setConfig({ ...config, SubchargeAsDishName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Код услуги</Label>
+                  <Input
+                    value={config.SubchargeAsDishCode}
+                    onChange={(e) => setConfig({ ...config, SubchargeAsDishCode: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-bold border-b pb-2">Таймауты (ms)</h3>
+                <div className="space-y-2">
+                  <Label>Операция</Label>
+                  <Input
+                    type="number"
+                    value={config.DefaultOperationTimeout}
+                    onChange={(e) => setConfig({ ...config, DefaultOperationTimeout: Number(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Оплата</Label>
+                  <Input
+                    type="number"
+                    value={config.KkmPaymentTimeout}
+                    onChange={(e) => setConfig({ ...config, KkmPaymentTimeout: Number(e.target.value) })}
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label>Порт</Label>
-              <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
-            </div>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                window.open(`http://${config.Host}:${config.Port}/api/v1/status`, "_blank");
-              }}
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Открыть статус ККМ
-            </Button>
-          </div>
-        </Card>
+          </Card>
+        </TabsContent>
 
-        {/* СТАТУС */}
-        <Card className="p-6 space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <Activity className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Статус</h2>
-          </div>
-          <div className="flex flex-col items-center justify-center py-6">
-            <div
-              className={`h-16 w-16 rounded-full flex items-center justify-center mb-4 ${
-                connectionStatus === "online"
-                  ? "bg-green-100 text-green-600"
-                  : connectionStatus === "offline"
-                    ? "bg-red-100 text-red-600"
-                    : "bg-gray-100 text-gray-400"
-              }`}
-            >
-              <Wifi className="h-8 w-8" />
-            </div>
-            <p className="font-bold text-lg">{connectionStatus.toUpperCase()}</p>
-          </div>
-        </Card>
-      </div>
-
-      {/* АВТОРИЗАЦИЯ */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 pb-4 border-b mb-4">
-          <Lock className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Авторизация</h2>
-        </div>
-        <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label>ID Кассира</Label>
-            <Input value={config.CashierId} onChange={(e) => setConfig({ ...config, CashierId: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>PIN</Label>
-            <Input
-              type="password"
-              value={config.CashierPin}
-              onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })}
+        <TabsContent value="payments">
+          <div className="mt-4">
+            <PaymentTypesEditor
+              paymentTypes={config.PaymentTypes}
+              onChange={(types) => setConfig({ ...config, PaymentTypes: types })}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Пароль ККМ</Label>
-            <Input
-              type="password"
-              value={config.KkmPassword}
-              onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })}
-            />
-          </div>
-        </div>
-      </Card>
+        </TabsContent>
 
-      {/* ДОПОЛНИТЕЛЬНЫЕ ПАРАМЕТРЫ (ТВОИ ADG, VAT И Т.Д.) */}
-      <Card className="p-6">
-        <div className="flex items-center gap-2 pb-4 border-b mb-4">
-          <Terminal className="h-5 w-5 text-primary" />
-          <h2 className="text-xl font-semibold">Параметры ADG и Чека</h2>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="space-y-2">
-            <Label>НДС (%)</Label>
-            <Input
-              type="number"
-              value={config.VatRate}
-              onChange={(e) => setConfig({ ...config, VatRate: parseFloat(e.target.value) })}
-            />
+        <TabsContent value="reports">
+          <div className="mt-4">
+            <FiscalReportsCard config={config} />
           </div>
-          <div className="space-y-2">
-            <Label>ADG по умолчанию</Label>
-            <Input value={config.DefaultAdg} onChange={(e) => setConfig({ ...config, DefaultAdg: e.target.value })} />
-          </div>
-          <div className="space-y-2">
-            <Label>Код блюда (Subcharge)</Label>
-            <Input
-              value={config.SubchargeAsDishCode}
-              onChange={(e) => setConfig({ ...config, SubchargeAsDishCode: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Таймаут (мс)</Label>
-            <Input
-              type="number"
-              value={config.DefaultOperationTimeout}
-              onChange={(e) => setConfig({ ...config, DefaultOperationTimeout: parseInt(e.target.value) })}
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* ФИСКАЛЬНЫЕ ОТЧЁТЫ */}
-      <FiscalReportsCard config={config} />
-
-      {/* СПОСОБЫ ОПЛАТЫ */}
-      <PaymentTypesEditor
-        paymentTypes={config.PaymentTypes || []}
-        onChange={(paymentTypes) => setConfig({ ...config, PaymentTypes: paymentTypes })}
-      />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
