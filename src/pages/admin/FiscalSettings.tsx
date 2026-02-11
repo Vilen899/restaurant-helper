@@ -161,93 +161,84 @@ export default function FiscalSettingsPage() {
     }
   };
 
+  // Попытка подключения: сначала Direct, потом Proxy (как iiko — напрямую по IP)
+  const pingUrl = async (url: string): Promise<{ ok: boolean; latency: number; error?: string }> => {
+    const start = Date.now();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    try {
+      const response = await fetch(url, { method: "GET", signal: controller.signal });
+      clearTimeout(timeoutId);
+      return { ok: response.ok || response.status < 500, latency: Date.now() - start };
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      return { ok: false, latency: Date.now() - start, error: err.message };
+    }
+  };
+
   const handleTestConnection = async () => {
     setIsTesting(true);
     setConnectionStatus("idle");
 
-    // Браузер на HTTPS НЕ МОЖЕТ обратиться к HTTP напрямую (Mixed Content).
-    // Единственный способ — через Local Proxy на кассовом ПК.
-    if (!config.LocalProxyUrl) {
-      setConnectionStatus("offline");
-      toast.error(
-        "❌ Для подключения к ККМ из браузера необходим Local Proxy.\n" +
-        "Запустите scripts/kkm-proxy.js на кассовом ПК и укажите http://localhost:3456",
-        { duration: 8000 }
-      );
+    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
+    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
+
+    // 1) Пробуем напрямую (как iiko)
+    const directResult = await pingUrl(directUrl);
+    if (directResult.ok) {
+      setConnectionStatus("online");
+      toast.success(`✅ ККМ доступна напрямую (${config.Host}:${config.Port}, ${directResult.latency}ms)`);
       setIsTesting(false);
       return;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    try {
-      const response = await fetch(`${config.LocalProxyUrl}/api/v1/status`, {
-        method: "GET",
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      
-      if (response.ok || response.status < 500) {
+    // 2) Пробуем через Proxy
+    if (proxyUrl) {
+      const proxyResult = await pingUrl(proxyUrl);
+      if (proxyResult.ok) {
         setConnectionStatus("online");
-        toast.success(`✅ ККМ доступна через Proxy (${config.LocalProxyUrl} → ${config.Host}:${config.Port})`);
-      } else {
-        setConnectionStatus("offline");
-        const text = await response.text().catch(() => "");
-        toast.error(`❌ ККМ ответила ошибкой ${response.status}: ${text}`);
-      }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      setConnectionStatus("offline");
-      if (err.name === "AbortError") {
-        toast.error("❌ Таймаут подключения к Proxy. Убедитесь что kkm-proxy.js запущен.");
-      } else {
-        toast.error(`❌ Proxy недоступен: ${err.message}. Запустите: node scripts/kkm-proxy.js`);
+        toast.success(`✅ ККМ доступна через Proxy (${config.LocalProxyUrl}, ${proxyResult.latency}ms)`);
+        setIsTesting(false);
+        return;
       }
     }
 
+    // 3) Ничего не работает
+    setConnectionStatus("offline");
+    toast.error(
+      `❌ ККМ недоступна (${config.Host}:${config.Port}).\n` +
+      "Если браузер блокирует — попробуйте Local Proxy (kkm-proxy.js)",
+      { duration: 8000 }
+    );
     setIsTesting(false);
   };
 
   const handleAutoDetect = async () => {
     setIsTesting(true);
-    toast.info("🔍 Проверка подключения через Local Proxy...");
+    toast.info("🔍 Поиск оптимального подключения к ККМ...");
 
-    if (!config.LocalProxyUrl) {
-      // Подставляем дефолтный proxy URL
-      const defaultProxy = "http://localhost:3456";
-      setConfig({ ...config, LocalProxyUrl: defaultProxy });
-      toast.info(`Установлен Local Proxy URL: ${defaultProxy}. Убедитесь что kkm-proxy.js запущен.`);
-      setIsTesting(false);
-      return;
-    }
+    const directUrl = `http://${config.Host}:${config.Port}/api/v1/status`;
+    const proxyUrl = config.LocalProxyUrl ? `${config.LocalProxyUrl}/api/v1/status` : null;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    try {
-      const start = Date.now();
-      const response = await fetch(`${config.LocalProxyUrl}/api/v1/status`, {
-        method: "GET",
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      const latency = Date.now() - start;
+    const directResult = await pingUrl(directUrl);
+    const proxyResult = proxyUrl ? await pingUrl(proxyUrl) : { ok: false, latency: Infinity };
 
-      if (response.ok || response.status < 500) {
-        setConnectionStatus("online");
-        toast.success(`✅ ККМ подключена через Proxy (${latency}ms)`);
+    if (directResult.ok && proxyResult.ok) {
+      if (directResult.latency <= proxyResult.latency) {
+        toast.success(`⚡ Direct быстрее (${directResult.latency}ms vs ${proxyResult.latency}ms)`);
       } else {
-        setConnectionStatus("offline");
-        toast.error(`❌ ККМ ответила ошибкой: ${response.status}`);
+        toast.success(`⚡ Proxy быстрее (${proxyResult.latency}ms vs ${directResult.latency}ms)`);
       }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
+      setConnectionStatus("online");
+    } else if (directResult.ok) {
+      toast.success(`✅ Direct работает (${directResult.latency}ms)`);
+      setConnectionStatus("online");
+    } else if (proxyResult.ok) {
+      toast.success(`✅ Proxy работает (${proxyResult.latency}ms)`);
+      setConnectionStatus("online");
+    } else {
       setConnectionStatus("offline");
-      toast.error(
-        "❌ Proxy недоступен. Инструкция:\n" +
-        "1) На кассовом ПК: node scripts/kkm-proxy.js\n" +
-        "2) В настройках: http://localhost:3456",
-        { duration: 10000 }
-      );
+      toast.error("❌ ККМ недоступна. Проверьте IP/порт и сеть.");
     }
 
     setIsTesting(false);
@@ -325,21 +316,15 @@ export default function FiscalSettingsPage() {
               <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} />
             </div>
             <div className="space-y-2 md:col-span-2">
-              <Label className="text-destructive font-bold">⚠ Local Proxy URL (ОБЯЗАТЕЛЬНО)</Label>
+              <Label>Local Proxy URL (опционально)</Label>
               <Input
                 value={config.LocalProxyUrl}
                 onChange={(e) => setConfig({ ...config, LocalProxyUrl: e.target.value })}
                 placeholder="http://localhost:3456"
-                className={!config.LocalProxyUrl ? "border-destructive" : "border-green-500"}
               />
-              <div className="text-xs space-y-1 p-3 rounded-lg bg-muted border">
-                <p className="font-semibold text-foreground">Почему нужен Proxy?</p>
-                <p className="text-muted-foreground">Браузер (HTTPS) <strong>не может</strong> обращаться к ККМ по HTTP напрямую — это блокируется Mixed Content. iiko работает потому что это десктопное приложение.</p>
-                <p className="font-semibold text-foreground mt-2">Инструкция (один раз):</p>
-                <p className="text-muted-foreground">1. Скопируйте <code className="bg-background px-1 rounded">scripts/kkm-proxy.js</code> на кассовый ПК</p>
-                <p className="text-muted-foreground">2. Запустите: <code className="bg-background px-1 rounded">KKM_HOST={config.Host} KKM_PORT={config.Port} node kkm-proxy.js</code></p>
-                <p className="text-muted-foreground">3. Укажите здесь: <code className="bg-background px-1 rounded">http://localhost:3456</code></p>
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Если прямое подключение к ККМ не работает из-за ограничений браузера — запустите <code>scripts/kkm-proxy.js</code> на кассовом ПК
+              </p>
             </div>
           </div>
           <div className="flex gap-2 pt-2">
