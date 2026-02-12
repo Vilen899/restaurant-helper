@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface PrintRequest {
-  action: "print_receipt" | "open_drawer" | "test_connection" | "x_report" | "z_report";
+  action: "print_receipt" | "open_drawer" | "test_connection" | "x_report" | "z_report" | "test_check";
   location_id?: string;
   order_data?: {
     order_number: number;
@@ -913,7 +913,6 @@ async function hdmRequest(
       case "z_report": {
         console.log(`[HDM] z_report`);
         
-        // Check if Z-report is enabled in config
         if (settings?.DoZReport === false) {
           return { success: true, message: "Z-отчёт отключён в настройках" };
         }
@@ -936,6 +935,61 @@ async function hdmRequest(
           return { success: true, message: "Z-отчёт напечатан" };
         }
         throw new Error(`Z-отчёт не выполнен: ${response.status}`);
+      }
+
+      case "test_check": {
+        console.log(`[HDM] test_check`);
+        
+        const testData = {
+          cashierId: parseInt(cashierId),
+          cashierPin: cashierPin,
+          password: kkmPassword,
+          receiptType: "sale",
+          documentType: 3,
+          items: [{
+            id: 1,
+            name: "Тестовый товар / Թեdelays  delays delays delays ք",
+            quantity: 1,
+            price: 100,
+            amount: 100,
+            vatRate: vatRate,
+            adgCode: defaultAdg,
+            productCode: "0001",
+            unit: "հdelays delays .",
+          }],
+          payments: [{
+            type: "paidAmount",
+            paymentType: 0,
+            amount: 100,
+            useExtPos: true,
+          }],
+          subtotal: 100,
+          discount: 0,
+          total: 100,
+          operator: settings?.operator_name || "Тест",
+          receiptNumber: 0,
+          date: new Date().toISOString(),
+          vatRate: vatRate,
+          mode: mode,
+          debugMode: debugMode,
+        };
+        
+        for (const endpoint of ["/api/v1/receipt", "/api/receipt", "/api/sale", "/api/fiscal/receipt"]) {
+          try {
+            const resp = await fetch(`${effectiveBaseUrl}${endpoint}`, {
+              method: "POST",
+              headers: hdmHeaders,
+              body: JSON.stringify(testData),
+              signal: AbortSignal.timeout(paymentTimeout),
+            });
+            if (resp.ok) {
+              return { success: true, message: "Тестовый чек напечатан" };
+            }
+          } catch (err) {
+            continue;
+          }
+        }
+        throw new Error("Не удалось напечатать тестовый чек");
       }
       
       default:
