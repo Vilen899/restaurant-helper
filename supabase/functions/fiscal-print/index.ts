@@ -629,11 +629,8 @@ async function hdmRequest(
   const host = settings?.Host || settings?.host || settings?.ip_address || "192.168.9.19";
   const port = settings?.Port || settings?.port || "8080";
   
-  // Check for local proxy URL (for Mixed Content bypass)
-  const localProxyUrl = settings?.LocalProxyUrl || settings?.local_proxy_url;
-  
-  // Build effective URL - prefer local proxy if configured
-  const effectiveBaseUrl = localProxyUrl || settings?.api_url || `http://${host}:${port}`;
+  // Edge function runs on server — always use direct IP, no proxy needed
+  const effectiveBaseUrl = settings?.api_url || `http://${host}:${port}`;
   
   console.log(`[HDM] Using URL: ${effectiveBaseUrl}, CashierId: ${cashierId}, Mode: ${mode}`);
   
