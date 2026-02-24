@@ -37,6 +37,7 @@ import { useMenuCache } from "@/hooks/useMenuCache";
 import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
 import { playCartAddSound } from "@/lib/sounds";
+import { KkmStatusBadge } from "@/components/cashier/KkmStatusBadge";
 import { deductIngredient, deductSemiFinishedIngredients } from "@/hooks/useInventoryDeduction";
 import { format } from "date-fns";
 
@@ -645,6 +646,9 @@ ${cashReceived ? `
               <WifiOff className="w-3 h-3 mr-1" /> Оффлайн
             </Badge>
           )}
+
+          {/* ККМ статус */}
+          <KkmStatusBadge locationId={session?.location_id} />
           
           {/* Очередь офлайн заказов */}
           {queue.length > 0 && (
