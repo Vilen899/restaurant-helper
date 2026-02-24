@@ -4,11 +4,12 @@ import {
   Wifi,
   Lock,
   Activity,
-  RefreshCw,
   Server,
   Settings2,
   ShieldCheck,
   Loader2,
+  Cloud,
+  Monitor,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { cn } from "@/lib/utils";
 import { PaymentTypesEditor } from "@/components/admin/fiscal/PaymentTypesEditor";
 import { FiscalReportsCard } from "@/components/admin/fiscal/FiscalReportsCard";
-import { callFiscal } from "@/lib/fiscalApi";
+import { callFiscal, getFiscalMode, setFiscalMode, type FiscalMode } from "@/lib/fiscalApi";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 // ПОЛНЫЙ ОРИГИНАЛЬНЫЙ ОБЪЕКТ XML
 const XML_DEFAULTS = {
@@ -78,6 +81,18 @@ export default function FiscalSettingsPage() {
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
+  const [fiscalMode, setFiscalModeState] = useState<FiscalMode>(getFiscalMode());
+
+  const handleModeChange = (mode: FiscalMode) => {
+    setFiscalModeState(mode);
+    setFiscalMode(mode);
+    // Save local host/port to localStorage when in local mode
+    if (mode === "local") {
+      localStorage.setItem("fiscal_local_host", config.Host || "192.168.9.19");
+      localStorage.setItem("fiscal_local_port", config.Port || "8080");
+    }
+    toast.success(mode === "local" ? "Режим: Локальный (браузер → ККМ)" : "Режим: Облачный (сервер → ККМ)");
+  };
 
   useEffect(() => {
     async function init() {
@@ -164,43 +179,96 @@ export default function FiscalSettingsPage() {
         </TabsList>
 
         <TabsContent value="network">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+          <div className="space-y-6 mt-4">
+            {/* Mode Selector */}
             <Card className="p-6 space-y-4">
               <div className="flex items-center gap-2 font-semibold">
-                <Wifi className="w-5 h-5 text-primary" /> ККМ (Hardware)
+                <Settings2 className="w-5 h-5 text-primary" /> Режим подключения
               </div>
-              <div className="space-y-2">
-                <Label>IP Адрес ККМ</Label>
-                <Input value={config.Host} onChange={(e) => setConfig({ ...config, Host: e.target.value })} placeholder="192.168.9.19" />
-              </div>
-              <div className="space-y-2">
-                <Label>Порт ККМ</Label>
-                <Input value={config.Port} onChange={(e) => setConfig({ ...config, Port: e.target.value })} placeholder="8080" />
-              </div>
-              <div className="mt-3 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
-                <p>💡 Браузер (HTTPS) не может напрямую обращаться к ККМ по HTTP. Все запросы идут через серверную функцию, которая связывается с ККМ по IP без ограничений.</p>
-              </div>
+              <RadioGroup value={fiscalMode} onValueChange={(v) => handleModeChange(v as FiscalMode)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label
+                  className={cn(
+                    "flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors",
+                    fiscalMode === "cloud" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/30"
+                  )}
+                >
+                  <RadioGroupItem value="cloud" className="mt-1" />
+                  <div>
+                    <div className="flex items-center gap-2 font-semibold">
+                      <Cloud className="w-4 h-4" /> Облачный (рекомендуется)
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Запросы идут через серверную функцию. Работает из любого браузера (HTTPS). Требуется VPN/проброс портов для доступа к ККМ из облака.
+                    </p>
+                  </div>
+                </label>
+                <label
+                  className={cn(
+                    "flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors",
+                    fiscalMode === "local" ? "border-primary bg-primary/5" : "border-muted hover:border-muted-foreground/30"
+                  )}
+                >
+                  <RadioGroupItem value="local" className="mt-1" />
+                  <div>
+                    <div className="flex items-center gap-2 font-semibold">
+                      <Monitor className="w-4 h-4" /> Локальный
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Браузер обращается к ККМ напрямую по IP. Работает только если страница открыта по HTTP или ККМ в той же сети. ⚠️ HTTPS блокирует HTTP-запросы.
+                    </p>
+                  </div>
+                </label>
+              </RadioGroup>
             </Card>
 
-            <Card className="p-6 space-y-4">
-              <div className="flex items-center gap-2 font-semibold">
-                <Lock className="w-5 h-5 text-primary" /> Доступ
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Cashier ID</Label>
-                  <Input value={config.CashierId} onChange={(e) => setConfig({ ...config, CashierId: e.target.value })} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="p-6 space-y-4">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Wifi className="w-5 h-5 text-primary" /> ККМ (Hardware)
                 </div>
                 <div className="space-y-2">
-                  <Label>Cashier PIN</Label>
-                  <Input type="password" value={config.CashierPin} onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })} />
+                  <Label>IP Адрес ККМ</Label>
+                  <Input value={config.Host} onChange={(e) => {
+                    setConfig({ ...config, Host: e.target.value });
+                    if (fiscalMode === "local") localStorage.setItem("fiscal_local_host", e.target.value);
+                  }} placeholder="192.168.9.19" />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Пароль ККМ (Admin)</Label>
-                <Input value={config.KkmPassword} onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })} />
-              </div>
-            </Card>
+                <div className="space-y-2">
+                  <Label>Порт ККМ</Label>
+                  <Input value={config.Port} onChange={(e) => {
+                    setConfig({ ...config, Port: e.target.value });
+                    if (fiscalMode === "local") localStorage.setItem("fiscal_local_port", e.target.value);
+                  }} placeholder="8080" />
+                </div>
+                <div className="mt-3 p-3 rounded-lg bg-muted/50 text-xs text-muted-foreground">
+                  {fiscalMode === "cloud" ? (
+                    <p>☁️ Облачный режим: запросы к ККМ идут через серверную функцию. ККМ должна быть доступна из интернета (VPN, проброс портов).</p>
+                  ) : (
+                    <p>🖥️ Локальный режим: браузер обращается к ККМ напрямую. Убедитесь, что ККМ доступна по IP из вашей сети.</p>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-6 space-y-4">
+                <div className="flex items-center gap-2 font-semibold">
+                  <Lock className="w-5 h-5 text-primary" /> Доступ
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Cashier ID</Label>
+                    <Input value={config.CashierId} onChange={(e) => setConfig({ ...config, CashierId: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Cashier PIN</Label>
+                    <Input type="password" value={config.CashierPin} onChange={(e) => setConfig({ ...config, CashierPin: e.target.value })} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Пароль ККМ (Admin)</Label>
+                  <Input value={config.KkmPassword} onChange={(e) => setConfig({ ...config, KkmPassword: e.target.value })} />
+                </div>
+              </Card>
+            </div>
           </div>
         </TabsContent>
 
