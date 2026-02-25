@@ -140,19 +140,38 @@ Deno.serve(async (req: Request) => {
       targetLocationId = profile?.location_id;
     }
 
-    if (!targetLocationId) {
+    // For test_connection without location, try first available fiscal settings
+    let settings: FiscalSettings | null = null;
+    let settingsError: unknown = null;
+
+    if (targetLocationId) {
+      const res = await supabase
+        .from("fiscal_settings")
+        .select("*")
+        .eq("location_id", targetLocationId)
+        .single();
+      settings = res.data as FiscalSettings | null;
+      settingsError = res.error;
+    }
+
+    // Fallback: if no location or no settings for location, grab first enabled settings
+    if (!settings && (action === "test_connection" || !targetLocationId)) {
+      const res = await supabase
+        .from("fiscal_settings")
+        .select("*")
+        .eq("enabled", true)
+        .limit(1)
+        .single();
+      settings = res.data as FiscalSettings | null;
+      settingsError = res.error;
+    }
+
+    if (!settings && !targetLocationId) {
       return new Response(JSON.stringify({ error: "No location found" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // Get fiscal settings for location
-    const { data: settings, error: settingsError } = await supabase
-      .from("fiscal_settings")
-      .select("*")
-      .eq("location_id", targetLocationId)
-      .single();
 
     if (settingsError || !settings) {
       return new Response(JSON.stringify({ error: "Fiscal settings not configured" }), {
