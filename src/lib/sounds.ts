@@ -62,3 +62,58 @@ export const playCartAddSound = async () => {
     // ignore sound errors (blocked audio policy etc.)
   }
 };
+
+/** Two-tone alert: KKM disconnected (descending) */
+export const playKkmDisconnectSound = async () => {
+  try {
+    const { soundEnabled, soundVolume } = getSoundSettings();
+    if (!soundEnabled) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const vol = (soundVolume / 100) * 0.2;
+    const t0 = ctx.currentTime;
+
+    // High then low tone
+    for (const [freq, offset] of [[660, 0], [440, 0.15]] as const) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = freq;
+      osc.connect(g);
+      g.connect(ctx.destination);
+      g.gain.setValueAtTime(vol, t0 + offset);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + offset + 0.12);
+      osc.start(t0 + offset);
+      osc.stop(t0 + offset + 0.13);
+    }
+  } catch {}
+};
+
+/** Rising chime: KKM reconnected */
+export const playKkmReconnectSound = async () => {
+  try {
+    const { soundEnabled, soundVolume } = getSoundSettings();
+    if (!soundEnabled) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const vol = (soundVolume / 100) * 0.15;
+    const t0 = ctx.currentTime;
+
+    for (const [freq, offset] of [[523, 0], [659, 0.1], [784, 0.2]] as const) {
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      osc.connect(g);
+      g.connect(ctx.destination);
+      g.gain.setValueAtTime(vol, t0 + offset);
+      g.gain.exponentialRampToValueAtTime(0.001, t0 + offset + 0.12);
+      osc.start(t0 + offset);
+      osc.stop(t0 + offset + 0.13);
+    }
+  } catch {}
+};
