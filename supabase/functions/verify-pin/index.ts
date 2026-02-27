@@ -1,10 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const allowedOrigins = [
+  "https://flexi-table-pal.lovable.app",
+  "https://id-preview--e4123934-78cd-467c-8d52-a699940728a8.lovable.app",
+  "http://localhost:5173",
+  "http://localhost:8080",
+];
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("origin") || "";
+  return {
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  };
+}
 
 async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -17,6 +27,8 @@ async function hashPin(pin: string): Promise<string> {
 }
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -45,18 +57,13 @@ serve(async (req) => {
     const inputHash = await hashPin(pin);
     const profile = profiles?.find((p) => p.pin_hash === inputHash);
 
-    // СООБЩЕНИЕ: НЕВЕРНЫЙ КОД
     if (!profile) {
       return new Response(
-        JSON.stringify({
-          error: "INVALID_PIN",
-          message: "Доступ отклонен: проверьте код",
-        }),
+        JSON.stringify({ error: "INVALID_PIN", message: "Доступ отклонен: проверьте код" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    // Получаем роль пользователя
     const { data: roleData } = await supabase
       .from("user_roles")
       .select("role")
@@ -72,14 +79,10 @@ serve(async (req) => {
       .is("ended_at", null)
       .maybeSingle();
 
-    // СООБЩЕНИЕ: ОТКРЫТАЯ СМЕНА
     if (openShift && openShift.location_id !== location_id) {
       const locationName = (openShift.location as any)?.name || "другой точке";
       return new Response(
-        JSON.stringify({
-          error: "SHIFT_OPEN_AT_ANOTHER_LOCATION",
-          message: `Внимание: ваша смена не закрыта в "${locationName}"`,
-        }),
+        JSON.stringify({ error: "SHIFT_OPEN_AT_ANOTHER_LOCATION", message: `Внимание: ваша смена не закрыта в "${locationName}"` }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -87,13 +90,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        user: {
-          id: profile.id,
-          full_name: profile.full_name,
-          location_id,
-          role: userRole,
-          hourly_rate: profile.hourly_rate || 0,
-        },
+        user: { id: profile.id, full_name: profile.full_name, location_id, role: userRole, hourly_rate: profile.hourly_rate || 0 },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

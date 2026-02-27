@@ -94,6 +94,10 @@ export default function CashierPage() {
     allowNegativeStock: true,
   });
 
+  const [kkmPrintEnabled, setKkmPrintEnabled] = useState(() => {
+    return localStorage.getItem('kkm_print_enabled') !== 'false';
+  });
+
   const [appliedDiscount, setAppliedDiscount] = useState<{
     id: string; name: string; type: 'percent' | 'fixed'; value: number; reason?: string;
   } | null>(null);
@@ -463,8 +467,10 @@ export default function CashierPage() {
         }
       }
 
-      // Печать чека (сначала пытаемся фискальный, если не получается - обычный)
-      await printFiscalReceipt(order, cart, method);
+      // Печать чека (фискальный - только если включено)
+      if (kkmPrintEnabled) {
+        await printFiscalReceipt(order, cart, method);
+      }
       
       // Также печатаем локальный чек для контроля
       printReceipt(order, cart, method, cashReceived);
@@ -649,6 +655,25 @@ ${cashReceived ? `
 
           {/* ККМ статус */}
           <KkmStatusBadge locationId={session?.location_id} />
+
+          {/* Тогл ККМ печати */}
+          <Button
+            variant={kkmPrintEnabled ? "outline" : "ghost"}
+            size="sm"
+            className={cn(
+              "justify-center text-xs",
+              kkmPrintEnabled ? "text-emerald-400 border-emerald-500/50" : "text-gray-500 border-gray-600"
+            )}
+            onClick={() => {
+              const next = !kkmPrintEnabled;
+              setKkmPrintEnabled(next);
+              localStorage.setItem('kkm_print_enabled', String(next));
+              toast.info(next ? "ККМ печать включена" : "ККМ печать выключена");
+            }}
+          >
+            <Printer className="w-3 h-3 mr-1" />
+            ККМ: {kkmPrintEnabled ? "Вкл" : "Выкл"}
+          </Button>
           
           {/* Очередь офлайн заказов */}
           {queue.length > 0 && (
