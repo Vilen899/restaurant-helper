@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Delete } from 'lucide-react';
 
@@ -8,7 +9,7 @@ interface NumericKeypadProps {
   quickAmounts?: number[];
 }
 
-export function NumericKeypad({ value, onChange, onConfirm, quickAmounts = [1000, 2000, 5000, 10000] }: NumericKeypadProps) {
+export const NumericKeypad = forwardRef<HTMLDivElement, NumericKeypadProps>(function NumericKeypad({ value, onChange, onConfirm, quickAmounts = [1000, 2000, 5000, 10000] }, ref) {
   const handlePress = (digit: string) => {
     if (digit === 'C') {
       onChange('');
@@ -26,7 +27,7 @@ export function NumericKeypad({ value, onChange, onConfirm, quickAmounts = [1000
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', 'backspace'];
 
   return (
-    <div className="space-y-3">
+    <div ref={ref} className="space-y-3">
       {/* Quick amount buttons */}
       {quickAmounts.length > 0 && (
         <div className="grid grid-cols-4 gap-2">
@@ -58,4 +59,4 @@ export function NumericKeypad({ value, onChange, onConfirm, quickAmounts = [1000
       </div>
     </div>
   );
-}
+});

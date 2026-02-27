@@ -1,12 +1,24 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+const allowedOrigins = [
+  "https://flexi-table-pal.lovable.app",
+  "https://id-preview--e4123934-78cd-467c-8d52-a699940728a8.lovable.app",
+  "http://localhost:5173",
+  "http://localhost:8080",
+];
+
+function getCorsHeaders(req: Request) {
+  const origin = req.headers.get("origin") || "";
+  return {
+    "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  };
+}
 
 serve(async (req) => {
+  const corsHeaders = getCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -18,36 +30,27 @@ serve(async (req) => {
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Verify caller is admin
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const token = authHeader.replace("Bearer ", "");
     const { data: { user: caller } } = await supabaseAdmin.auth.getUser(token);
-    
     if (!caller) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Check if caller is admin
     const { data: callerRole } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", caller.id)
-      .single();
+      .from("user_roles").select("role").eq("user_id", caller.id).single();
 
     if (callerRole?.role !== "admin") {
       return new Response(JSON.stringify({ error: "Only admins can create staff" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -55,56 +58,35 @@ serve(async (req) => {
 
     if (!full_name || !email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Create auth user
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name },
+      email, password, email_confirm: true, user_metadata: { full_name },
     });
 
     if (authError) {
       return new Response(JSON.stringify({ error: authError.message }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const userId = authData.user.id;
-
-    // Update profile (created by trigger)
     const profileUpdate: Record<string, any> = {
-      full_name,
-      phone: phone || null,
-      location_id: location_id || null,
-      hourly_rate: hourly_rate || 0,
-      is_active: true,
+      full_name, phone: phone || null, location_id: location_id || null, hourly_rate: hourly_rate || 0, is_active: true,
     };
 
-    // Hash PIN if provided
     if (pin && /^\d{4}$/.test(pin)) {
       const encoder = new TextEncoder();
       const salt = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.slice(0, 16) || "default_salt_key";
       const data = encoder.encode(pin + salt);
       const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      profileUpdate.pin_hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+      profileUpdate.pin_hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
     }
 
-    await supabaseAdmin
-      .from("profiles")
-      .update(profileUpdate)
-      .eq("id", userId);
-
-    // Create role
-    await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: userId, role });
+    await supabaseAdmin.from("profiles").update(profileUpdate).eq("id", userId);
+    await supabaseAdmin.from("user_roles").insert({ user_id: userId, role });
 
     return new Response(
       JSON.stringify({ success: true, user_id: userId }),
