@@ -22,8 +22,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { PaymentTypesEditor } from "@/components/admin/fiscal/PaymentTypesEditor";
 import { FiscalReportsCard } from "@/components/admin/fiscal/FiscalReportsCard";
-import { callFiscal, getFiscalMode, setFiscalMode, type FiscalMode } from "@/lib/fiscalApi";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  getFiscalMode,
+  setFiscalMode,
+  type FiscalMode,
+} from "@/lib/fiscalApi";
 
 // ПОЛНЫЙ ОРИГИНАЛЬНЫЙ ОБЪЕКТ XML
 const XML_DEFAULTS = {
@@ -86,12 +89,11 @@ export default function FiscalSettingsPage() {
   const handleModeChange = (mode: FiscalMode) => {
     setFiscalModeState(mode);
     setFiscalMode(mode);
-    // Save local host/port to localStorage when in local mode
     if (mode === "local") {
       localStorage.setItem("fiscal_local_host", config.Host || "192.168.9.19");
       localStorage.setItem("fiscal_local_port", config.Port || "8080");
     }
-    toast.success(mode === "local" ? "Режим: Локальный (браузер → ККМ)" : "Режим: Облачный (сервер → ККМ)");
+    toast.success(mode === "local" ? "Режим: Локальный (браузер → локальный агент → ККМ)" : "Режим: Облачный (сервер → ККМ)");
   };
 
   useEffect(() => {
@@ -137,9 +139,9 @@ export default function FiscalSettingsPage() {
   const handleTestConnection = async () => {
     setIsTesting(true);
     try {
-      const result = await callFiscal("test_connection", config.location_id);
+      const result = await callFiscal("test_connection", config.location_id, fiscalMode);
       if (result.success) {
-        toast.success(`✅ ККМ ${config.Host}:${config.Port} подключена!`);
+        toast.success(`✅ ККМ подключена через ${fiscalMode === "local" ? "локальный агент" : "облачный сервер"}!`);
       } else {
         toast.error(`❌ ККМ не отвечает: ${result.message}`);
       }
@@ -157,7 +159,9 @@ export default function FiscalSettingsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Настройки ККМ</h1>
-          <p className="text-muted-foreground">Подключение к ККМ через серверный прокси (без Mixed Content)</p>
+          <p className="text-muted-foreground">
+            Подключение к ККМ через серверный прокси или локальный агент
+          </p>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={handleTestConnection} disabled={isTesting}>
@@ -178,9 +182,9 @@ export default function FiscalSettingsPage() {
           <TabsTrigger value="reports"><Activity className="w-4 h-4 mr-2" /> Отчеты</TabsTrigger>
         </TabsList>
 
+        {/* ========== Network Tab ========== */}
         <TabsContent value="network">
           <div className="space-y-6 mt-4">
-            {/* Mode Selector */}
             <Card className="p-6 space-y-4">
               <div className="flex items-center gap-2 font-semibold">
                 <Settings2 className="w-5 h-5 text-primary" /> Режим подключения
@@ -214,7 +218,7 @@ export default function FiscalSettingsPage() {
                       <Monitor className="w-4 h-4" /> Локальный
                     </div>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Браузер обращается к ККМ напрямую по IP. Работает только если страница открыта по HTTP или ККМ в той же сети. ⚠️ HTTPS блокирует HTTP-запросы.
+                      Браузер → локальный агент → ККМ. Требуется запущенный агент на ПК с ККМ. ⚠️ HTTPS блокирует прямой HTTP к 192.168.x.x
                     </p>
                   </div>
                 </label>
@@ -244,7 +248,7 @@ export default function FiscalSettingsPage() {
                   {fiscalMode === "cloud" ? (
                     <p>☁️ Облачный режим: запросы к ККМ идут через серверную функцию. ККМ должна быть доступна из интернета (VPN, проброс портов).</p>
                   ) : (
-                    <p>🖥️ Локальный режим: браузер обращается к ККМ напрямую. Убедитесь, что ККМ доступна по IP из вашей сети.</p>
+                    <p>🖥️ Локальный режим: браузер обращается к локальному агенту на ПК с ККМ.</p>
                   )}
                 </div>
               </Card>
@@ -272,6 +276,7 @@ export default function FiscalSettingsPage() {
           </div>
         </TabsContent>
 
+        {/* ========== Params Tab ========== */}
         <TabsContent value="params">
           <Card className="p-6 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -312,12 +317,14 @@ export default function FiscalSettingsPage() {
           </Card>
         </TabsContent>
 
+        {/* ========== Payments Tab ========== */}
         <TabsContent value="payments">
           <div className="mt-4">
             <PaymentTypesEditor paymentTypes={config.PaymentTypes} onChange={(types) => setConfig({ ...config, PaymentTypes: types })} />
           </div>
         </TabsContent>
 
+        {/* ========== Reports Tab ========== */}
         <TabsContent value="reports">
           <div className="mt-4">
             <FiscalReportsCard config={config} />
