@@ -20,11 +20,13 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { PaymentTypesEditor } from "@/components/admin/fiscal/PaymentTypesEditor";
 import { FiscalReportsCard } from "@/components/admin/fiscal/FiscalReportsCard";
 import {
   getFiscalMode,
   setFiscalMode,
+  callFiscal,
   type FiscalMode,
 } from "@/lib/fiscalApi";
 
