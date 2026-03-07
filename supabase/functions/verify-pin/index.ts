@@ -8,6 +8,9 @@ const allowedOrigins = [
   "http://localhost:8080",
 ];
 
+const MAX_ATTEMPTS = 5;
+const WINDOW_MINUTES = 15;
+
 function getCorsHeaders(req: Request) {
   const origin = req.headers.get("origin") || "";
   return {
@@ -24,6 +27,12 @@ async function hashPin(pin: string): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function getClientIp(req: Request): string {
+  return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    "unknown";
 }
 
 serve(async (req) => {
@@ -48,6 +57,34 @@ serve(async (req) => {
       });
     }
 
+    // Validate PIN format (4 digits only)
+    if (!/^\d{4}$/.test(pin)) {
+      return new Response(JSON.stringify({ error: "INVALID_PIN", message: "PIN должен содержать 4 цифры" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const clientIp = getClientIp(req);
+    const windowStart = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000).toISOString();
+
+    // Check rate limit: count failed attempts in the window
+    const { count } = await supabase
+      .from("pin_attempts")
+      .select("*", { count: "exact", head: true })
+      .eq("location_id", location_id)
+      .gte("attempted_at", windowStart);
+
+    if ((count ?? 0) >= MAX_ATTEMPTS) {
+      return new Response(
+        JSON.stringify({
+          error: "RATE_LIMITED",
+          message: `Слишком много попыток. Повторите через ${WINDOW_MINUTES} минут`,
+        }),
+        { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const { data: profiles } = await supabase
       .from("profiles")
       .select("id, full_name, pin_hash, is_active, hourly_rate")
@@ -58,8 +95,21 @@ serve(async (req) => {
     const profile = profiles?.find((p) => p.pin_hash === inputHash);
 
     if (!profile) {
+      // Record failed attempt
+      await supabase.from("pin_attempts").insert({
+        location_id,
+        ip_address: clientIp,
+      });
+
+      const remainingAttempts = MAX_ATTEMPTS - ((count ?? 0) + 1);
+
       return new Response(
-        JSON.stringify({ error: "INVALID_PIN", message: "Доступ отклонен: проверьте код" }),
+        JSON.stringify({
+          error: "INVALID_PIN",
+          message: remainingAttempts > 0
+            ? `Доступ отклонен: проверьте код (осталось ${remainingAttempts} попыток)`
+            : `Доступ отклонен. Повторите через ${WINDOW_MINUTES} минут`,
+        }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
