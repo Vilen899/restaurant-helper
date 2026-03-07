@@ -875,6 +875,27 @@ export type Database = {
         }
         Relationships: []
       }
+      pin_attempts: {
+        Row: {
+          attempted_at: string
+          id: string
+          ip_address: string | null
+          location_id: string
+        }
+        Insert: {
+          attempted_at?: string
+          id?: string
+          ip_address?: string | null
+          location_id: string
+        }
+        Update: {
+          attempted_at?: string
+          id?: string
+          ip_address?: string | null
+          location_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
