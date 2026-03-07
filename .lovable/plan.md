@@ -1,39 +1,255 @@
 
+# План: Расширенное управление данными и отчётность
 
-## Plan: Fix FiscalSettings -- Location Selector, Save Fix, Test Timeout
+## Обзор изменений
 
-### 1. Add Location Selector (dropdown to switch between locations)
+1. **Скрыть "Центральный" из выбора в кассе** — точка "Crusty Центральный" не будет отображаться в выпадающем списке на странице PIN-логина (только в админке)
 
-In `FiscalSettings.tsx`, add a `Select` component (from `@/components/ui/select`) at the top of the page, between the header and tabs. It will:
-- Show all loaded locations from the `locations` state
-- On change, call `loadSettings(selectedLocationId)` to reload fiscal config for that location
-- Track the selected location in state
+2. **Добавить удаление везде в админке** — возможность удаления:
+   - Поставок
+   - Перемещений  
+   - Инвентаризаций
+   - Заказов/продаж
+   - Остатков на складе
 
-### 2. Fix Save Button
+3. **Просмотр содержимого чека** — функционал уже реализован в Documents.tsx, можно нажать на иконку "глаз" и увидеть все позиции чека
 
-The current `handleSave` does `supabase.from("fiscal_settings").upsert({...config})` which spreads the entire config object including XML_DEFAULTS fields that don't exist as DB columns. This will cause errors.
+4. **Отчёт движения товаров** — новая страница для просмотра всех операций с товарами (поставки, продажи, перемещения, корректировки)
 
-Fix: Filter config to only include fields that match the `fiscal_settings` table schema before upserting. Ensure `location_id` is set as the conflict key.
+---
 
-### 3. Add 15-second Timeout for Cloud Test Connection
+## 1. Скрытие "Центральный" из выбора точки в кассе
 
-In `handleTestConnection`, wrap the `callFiscal` call with a `Promise.race` using a 15-second timeout. On timeout, show a clear error message like "ККМ не отвечает (таймаут 15 сек). Проверьте доступность оборудования."
+**Файл:** `src/pages/PinLogin.tsx`
 
-Also set `isTesting = false` on timeout.
+**Изменения:**
+Фильтровать точки, исключая те, которые содержат слово "Центральный" или "центральный":
 
-### 4. Fix `callFiscal` call signature
+```typescript
+// В useEffect при загрузке локаций (строка 81):
+const { data } = await supabase
+  .from("locations")
+  .select("id, name")
+  .eq("is_active", true);
 
-Line 144: `callFiscal("test_connection", config.location_id, fiscalMode)` passes `fiscalMode` as the third argument which maps to `orderData` in the function signature. This is wrong -- `fiscalMode` is not order data. Remove the third argument since `callFiscal` already reads mode from localStorage.
+if (data?.length) {
+  // Фильтруем — исключаем "Центральный"
+  const filtered = data.filter(loc => 
+    !loc.name.toLowerCase().includes('центральный')
+  );
+  setLocations(filtered);
+  if (filtered.length > 0) {
+    setSelectedLocation(filtered[0].id);
+  }
+}
+```
 
-### Files to Change
+---
 
-**`src/pages/admin/FiscalSettings.tsx`**:
-- Add `Select, SelectContent, SelectItem, SelectTrigger, SelectValue` imports
-- Add `selectedLocationId` state, initialize from first loaded location
-- Add location dropdown UI between header and tabs
-- Fix `handleSave` to filter config fields to match DB columns
-- Fix `handleTestConnection` -- remove `fiscalMode` arg, add 15s timeout wrapper
-- Add `MapPin` icon import from lucide-react
+## 2. Добавление удаления в админке
 
-**`src/lib/fiscalApi.ts`**: No changes needed (already has correct signature).
+### 2.1 Миграция БД — политики удаления
 
+Добавить RLS политики для удаления данных администраторами:
+
+```sql
+-- Удаление поставок
+CREATE POLICY "Admins can delete supplies"
+ON public.supplies FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций поставок
+CREATE POLICY "Admins can delete supply_items"
+ON public.supply_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление перемещений
+CREATE POLICY "Admins can delete transfers"
+ON public.transfers FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций перемещений
+CREATE POLICY "Admins can delete transfer_items"
+ON public.transfer_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление инвентаризаций
+CREATE POLICY "Admins can delete stocktakings"
+ON public.stocktakings FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций инвентаризаций
+CREATE POLICY "Admins can delete stocktaking_items"
+ON public.stocktaking_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление заказов
+CREATE POLICY "Admins can delete orders"
+ON public.orders FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление позиций заказов
+CREATE POLICY "Admins can delete order_items"
+ON public.order_items FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление остатков
+CREATE POLICY "Admins can delete inventory"
+ON public.inventory FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+
+-- Удаление движений
+CREATE POLICY "Admins can delete inventory_movements"
+ON public.inventory_movements FOR DELETE
+USING (is_admin_or_manager(auth.uid()));
+```
+
+### 2.2 Обновление Inventory.tsx
+
+**Добавить в каждую таблицу колонку "Действия" с кнопкой удаления:**
+
+- Таблица остатков — кнопка удаления записи
+- Таблица поставок — кнопка удаления (удалит и supply_items)
+- Таблица перемещений — кнопка удаления (удалит и transfer_items)
+- Таблица инвентаризаций — кнопка удаления (удалит и stocktaking_items)
+
+**Функции удаления:**
+
+```typescript
+const handleDeleteSupply = async (id: string) => {
+  if (!confirm('Удалить поставку? Это действие необратимо.')) return;
+  await supabase.from('supply_items').delete().eq('supply_id', id);
+  await supabase.from('supplies').delete().eq('id', id);
+  toast.success('Поставка удалена');
+  fetchData();
+};
+
+const handleDeleteTransfer = async (id: string) => {
+  if (!confirm('Удалить перемещение?')) return;
+  await supabase.from('transfer_items').delete().eq('transfer_id', id);
+  await supabase.from('transfers').delete().eq('id', id);
+  toast.success('Перемещение удалено');
+  fetchData();
+};
+
+const handleDeleteStocktaking = async (id: string) => {
+  if (!confirm('Удалить инвентаризацию?')) return;
+  await supabase.from('stocktaking_items').delete().eq('stocktaking_id', id);
+  await supabase.from('stocktakings').delete().eq('id', id);
+  toast.success('Инвентаризация удалена');
+  fetchData();
+};
+
+const handleDeleteInventory = async (id: string) => {
+  if (!confirm('Удалить остаток?')) return;
+  await supabase.from('inventory').delete().eq('id', id);
+  toast.success('Запись удалена');
+  fetchData();
+};
+```
+
+### 2.3 Обновление Documents.tsx
+
+**Добавить кнопки удаления в таблицу чеков:**
+
+```typescript
+const handleDeleteOrder = async (id: string) => {
+  if (!confirm('Удалить заказ? Это действие необратимо.')) return;
+  await supabase.from('order_items').delete().eq('order_id', id);
+  await supabase.from('orders').delete().eq('id', id);
+  toast.success('Заказ удалён');
+  fetchDocuments();
+};
+```
+
+---
+
+## 3. Отчёт движения товаров
+
+**Новый файл:** `src/pages/admin/InventoryMovements.tsx`
+
+Страница для просмотра всех движений товаров:
+- Фильтры: точка, период, тип операции (sale, supply, transfer_in, transfer_out, adjustment)
+- Таблица со всеми записями inventory_movements
+- Колонки: Дата, Ингредиент, Точка, Тип операции, Количество, Цена, Примечание
+
+**Структура:**
+
+```typescript
+export default function InventoryMovementsPage() {
+  const [movements, setMovements] = useState([]);
+  const [filters, setFilters] = useState({
+    location_id: 'all',
+    movement_type: 'all',
+    dateFrom: undefined,
+    dateTo: undefined,
+  });
+
+  const fetchMovements = async () => {
+    let query = supabase
+      .from('inventory_movements')
+      .select('*, ingredient:ingredients(name, unit:units(*)), location:locations(name)')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    // Применяем фильтры...
+    
+    const { data } = await query;
+    setMovements(data || []);
+  };
+
+  // UI с таблицей и фильтрами
+}
+```
+
+**Типы операций для отображения:**
+- `sale` → "Продажа" (красный)
+- `supply` → "Поставка" (зелёный)
+- `transfer_in` → "Приход (перемещение)" (синий)
+- `transfer_out` → "Расход (перемещение)" (оранжевый)
+- `adjustment` → "Корректировка" (серый)
+- `refund` → "Возврат" (фиолетовый)
+
+### Добавление маршрута
+
+**Файл:** `src/App.tsx`
+
+```typescript
+import InventoryMovementsPage from './pages/admin/InventoryMovements';
+
+// В роутах админки:
+<Route path="inventory-movements" element={<InventoryMovementsPage />} />
+```
+
+### Добавление в меню
+
+**Файл:** `src/components/layout/AdminLayout.tsx`
+
+Добавить ссылку в раздел "Отчёты":
+- "Движение товаров" → `/admin/inventory-movements`
+
+---
+
+## Файлы для редактирования/создания
+
+| Файл | Действие |
+|------|----------|
+| Миграция SQL | Создать политики удаления |
+| `src/pages/PinLogin.tsx` | Фильтровать "Центральный" |
+| `src/pages/admin/Inventory.tsx` | Добавить кнопки удаления |
+| `src/pages/admin/Documents.tsx` | Добавить удаление заказов |
+| `src/pages/admin/InventoryMovements.tsx` | Создать новую страницу |
+| `src/App.tsx` | Добавить маршрут |
+| `src/components/layout/AdminLayout.tsx` | Добавить пункт меню |
+
+---
+
+## Проверка после изменений
+
+1. В кассе при выборе точки НЕ видно "Центральный"
+2. В админке "Центральный" виден и доступен для выбора
+3. Можно удалять поставки, перемещения, инвентаризации
+4. Можно удалять заказы из раздела "Документы"
+5. Можно удалять остатки со склада
+6. Новая страница "Движение товаров" показывает все операции с фильтрами
+7. Просмотр содержимого чека работает (иконка "глаз" в Documents)

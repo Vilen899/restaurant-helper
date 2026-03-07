@@ -10,6 +10,7 @@ import {
   Loader2,
   Cloud,
   Monitor,
+  MapPin,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PaymentTypesEditor } from "@/components/admin/fiscal/PaymentTypesEditor";
 import { FiscalReportsCard } from "@/components/admin/fiscal/FiscalReportsCard";
 import {
@@ -29,6 +31,30 @@ import {
   callFiscal,
   type FiscalMode,
 } from "@/lib/fiscalApi";
+
+// Valid DB columns for fiscal_settings table
+const DB_COLUMNS = new Set([
+  "id", "location_id", "enabled", "auto_print_receipt", "print_copy",
+  "created_at", "updated_at", "vat_rate", "default_timeout", "payment_timeout",
+  "use_default_adg", "use_kitchen_name", "use_discount", "payment_methods_map",
+  "adg_code_length", "fast_code_length", "adg_length", "payment_types",
+  "AdgCodeFromProductCodeLength", "AdgCodeFromProductFastCodeLength",
+  "BackupDaysLimit", "VersionMajor", "VersionMinor", "CounterToRelogin",
+  "DebugMode", "C16CardIdTransfer", "AggregateSales", "DisableCashInOut",
+  "DoXReport", "DoZReport", "DefaultOperationTimeout", "KkmPaymentTimeout",
+  "PaymentTypes", "VatRate", "UseDiscountInKkm", "UseSubchargeAsDish",
+  "UseKitchenName", "UseDefaultAdg", "UseDepartmentFromKitchenName",
+  "local_proxy_url", "driver", "connection_type", "api_url", "ip_address",
+  "port", "api_login", "api_password", "api_token", "device_id",
+  "serial_number", "inn", "operator_name", "company_name", "company_address",
+  "kkm_password", "terminal_id", "default_adg", "subcharge_name",
+  "subcharge_code", "host", "cashier_id", "cashier_pin", "subcharge_unit",
+  "AggregateSaleName", "AggregateSaleAdg", "AggregateSaleCode",
+  "AggregateSaleUnit", "BonusPaymentName", "Host", "Port", "CashierId",
+  "CashierPin", "KkmPassword", "DefaultAdg", "SubchargeAsDishCode",
+  "SubchargeAsDishName", "SubchargeAsDishAdgCode", "SubchargeAsDishUnit",
+  "Mode", "LocalProxyUrl",
+]);
 
 // ПОЛНЫЙ ОРИГИНАЛЬНЫЙ ОБЪЕКТ XML
 const XML_DEFAULTS = {
@@ -47,7 +73,7 @@ const XML_DEFAULTS = {
   BonusPaymentName: "",
   C16CardIdTransfer: false,
   SubchargeAsDishCode: "999999",
-  SubchargeAsDishName: "Հանրային սննdelays  կազdelays delays delays ",
+  SubchargeAsDishName: "Հանրային սdelays  կdelays delays delays ",
   SubchargeAsDishAdgCode: "56.10",
   SubchargeAsDishUnit: "հdelays delays .",
   DefaultOperationTimeout: 30000,
@@ -81,9 +107,20 @@ const XML_DEFAULTS = {
   ],
 };
 
+function filterDbFields(obj: Record<string, any>): Record<string, any> {
+  const filtered: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    if (DB_COLUMNS.has(key)) {
+      filtered[key] = obj[key];
+    }
+  }
+  return filtered;
+}
+
 export default function FiscalSettingsPage() {
   const [config, setConfig] = useState<any>({ ...XML_DEFAULTS, location_id: "", driver: "hdm" });
   const [locations, setLocations] = useState<any[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
   const [fiscalMode, setFiscalModeState] = useState<FiscalMode>(getFiscalMode());
@@ -98,11 +135,17 @@ export default function FiscalSettingsPage() {
     toast.success(mode === "local" ? "Режим: Локальный (браузер → локальный агент → ККМ)" : "Режим: Облачный (сервер → ККМ)");
   };
 
+  const handleLocationChange = (locId: string) => {
+    setSelectedLocationId(locId);
+    loadSettings(locId);
+  };
+
   useEffect(() => {
     async function init() {
       const { data } = await supabase.from("locations").select("id, name").eq("is_active", true);
       if (data?.length) {
         setLocations(data);
+        setSelectedLocationId(data[0].id);
         await loadSettings(data[0].id);
       } else {
         setLoading(false);
@@ -125,10 +168,12 @@ export default function FiscalSettingsPage() {
   const handleSave = async () => {
     try {
       setLoading(true);
-      const { error } = await supabase.from("fiscal_settings").upsert({
+      const dbData = filterDbFields({
         ...config,
+        location_id: selectedLocationId,
         updated_at: new Date().toISOString(),
       });
+      const { error } = await supabase.from("fiscal_settings").upsert(dbData);
       if (error) throw error;
       toast.success("Настройки успешно сохранены");
     } catch (err: any) {
@@ -141,14 +186,20 @@ export default function FiscalSettingsPage() {
   const handleTestConnection = async () => {
     setIsTesting(true);
     try {
-      const result = await callFiscal("test_connection", config.location_id, fiscalMode);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("ККМ не отвечает (таймаут 15 сек). Проверьте доступность оборудования.")), 15000)
+      );
+      const result = await Promise.race([
+        callFiscal("test_connection", selectedLocationId),
+        timeoutPromise,
+      ]);
       if (result.success) {
         toast.success(`✅ ККМ подключена через ${fiscalMode === "local" ? "локальный агент" : "облачный сервер"}!`);
       } else {
         toast.error(`❌ ККМ не отвечает: ${result.message}`);
       }
     } catch (err: any) {
-      toast.error(`❌ Ошибка: ${err.message}`);
+      toast.error(`❌ ${err.message}`);
     } finally {
       setIsTesting(false);
     }
@@ -175,6 +226,28 @@ export default function FiscalSettingsPage() {
           </Button>
         </div>
       </div>
+
+      {/* Location selector */}
+      {locations.length > 1 && (
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <MapPin className="w-5 h-5 text-primary" />
+            <Label className="font-semibold">Локация</Label>
+            <Select value={selectedLocationId} onValueChange={handleLocationChange}>
+              <SelectTrigger className="w-[280px]">
+                <SelectValue placeholder="Выберите локацию" />
+              </SelectTrigger>
+              <SelectContent>
+                {locations.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </Card>
+      )}
 
       <Tabs defaultValue="network" className="w-full">
         <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
