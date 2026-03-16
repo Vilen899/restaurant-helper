@@ -48,6 +48,7 @@ type PaymentMethod = Tables<"payment_methods">;
 interface CartItem {
   menuItem: MenuItem;
   quantity: number;
+  modifiers?: SelectedModifier[];
 }
 
 interface CashierSession {
