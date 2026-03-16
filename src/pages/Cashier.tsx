@@ -89,6 +89,10 @@ export default function CashierPage() {
   const [processing, setProcessing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
+  const [modifierDialogOpen, setModifierDialogOpen] = useState(false);
+  const [pendingModifierItem, setPendingModifierItem] = useState<MenuItem | null>(null);
+  // Cache which items have modifiers to avoid repeated queries
+  const [itemModifierCache, setItemModifierCache] = useState<Map<string, boolean>>(new Map());
 
   const [cashierSettings, setCashierSettings] = useState({
     autoLockEnabled: true,
