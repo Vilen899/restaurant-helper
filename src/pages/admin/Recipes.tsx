@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, ChefHat, Upload, Package, Pencil, X, Check } from 'lucide-react';
+import { Plus, Trash2, Search, ChefHat, Upload, Package, Pencil, X, Check, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
