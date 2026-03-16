@@ -21,6 +21,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import MenuPage from "./pages/admin/Menu";
 import CategoriesPage from "./pages/admin/Categories";
 import RecipesPage from "./pages/admin/Recipes";
+import ModifiersPage from "./pages/admin/Modifiers";
 import SemiFinishedPage from "./pages/admin/SemiFinished";
 import IngredientsPage from "./pages/admin/Ingredients";
 import LocationsPage from "./pages/admin/Locations";
