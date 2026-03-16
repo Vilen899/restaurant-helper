@@ -38,6 +38,7 @@ import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
 import { playCartAddSound } from "@/lib/sounds";
 import { KkmStatusBadge } from "@/components/cashier/KkmStatusBadge";
+import { ModifierDialog, SelectedModifier } from "@/components/cashier/ModifierDialog";
 import { deductIngredient, deductSemiFinishedIngredients } from "@/hooks/useInventoryDeduction";
 import { format } from "date-fns";
 
