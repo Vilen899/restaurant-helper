@@ -37,6 +37,22 @@ interface SemiFinishedWithDetails extends SemiFinished {
   })[];
 }
 
+interface ModifierGroupInfo {
+  id: string;
+  name: string;
+  min_select: number;
+  max_select: number;
+  is_active: boolean;
+}
+
+interface AssignedModifierGroup {
+  id: string; // menu_item_modifier_groups.id
+  modifier_group_id: string;
+  is_required: boolean;
+  sort_order: number;
+  group?: ModifierGroupInfo;
+}
+
 export default function RecipesPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -62,6 +78,11 @@ export default function RecipesPage() {
   // Edit mode for inline quantity editing
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingQty, setEditingQty] = useState('');
+
+  // Modifier groups
+  const [allModifierGroups, setAllModifierGroups] = useState<ModifierGroupInfo[]>([]);
+  const [assignedModGroups, setAssignedModGroups] = useState<AssignedModifierGroup[]>([]);
+  const [addModGroupId, setAddModGroupId] = useState('');
 
   useEffect(() => {
     fetchData();
