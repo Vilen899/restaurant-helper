@@ -334,6 +334,29 @@ export default function CashierPage() {
   const getCategoryStyle = (name: string) => categoryStyles[name] || defaultCategoryStyle;
 
   const addToCart = async (item: MenuItem) => {
+    // Check if item has modifiers assigned
+    let hasModifiers = itemModifierCache.get(item.id);
+    if (hasModifiers === undefined) {
+      const { count } = await supabase
+        .from('menu_item_modifier_groups')
+        .select('*', { count: 'exact', head: true })
+        .eq('menu_item_id', item.id);
+      hasModifiers = (count || 0) > 0;
+      setItemModifierCache(prev => new Map(prev).set(item.id, hasModifiers!));
+    }
+
+    if (hasModifiers) {
+      // Show modifier dialog
+      setPendingModifierItem(item);
+      setModifierDialogOpen(true);
+      return;
+    }
+
+    // No modifiers — add directly
+    addToCartDirect(item);
+  };
+
+  const addToCartDirect = async (item: MenuItem, modifiers?: SelectedModifier[]) => {
     if (!cashierSettings.allowNegativeStock && session) {
       try {
         const { data: recipe } = await supabase.from("menu_item_ingredients").select("ingredient_id, semi_finished_id, quantity").eq("menu_item_id", item.id);
@@ -352,11 +375,19 @@ export default function CashierPage() {
       } catch (e) { console.error(e); }
     }
     playCartAddSound();
-    setCart(prev => { 
-      const existing = prev.find(ci => ci.menuItem.id === item.id); 
-      if (existing) return prev.map(ci => ci.menuItem.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci); 
-      return [...prev, { menuItem: item, quantity: 1 }]; 
-    });
+
+    if (modifiers && modifiers.length > 0) {
+      // Items with modifiers are always added as separate cart entries (can't merge by id alone)
+      const modPrice = modifiers.reduce((s, m) => s + m.price_adjustment, 0);
+      const adjustedItem = { ...item, price: Number(item.price) + modPrice };
+      setCart(prev => [...prev, { menuItem: adjustedItem, quantity: 1, modifiers }]);
+    } else {
+      setCart(prev => { 
+        const existing = prev.find(ci => ci.menuItem.id === item.id && !ci.modifiers?.length); 
+        if (existing) return prev.map(ci => ci.menuItem.id === item.id && !ci.modifiers?.length ? { ...ci, quantity: ci.quantity + 1 } : ci); 
+        return [...prev, { menuItem: item, quantity: 1 }]; 
+      });
+    }
     toast.success(`${item.name} добавлен`, { duration: 1000 });
   };
 
