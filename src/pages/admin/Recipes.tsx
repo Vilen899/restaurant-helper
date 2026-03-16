@@ -127,12 +127,20 @@ export default function RecipesPage() {
     setNewIngredientId('');
     setNewSemiFinishedId('');
     setNewIngredientQty('');
+    setAddModGroupId('');
 
-    // Fetch recipe ingredients with both ingredients and semi_finished
-    const { data } = await supabase
-      .from('menu_item_ingredients')
-      .select('*, ingredient:ingredients(*, unit:units(*)), semi_finished:semi_finished(*, unit:units(*))')
-      .eq('menu_item_id', item.id);
+    // Fetch recipe ingredients and modifier assignments in parallel
+    const [{ data }, { data: modAssignments }] = await Promise.all([
+      supabase
+        .from('menu_item_ingredients')
+        .select('*, ingredient:ingredients(*, unit:units(*)), semi_finished:semi_finished(*, unit:units(*))')
+        .eq('menu_item_id', item.id),
+      supabase
+        .from('menu_item_modifier_groups')
+        .select('*')
+        .eq('menu_item_id', item.id)
+        .order('sort_order'),
+    ]);
 
     // Enrich semi_finished with calculated cost
     const enrichedData = (data || []).map((ri: any) => {
@@ -144,6 +152,56 @@ export default function RecipesPage() {
     });
 
     setRecipeIngredients(enrichedData as RecipeIngredient[]);
+
+    // Enrich modifier assignments with group details
+    const enrichedMods: AssignedModifierGroup[] = (modAssignments || []).map((a: any) => ({
+      id: a.id,
+      modifier_group_id: a.modifier_group_id,
+      is_required: a.is_required,
+      sort_order: a.sort_order,
+      group: allModifierGroups.find(g => g.id === a.modifier_group_id),
+    }));
+    setAssignedModGroups(enrichedMods);
+  };
+
+  // Modifier group management
+  const addModGroupToItem = async () => {
+    if (!selectedItem || !addModGroupId) return;
+    try {
+      const { data, error } = await supabase
+        .from('menu_item_modifier_groups')
+        .insert({
+          menu_item_id: selectedItem.id,
+          modifier_group_id: addModGroupId,
+          is_required: false,
+          sort_order: assignedModGroups.length * 10,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      const group = allModifierGroups.find(g => g.id === addModGroupId);
+      setAssignedModGroups(prev => [...prev, { id: data.id, modifier_group_id: addModGroupId, is_required: false, sort_order: data.sort_order, group }]);
+      setAddModGroupId('');
+      toast.success('Группа модификаторов добавлена');
+    } catch (e: any) {
+      toast.error(e.message || 'Ошибка добавления');
+    }
+  };
+
+  const toggleModGroupRequired = async (assignmentId: string, currentRequired: boolean) => {
+    const { error } = await supabase
+      .from('menu_item_modifier_groups')
+      .update({ is_required: !currentRequired })
+      .eq('id', assignmentId);
+    if (error) { toast.error('Ошибка обновления'); return; }
+    setAssignedModGroups(prev => prev.map(a => a.id === assignmentId ? { ...a, is_required: !currentRequired } : a));
+  };
+
+  const removeModGroupFromItem = async (assignmentId: string) => {
+    const { error } = await supabase.from('menu_item_modifier_groups').delete().eq('id', assignmentId);
+    if (error) { toast.error('Ошибка удаления'); return; }
+    setAssignedModGroups(prev => prev.filter(a => a.id !== assignmentId));
+    toast.success('Группа модификаторов удалена');
   };
 
   const addIngredientToRecipe = async () => {
