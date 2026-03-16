@@ -90,11 +90,12 @@ export default function RecipesPage() {
 
   const fetchData = async () => {
     try {
-      const [{ data: items }, { data: ings }, { data: unitsData }, { data: semiData }] = await Promise.all([
+      const [{ data: items }, { data: ings }, { data: unitsData }, { data: semiData }, { data: modGroups }] = await Promise.all([
         supabase.from('menu_items').select('*').order('name'),
         supabase.from('ingredients').select('*, unit:units(*)').eq('is_active', true).order('name'),
         supabase.from('units').select('*'),
         supabase.from('semi_finished').select('*, unit:units(*), semi_finished_ingredients(*, ingredient:ingredients(*, unit:units(*)))').eq('is_active', true).order('name'),
+        supabase.from('modifier_groups').select('*').eq('is_active', true).order('sort_order'),
       ]);
 
       // Calculate cost for each semi-finished
@@ -110,6 +111,7 @@ export default function RecipesPage() {
       setIngredients((ings || []) as (Ingredient & { unit?: Unit })[]);
       setUnits(unitsData || []);
       setSemiFinished(semiWithCost);
+      setAllModifierGroups(modGroups || []);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Ошибка загрузки данных');
