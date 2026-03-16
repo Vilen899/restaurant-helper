@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Search, ChefHat, Upload, Package, Pencil, X, Check } from 'lucide-react';
+import { Plus, Trash2, Search, ChefHat, Upload, Package, Pencil, X, Check, Settings2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,6 +37,22 @@ interface SemiFinishedWithDetails extends SemiFinished {
   })[];
 }
 
+interface ModifierGroupInfo {
+  id: string;
+  name: string;
+  min_select: number;
+  max_select: number;
+  is_active: boolean;
+}
+
+interface AssignedModifierGroup {
+  id: string; // menu_item_modifier_groups.id
+  modifier_group_id: string;
+  is_required: boolean;
+  sort_order: number;
+  group?: ModifierGroupInfo;
+}
+
 export default function RecipesPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -63,17 +79,23 @@ export default function RecipesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingQty, setEditingQty] = useState('');
 
+  // Modifier groups
+  const [allModifierGroups, setAllModifierGroups] = useState<ModifierGroupInfo[]>([]);
+  const [assignedModGroups, setAssignedModGroups] = useState<AssignedModifierGroup[]>([]);
+  const [addModGroupId, setAddModGroupId] = useState('');
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
     try {
-      const [{ data: items }, { data: ings }, { data: unitsData }, { data: semiData }] = await Promise.all([
+      const [{ data: items }, { data: ings }, { data: unitsData }, { data: semiData }, { data: modGroups }] = await Promise.all([
         supabase.from('menu_items').select('*').order('name'),
         supabase.from('ingredients').select('*, unit:units(*)').eq('is_active', true).order('name'),
         supabase.from('units').select('*'),
         supabase.from('semi_finished').select('*, unit:units(*), semi_finished_ingredients(*, ingredient:ingredients(*, unit:units(*)))').eq('is_active', true).order('name'),
+        supabase.from('modifier_groups').select('*').eq('is_active', true).order('sort_order'),
       ]);
 
       // Calculate cost for each semi-finished
@@ -89,6 +111,7 @@ export default function RecipesPage() {
       setIngredients((ings || []) as (Ingredient & { unit?: Unit })[]);
       setUnits(unitsData || []);
       setSemiFinished(semiWithCost);
+      setAllModifierGroups(modGroups || []);
     } catch (error) {
       console.error('Error:', error);
       toast.error('Ошибка загрузки данных');
@@ -104,12 +127,20 @@ export default function RecipesPage() {
     setNewIngredientId('');
     setNewSemiFinishedId('');
     setNewIngredientQty('');
+    setAddModGroupId('');
 
-    // Fetch recipe ingredients with both ingredients and semi_finished
-    const { data } = await supabase
-      .from('menu_item_ingredients')
-      .select('*, ingredient:ingredients(*, unit:units(*)), semi_finished:semi_finished(*, unit:units(*))')
-      .eq('menu_item_id', item.id);
+    // Fetch recipe ingredients and modifier assignments in parallel
+    const [{ data }, { data: modAssignments }] = await Promise.all([
+      supabase
+        .from('menu_item_ingredients')
+        .select('*, ingredient:ingredients(*, unit:units(*)), semi_finished:semi_finished(*, unit:units(*))')
+        .eq('menu_item_id', item.id),
+      supabase
+        .from('menu_item_modifier_groups')
+        .select('*')
+        .eq('menu_item_id', item.id)
+        .order('sort_order'),
+    ]);
 
     // Enrich semi_finished with calculated cost
     const enrichedData = (data || []).map((ri: any) => {
@@ -121,6 +152,56 @@ export default function RecipesPage() {
     });
 
     setRecipeIngredients(enrichedData as RecipeIngredient[]);
+
+    // Enrich modifier assignments with group details
+    const enrichedMods: AssignedModifierGroup[] = (modAssignments || []).map((a: any) => ({
+      id: a.id,
+      modifier_group_id: a.modifier_group_id,
+      is_required: a.is_required,
+      sort_order: a.sort_order,
+      group: allModifierGroups.find(g => g.id === a.modifier_group_id),
+    }));
+    setAssignedModGroups(enrichedMods);
+  };
+
+  // Modifier group management
+  const addModGroupToItem = async () => {
+    if (!selectedItem || !addModGroupId) return;
+    try {
+      const { data, error } = await supabase
+        .from('menu_item_modifier_groups')
+        .insert({
+          menu_item_id: selectedItem.id,
+          modifier_group_id: addModGroupId,
+          is_required: false,
+          sort_order: assignedModGroups.length * 10,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      const group = allModifierGroups.find(g => g.id === addModGroupId);
+      setAssignedModGroups(prev => [...prev, { id: data.id, modifier_group_id: addModGroupId, is_required: false, sort_order: data.sort_order, group }]);
+      setAddModGroupId('');
+      toast.success('Группа модификаторов добавлена');
+    } catch (e: any) {
+      toast.error(e.message || 'Ошибка добавления');
+    }
+  };
+
+  const toggleModGroupRequired = async (assignmentId: string, currentRequired: boolean) => {
+    const { error } = await supabase
+      .from('menu_item_modifier_groups')
+      .update({ is_required: !currentRequired })
+      .eq('id', assignmentId);
+    if (error) { toast.error('Ошибка обновления'); return; }
+    setAssignedModGroups(prev => prev.map(a => a.id === assignmentId ? { ...a, is_required: !currentRequired } : a));
+  };
+
+  const removeModGroupFromItem = async (assignmentId: string) => {
+    const { error } = await supabase.from('menu_item_modifier_groups').delete().eq('id', assignmentId);
+    if (error) { toast.error('Ошибка удаления'); return; }
+    setAssignedModGroups(prev => prev.filter(a => a.id !== assignmentId));
+    toast.success('Группа модификаторов удалена');
   };
 
   const addIngredientToRecipe = async () => {
@@ -578,6 +659,70 @@ export default function RecipesPage() {
                   </TableRow>
                 </TableBody>
               </Table>
+            )}
+          </div>
+
+          {/* Modifier groups section */}
+          <div className="space-y-4 pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                Модификаторы
+              </h4>
+            </div>
+
+            {assignedModGroups.length > 0 && (
+              <div className="space-y-2">
+                {assignedModGroups.map(amg => (
+                  <div key={amg.id} className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{amg.group?.name || 'Группа'}</span>
+                      {amg.is_required && (
+                        <Badge variant="destructive" className="text-[10px]">обязательно</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => toggleModGroupRequired(amg.id, amg.is_required)}
+                      >
+                        {amg.is_required ? 'Сделать опцион.' : 'Сделать обязат.'}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeModGroupFromItem(amg.id)}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {allModifierGroups.length > 0 && (
+              <div className="flex gap-2">
+                <Select value={addModGroupId} onValueChange={setAddModGroupId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Выберите группу модификаторов" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allModifierGroups
+                      .filter(g => !assignedModGroups.some(a => a.modifier_group_id === g.id))
+                      .map(g => (
+                        <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={addModGroupToItem} disabled={!addModGroupId}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {allModifierGroups.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Создайте группы модификаторов на странице «Модификаторы»
+              </p>
             )}
           </div>
 

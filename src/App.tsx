@@ -21,6 +21,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import MenuPage from "./pages/admin/Menu";
 import CategoriesPage from "./pages/admin/Categories";
 import RecipesPage from "./pages/admin/Recipes";
+import ModifiersPage from "./pages/admin/Modifiers";
 import SemiFinishedPage from "./pages/admin/SemiFinished";
 import IngredientsPage from "./pages/admin/Ingredients";
 import LocationsPage from "./pages/admin/Locations";
@@ -86,6 +87,7 @@ function AppRoutes() {
         <Route path="menu" element={<MenuPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="recipes" element={<RecipesPage />} />
+        <Route path="modifiers" element={<ModifiersPage />} />
         <Route path="semi-finished" element={<SemiFinishedPage />} />
         <Route path="ingredients" element={<IngredientsPage />} />
         <Route path="locations" element={<LocationsPage />} />

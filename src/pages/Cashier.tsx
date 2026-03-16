@@ -38,6 +38,7 @@ import { useOfflineQueue } from "@/hooks/useOfflineQueue";
 import { useAutoLock } from "@/hooks/useAutoLock";
 import { playCartAddSound } from "@/lib/sounds";
 import { KkmStatusBadge } from "@/components/cashier/KkmStatusBadge";
+import { ModifierDialog, SelectedModifier } from "@/components/cashier/ModifierDialog";
 import { deductIngredient, deductSemiFinishedIngredients } from "@/hooks/useInventoryDeduction";
 import { format } from "date-fns";
 
@@ -47,6 +48,7 @@ type PaymentMethod = Tables<"payment_methods">;
 interface CartItem {
   menuItem: MenuItem;
   quantity: number;
+  modifiers?: SelectedModifier[];
 }
 
 interface CashierSession {
@@ -87,6 +89,10 @@ export default function CashierPage() {
   const [processing, setProcessing] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [lastOrder, setLastOrder] = useState<any>(null);
+  const [modifierDialogOpen, setModifierDialogOpen] = useState(false);
+  const [pendingModifierItem, setPendingModifierItem] = useState<MenuItem | null>(null);
+  // Cache which items have modifiers to avoid repeated queries
+  const [itemModifierCache, setItemModifierCache] = useState<Map<string, boolean>>(new Map());
 
   const [cashierSettings, setCashierSettings] = useState({
     autoLockEnabled: true,
@@ -328,6 +334,29 @@ export default function CashierPage() {
   const getCategoryStyle = (name: string) => categoryStyles[name] || defaultCategoryStyle;
 
   const addToCart = async (item: MenuItem) => {
+    // Check if item has modifiers assigned
+    let hasModifiers = itemModifierCache.get(item.id);
+    if (hasModifiers === undefined) {
+      const { count } = await supabase
+        .from('menu_item_modifier_groups')
+        .select('*', { count: 'exact', head: true })
+        .eq('menu_item_id', item.id);
+      hasModifiers = (count || 0) > 0;
+      setItemModifierCache(prev => new Map(prev).set(item.id, hasModifiers!));
+    }
+
+    if (hasModifiers) {
+      // Show modifier dialog
+      setPendingModifierItem(item);
+      setModifierDialogOpen(true);
+      return;
+    }
+
+    // No modifiers — add directly
+    addToCartDirect(item);
+  };
+
+  const addToCartDirect = async (item: MenuItem, modifiers?: SelectedModifier[]) => {
     if (!cashierSettings.allowNegativeStock && session) {
       try {
         const { data: recipe } = await supabase.from("menu_item_ingredients").select("ingredient_id, semi_finished_id, quantity").eq("menu_item_id", item.id);
@@ -346,11 +375,19 @@ export default function CashierPage() {
       } catch (e) { console.error(e); }
     }
     playCartAddSound();
-    setCart(prev => { 
-      const existing = prev.find(ci => ci.menuItem.id === item.id); 
-      if (existing) return prev.map(ci => ci.menuItem.id === item.id ? { ...ci, quantity: ci.quantity + 1 } : ci); 
-      return [...prev, { menuItem: item, quantity: 1 }]; 
-    });
+
+    if (modifiers && modifiers.length > 0) {
+      // Items with modifiers are always added as separate cart entries (can't merge by id alone)
+      const modPrice = modifiers.reduce((s, m) => s + m.price_adjustment, 0);
+      const adjustedItem = { ...item, price: Number(item.price) + modPrice };
+      setCart(prev => [...prev, { menuItem: adjustedItem, quantity: 1, modifiers }]);
+    } else {
+      setCart(prev => { 
+        const existing = prev.find(ci => ci.menuItem.id === item.id && !ci.modifiers?.length); 
+        if (existing) return prev.map(ci => ci.menuItem.id === item.id && !ci.modifiers?.length ? { ...ci, quantity: ci.quantity + 1 } : ci); 
+        return [...prev, { menuItem: item, quantity: 1 }]; 
+      });
+    }
     toast.success(`${item.name} добавлен`, { duration: 1000 });
   };
 
@@ -449,11 +486,33 @@ export default function CashierPage() {
         unit_price: Number(ci.menuItem.price),
         total_price: Number(ci.menuItem.price) * ci.quantity,
       }));
-      const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+      const { data: insertedItems, error: itemsError } = await supabase.from("order_items").insert(orderItems).select("id");
       if (itemsError) throw itemsError;
 
-      // Списание ингредиентов
-      for (const ci of cart) {
+      // Save order item modifiers and deduct modifier ingredients
+      for (let i = 0; i < cart.length; i++) {
+        const ci = cart[i];
+        const orderItemId = insertedItems?.[i]?.id;
+
+        // Save modifiers to order_item_modifiers
+        if (orderItemId && ci.modifiers && ci.modifiers.length > 0) {
+          const modRows = ci.modifiers.map(m => ({
+            order_item_id: orderItemId,
+            modifier_id: m.id,
+            modifier_name: m.name,
+            price_adjustment: m.price_adjustment,
+          }));
+          await supabase.from("order_item_modifiers").insert(modRows);
+
+          // Deduct modifier ingredients from stock
+          for (const mod of ci.modifiers) {
+            if (mod.ingredient_id && mod.ingredient_quantity > 0) {
+              await deductIngredient(session.location_id, mod.ingredient_id, mod.ingredient_quantity * ci.quantity, order.id);
+            }
+          }
+        }
+
+        // Deduct recipe ingredients
         const { data: recipe } = await supabase.from("menu_item_ingredients").select("ingredient_id, semi_finished_id, quantity").eq("menu_item_id", ci.menuItem.id);
         if (recipe) {
           for (const r of recipe) {
@@ -759,10 +818,15 @@ ${cashReceived ? `
           {cart.length === 0 ? (
             <div className="text-center text-gray-400 py-8">Корзина пуста</div>
           ) : (
-            cart.map((ci) => (
-              <div key={ci.menuItem.id} className="flex justify-between items-center p-2 border-b border-gray-700">
+            cart.map((ci, idx) => (
+              <div key={`${ci.menuItem.id}-${idx}`} className="flex justify-between items-center p-2 border-b border-gray-700">
                 <div>
                   <div className="font-medium text-white">{ci.menuItem.name}</div>
+                  {ci.modifiers && ci.modifiers.length > 0 && (
+                    <div className="text-[10px] text-blue-400">
+                      {ci.modifiers.map(m => m.name).join(', ')}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-400">{ci.quantity} × {Number(ci.menuItem.price).toLocaleString()} ֏</div>
                 </div>
                 <div className="flex gap-1">
@@ -799,6 +863,12 @@ ${cashReceived ? `
       </aside>
 
       {/* Диалоги */}
+      <ModifierDialog
+        open={modifierDialogOpen}
+        onOpenChange={setModifierDialogOpen}
+        menuItem={pendingModifierItem}
+        onConfirm={(item, mods) => addToCartDirect(item, mods)}
+      />
       <PaymentDialog
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
