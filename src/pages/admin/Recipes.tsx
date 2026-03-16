@@ -662,6 +662,70 @@ export default function RecipesPage() {
             )}
           </div>
 
+          {/* Modifier groups section */}
+          <div className="space-y-4 pt-4 border-t">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium flex items-center gap-2">
+                <Settings2 className="h-4 w-4" />
+                Модификаторы
+              </h4>
+            </div>
+
+            {assignedModGroups.length > 0 && (
+              <div className="space-y-2">
+                {assignedModGroups.map(amg => (
+                  <div key={amg.id} className="flex items-center justify-between p-2 rounded-lg border bg-muted/30">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{amg.group?.name || 'Группа'}</span>
+                      {amg.is_required && (
+                        <Badge variant="destructive" className="text-[10px]">обязательно</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs h-7"
+                        onClick={() => toggleModGroupRequired(amg.id, amg.is_required)}
+                      >
+                        {amg.is_required ? 'Сделать опцион.' : 'Сделать обязат.'}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeModGroupFromItem(amg.id)}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {allModifierGroups.length > 0 && (
+              <div className="flex gap-2">
+                <Select value={addModGroupId} onValueChange={setAddModGroupId}>
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="Выберите группу модификаторов" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allModifierGroups
+                      .filter(g => !assignedModGroups.some(a => a.modifier_group_id === g.id))
+                      .map(g => (
+                        <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <Button onClick={addModGroupToItem} disabled={!addModGroupId}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {allModifierGroups.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Создайте группы модификаторов на странице «Модификаторы»
+              </p>
+            )}
+          </div>
+
           {/* Add ingredient or semi-finished */}
           <div className="space-y-4 pt-4 border-t">
             <h4 className="font-medium">Добавить в состав</h4>
