@@ -863,6 +863,12 @@ ${cashReceived ? `
       </aside>
 
       {/* Диалоги */}
+      <ModifierDialog
+        open={modifierDialogOpen}
+        onOpenChange={setModifierDialogOpen}
+        menuItem={pendingModifierItem}
+        onConfirm={(item, mods) => addToCartDirect(item, mods)}
+      />
       <PaymentDialog
         open={paymentDialogOpen}
         onOpenChange={setPaymentDialogOpen}
