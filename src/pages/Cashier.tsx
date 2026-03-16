@@ -486,11 +486,33 @@ export default function CashierPage() {
         unit_price: Number(ci.menuItem.price),
         total_price: Number(ci.menuItem.price) * ci.quantity,
       }));
-      const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+      const { data: insertedItems, error: itemsError } = await supabase.from("order_items").insert(orderItems).select("id");
       if (itemsError) throw itemsError;
 
-      // Списание ингредиентов
-      for (const ci of cart) {
+      // Save order item modifiers and deduct modifier ingredients
+      for (let i = 0; i < cart.length; i++) {
+        const ci = cart[i];
+        const orderItemId = insertedItems?.[i]?.id;
+
+        // Save modifiers to order_item_modifiers
+        if (orderItemId && ci.modifiers && ci.modifiers.length > 0) {
+          const modRows = ci.modifiers.map(m => ({
+            order_item_id: orderItemId,
+            modifier_id: m.id,
+            modifier_name: m.name,
+            price_adjustment: m.price_adjustment,
+          }));
+          await supabase.from("order_item_modifiers").insert(modRows);
+
+          // Deduct modifier ingredients from stock
+          for (const mod of ci.modifiers) {
+            if (mod.ingredient_id && mod.ingredient_quantity > 0) {
+              await deductIngredient(session.location_id, mod.ingredient_id, mod.ingredient_quantity * ci.quantity, order.id);
+            }
+          }
+        }
+
+        // Deduct recipe ingredients
         const { data: recipe } = await supabase.from("menu_item_ingredients").select("ingredient_id, semi_finished_id, quantity").eq("menu_item_id", ci.menuItem.id);
         if (recipe) {
           for (const r of recipe) {
