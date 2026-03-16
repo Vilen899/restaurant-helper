@@ -818,10 +818,15 @@ ${cashReceived ? `
           {cart.length === 0 ? (
             <div className="text-center text-gray-400 py-8">Корзина пуста</div>
           ) : (
-            cart.map((ci) => (
-              <div key={ci.menuItem.id} className="flex justify-between items-center p-2 border-b border-gray-700">
+            cart.map((ci, idx) => (
+              <div key={`${ci.menuItem.id}-${idx}`} className="flex justify-between items-center p-2 border-b border-gray-700">
                 <div>
                   <div className="font-medium text-white">{ci.menuItem.name}</div>
+                  {ci.modifiers && ci.modifiers.length > 0 && (
+                    <div className="text-[10px] text-blue-400">
+                      {ci.modifiers.map(m => m.name).join(', ')}
+                    </div>
+                  )}
                   <div className="text-xs text-gray-400">{ci.quantity} × {Number(ci.menuItem.price).toLocaleString()} ֏</div>
                 </div>
                 <div className="flex gap-1">
