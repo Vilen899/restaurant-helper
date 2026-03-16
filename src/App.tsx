@@ -87,6 +87,7 @@ function AppRoutes() {
         <Route path="menu" element={<MenuPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="recipes" element={<RecipesPage />} />
+        <Route path="modifiers" element={<ModifiersPage />} />
         <Route path="semi-finished" element={<SemiFinishedPage />} />
         <Route path="ingredients" element={<IngredientsPage />} />
         <Route path="locations" element={<LocationsPage />} />
