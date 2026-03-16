@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   ChefHat,
   Warehouse,
+  Settings2,
   Users,
   LogOut,
   Menu,
